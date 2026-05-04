@@ -1,0 +1,44 @@
+/** @type {import('tailwindcss').Config} */
+export default {
+  content: [
+    "./index.html",
+    "./src/**/*.{js,jsx}",
+    "../clinic-admin/src/**/*.{js,jsx}",
+    "../admin-scheduling/src/**/*.{js,jsx}",
+    "../bulk-schedule/src/**/*.{js,jsx}",
+    "../admin-requests/src/**/*.{js,jsx}",
+    "../admin-attendance/src/**/*.{js,jsx}",
+    "../monitoring-progress/src/**/*.{js,jsx}",
+    "../child-management/src/**/*.{js,jsx}",
+    "../child-registration/src/**/*.{js,jsx}",
+    "../therapist-management/src/**/*.{js,jsx}",
+    "../therapist-registration/src/**/*.{js,jsx}",
+    "../admin-reports/src/**/*.{js,jsx}",
+    "../notification-center/src/**/*.{js,jsx}",
+    "../clinic-branding-settings/src/**/*.{js,jsx}"
+  ],
+  darkMode: "class",
+  theme: {
+    extend: {
+      colors: {
+        "primary": "#135bec",
+        "background-light": "#f6f7f8",
+        "background-dark": "#101622",
+        "surface-light": "#ffffff",
+        "surface-dark": "#1a2634",
+        "text-primary-light": "#0e151b",
+        "text-primary-dark": "#f0f5f7",
+        "text-secondary-light": "#4e6a7f",
+        "text-secondary-dark": "#a0b8ca",
+        "border-light": "#e1e8ef",
+        "border-dark": "#2a3a50",
+        "primary-content": "#0e1b19",
+        "secondary": "#e7f0f3",
+        "secondary-content": "#4e7f97",
+      },
+      fontFamily: { "display": ["Manrope", "Lexend", "sans-serif"] },
+      borderRadius: { "DEFAULT": "0.5rem", "lg": "1rem", "xl": "1.5rem", "full": "9999px" },
+    },
+  },
+  plugins: [import('@tailwindcss/forms'), import('@tailwindcss/container-queries')],
+}
