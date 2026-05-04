@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getAllParents, getAllTherapists, updateParentPassword, updateParentStatus, updateTherapistPassword, updateTherapistStatus } from '../../../shared/clinicDataStore';
+import { parentsApi, therapistsApi } from '../../../shared/api/client';
 
 export default function UserManagementPage() {
     const [activeTab, setActiveTab]   = useState('parents');
@@ -9,16 +9,24 @@ export default function UserManagementPage() {
     const [statusFilter, setStatus]   = useState('');
     const [toast, setToast]           = useState(null);
     const [showPass, setShowPass]     = useState({});
+    const [loading, setLoading]       = useState(true);
 
-    const load = () => {
-        setParents(getAllParents());
-        setTherapists(getAllTherapists());
+    const load = async () => {
+        try {
+            const [pRes, tRes] = await Promise.all([
+                parentsApi.getAll(),
+                therapistsApi.getAll(),
+            ]);
+            setParents(pRes.data?.data || []);
+            setTherapists(tRes.data?.data || []);
+        } catch (e) {
+            console.error("Failed to load users", e);
+        }
+        setLoading(false);
     };
 
     useEffect(() => {
         load();
-        window.addEventListener('clinicDataUpdated', load);
-        return () => window.removeEventListener('clinicDataUpdated', load);
     }, []);
 
     const showToast = (msg, type = 'success') => {
@@ -26,26 +34,39 @@ export default function UserManagementPage() {
         setTimeout(() => setToast(null), 3500);
     };
 
-    const handleReset = (user, type) => {
-        let newPass = null;
-        if (type === 'parents') newPass = updateParentPassword(user.id);
-        else newPass = updateTherapistPassword(user.id);
-        load();
-        showToast(`Password for ${user.name} reset to: ${newPass || '(saved)'}`);
+    const handleReset = async (user, type) => {
+        let res;
+        if (type === 'parents') res = await parentsApi.resetPassword(user.id);
+        else res = await therapistsApi.resetPassword(user.id);
+        
+        if (res.ok) {
+            load();
+            showToast(`Password for ${user.name} reset to: ${res.data?.data?.newPassword || '(saved)'}`);
+        } else {
+            showToast(`Gagal mereset password: ${res.data?.message || 'Error'}`, 'error');
+        }
     };
 
-    const handleToggleStatus = (user, type) => {
+    const handleToggleStatus = async (user, type) => {
         const next = user.status === 'active' ? 'suspended' : 'active';
-        if (type === 'parents') updateParentStatus(user.id, next);
-        else updateTherapistStatus(user.id, next);
-        load();
-        showToast(`${user.name} account ${next}.`, next === 'active' ? 'success' : 'warning');
+        let res;
+        if (type === 'parents') res = await parentsApi.updateStatus(user.id, next);
+        else res = await therapistsApi.updateStatus(user.id, next);
+        
+        if (res.ok) {
+            load();
+            showToast(`${user.name} account ${next}.`, next === 'active' ? 'success' : 'warning');
+        } else {
+            showToast(`Gagal mengubah status: ${res.data?.message || 'Error'}`, 'error');
+        }
     };
 
     const currentData = activeTab === 'parents' ? parents : therapists;
 
     const filtered = currentData.filter(u => {
-        const matchSearch = u.name.toLowerCase().includes(search.toLowerCase()) || (u.phone || '').includes(search) || (u.id || '').toLowerCase().includes(search.toLowerCase());
+        const matchSearch = (u.name || '').toLowerCase().includes(search.toLowerCase()) || 
+                            (u.phone || '').includes(search) || 
+                            (u.id || '').toLowerCase().includes(search.toLowerCase());
         const matchStatus = statusFilter ? (u.status || 'active') === statusFilter : true;
         return matchSearch && matchStatus;
     });
@@ -141,7 +162,9 @@ export default function UserManagementPage() {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100 dark:divide-primary/10">
-                                    {filtered.length === 0 ? (
+                                    {loading ? (
+                                        <tr><td colSpan={6} className="text-center py-16"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div></td></tr>
+                                    ) : filtered.length === 0 ? (
                                         <tr><td colSpan={6} className="text-center py-16 text-slate-400">
                                             <span className="material-symbols-outlined text-5xl block mb-2">manage_accounts</span>
                                             <span className="text-sm">No {activeTab} accounts found.</span>
@@ -154,7 +177,7 @@ export default function UserManagementPage() {
                                                 <td className="px-6 py-4">
                                                     <div className="flex items-center gap-3">
                                                         <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center font-bold text-sm text-primary flex-shrink-0">
-                                                            {user.name.charAt(0).toUpperCase()}
+                                                            {(user.name || 'U').charAt(0).toUpperCase()}
                                                         </div>
                                                         <div>
                                                             <p className="font-semibold text-sm text-slate-900 dark:text-slate-100">{user.name}</p>
@@ -172,9 +195,9 @@ export default function UserManagementPage() {
                                                             <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">{(user.children || []).length} Anak</span>
                                                             {(user.children || []).length > 0 && (
                                                                 <div className="flex flex-wrap gap-1">
-                                                                    {user.children.map(childNita => (
-                                                                        <span key={childNita} className="text-[10px] px-1.5 py-0.5 rounded bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300 font-mono">
-                                                                            {childNita}
+                                                                    {user.children.map(child => (
+                                                                        <span key={child.id || child.nita || child} className="text-[10px] px-1.5 py-0.5 rounded bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300 font-mono">
+                                                                            {child.nita || child}
                                                                         </span>
                                                                     ))}
                                                                 </div>

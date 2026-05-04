@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getChildrenByParent, getAnnouncements } from '../../../shared/clinicDataStore';
+import { childrenApi, adminApi } from '../../../shared/api/client';
 
 const Header = ({ title = "Dashboard" }) => {
     const [children, setChildren]           = useState([]);
@@ -16,7 +16,7 @@ const Header = ({ title = "Dashboard" }) => {
     const profileRef  = useRef(null);
 
     useEffect(() => {
-        const load = () => {
+        const load = async () => {
             const saved = sessionStorage.getItem('parent_user');
             if (!saved) return;
             const user = JSON.parse(saved);
@@ -24,19 +24,24 @@ const Header = ({ title = "Dashboard" }) => {
 
             const parentId = user.parentId;
             if (parentId) {
-                const list = getChildrenByParent(parentId);
-                setChildren(list);
-                setActiveChildId(user.childId || list[0]?.nita || '');
+                try {
+                    const res = await childrenApi.getByParent(parentId);
+                    const list = res.data?.data || [];
+                    setChildren(list);
+                    setActiveChildId(user.childId || list[0]?.nita || '');
+                } catch(e) {}
             }
 
-            const anns = getAnnouncements('parent').slice(0, 5);
-            setNotifications(anns);
+            try {
+                const res = await adminApi.getAnnouncementsForRole('parent');
+                const anns = (res.data?.data || []).slice(0, 5);
+                setNotifications(anns);
+            } catch(e) {}
+            
             const read = JSON.parse(sessionStorage.getItem('read_notifs') || '[]');
             setReadIds(read);
         };
         load();
-        window.addEventListener('clinicDataUpdated', load);
-        return () => window.removeEventListener('clinicDataUpdated', load);
     }, []);
 
     // Close dropdowns on outside click
@@ -76,7 +81,7 @@ const Header = ({ title = "Dashboard" }) => {
                 user.childId   = selected.nita;
                 user.childName = selected.name;
                 sessionStorage.setItem('parent_user', JSON.stringify(user));
-                window.dispatchEvent(new CustomEvent('clinicDataUpdated'));
+                window.location.reload(); // simple way to refetch dashboard
             }
         }
     };

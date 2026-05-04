@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState } from 'react';
-import { getStore } from '../../../shared/clinicDataStore';
+import { therapistsApi } from '../../../shared/api/client';
 
 const AuthContext = createContext(null);
 
@@ -13,28 +13,32 @@ export function AuthProvider({ children }) {
     }
   });
 
-  const login = (nit, password) => {
-    const store = getStore();
-    
-    // Find therapist by NIT (id)
-    const therapist = (store.therapists || []).find(t => t.id === nit);
-    
-    if (!therapist || therapist.tempPassword !== password) {
+  const login = async (nit, password) => {
+    try {
+      const res = await therapistsApi.getAll();
+      const therapists = res.data?.data || [];
+      const therapist = therapists.find(t => t.id === nit);
+      
+      if (!therapist || therapist.tempPassword !== password) {
+        return false;
+      }
+
+      const userData = { 
+        id: therapist.id, 
+        name: therapist.name, 
+        role: 'therapist', 
+        specialty: therapist.specialty,
+        bio: therapist.bio || '',
+        avatar: therapist.avatar || ''
+      };
+
+      setUser(userData);
+      sessionStorage.setItem('therapist_user', JSON.stringify(userData));
+      return true;
+    } catch (e) {
+      console.error('Login error:', e);
       return false;
     }
-
-    const userData = { 
-      id: therapist.id, 
-      name: therapist.name, 
-      role: 'therapist', 
-      specialty: therapist.specialty,
-      bio: therapist.bio || '',
-      avatar: therapist.avatar || ''
-    };
-
-    setUser(userData);
-    sessionStorage.setItem('therapist_user', JSON.stringify(userData));
-    return true;
   };
 
   const logout = () => {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getStore } from '../../../shared/clinicDataStore';
+import { parentsApi } from '../../../shared/api/client';
 
 export default function Settings() {
     const [theme, setTheme] = useState('light');
@@ -12,24 +12,26 @@ export default function Settings() {
     useEffect(() => {
         if (document.documentElement.classList.contains('dark')) setTheme('dark');
         
-        const saved = sessionStorage.getItem('parent_user');
-        if (saved) {
-            try {
-                const user = JSON.parse(saved);
-                // Load actual parent data from the store
-                const store = getStore();
-                const parent = (store.parents || []).find(p => p.id === user.parentId);
-                if (parent) {
-                    setParentData({
-                        name: parent.name || user.name || '',
-                        email: parent.email || '',
-                        phone: parent.phone || '',
-                    });
-                } else if (user.name) {
-                    setParentData(prev => ({ ...prev, name: user.name }));
-                }
-            } catch (e) {}
-        }
+        const load = async () => {
+            const saved = sessionStorage.getItem('parent_user');
+            if (saved) {
+                try {
+                    const user = JSON.parse(saved);
+                    const res = await parentsApi.getById(user.parentId);
+                    const parent = res.data?.data;
+                    if (parent) {
+                        setParentData({
+                            name: parent.name || user.name || '',
+                            email: parent.email || '',
+                            phone: parent.phone || '',
+                        });
+                    } else if (user.name) {
+                        setParentData(prev => ({ ...prev, name: user.name }));
+                    }
+                } catch (e) {}
+            }
+        };
+        load();
     }, []);
 
 

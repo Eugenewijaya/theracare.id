@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from './components/Header';
 import TherapistCard from './components/TherapistCard';
-import { getAllTherapists, getAllPrograms } from '../../shared/clinicDataStore';
+import { therapistsApi, adminApi } from '../../shared/api/client';
 
 function App() {
     const navigate = useNavigate();
@@ -11,10 +11,16 @@ function App() {
     const [statusFilter, setStatusFilter] = useState('');
     const [therapists, setTherapists] = useState([]);
     const [programs, setPrograms] = useState([]);
+    const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        const load = () => {
-            const raw = getAllTherapists() || [];
+    const loadData = async () => {
+        try {
+            const [tRes, pRes] = await Promise.all([
+                therapistsApi.getAll(),
+                adminApi.getPrograms()
+            ]);
+            
+            const raw = tRes.data?.data || [];
             // Transform store structure to the card structure
             const transformed = raw.map(t => {
                 const specArray = t.specializations ? t.specializations : t.specialization ? [t.specialization] : [];
@@ -30,11 +36,15 @@ function App() {
                 };
             });
             setTherapists(transformed);
-            setPrograms(getAllPrograms());
-        };
-        load();
-        window.addEventListener('clinicDataUpdated', load);
-        return () => window.removeEventListener('clinicDataUpdated', load);
+            setPrograms(pRes.data?.data || []);
+        } catch (e) {
+            console.error('Failed to load therapist management data', e);
+        }
+        setLoading(false);
+    };
+
+    useEffect(() => {
+        loadData();
     }, []);
 
     const filteredTherapists = therapists.filter(t => {
@@ -98,11 +108,15 @@ function App() {
                     </div>
 
                     {/* Therapist Cards Grid */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                        {filteredTherapists.map((t) => (
-                            <TherapistCard key={t.id} {...t} />
-                        ))}
-                    </div>
+                    {loading ? (
+                        <div className="text-center py-12">Loading therapists...</div>
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                            {filteredTherapists.map((t) => (
+                                <TherapistCard key={t.id} {...t} />
+                            ))}
+                        </div>
+                    )}
 
                 </div>
             </main>

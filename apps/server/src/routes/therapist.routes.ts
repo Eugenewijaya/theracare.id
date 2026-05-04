@@ -1,0 +1,53 @@
+import { Router } from "express";
+import { requireAuth, requireRole } from "../middleware/auth.middleware.js";
+import { therapistService } from "../services/therapist.service.js";
+import { ok, created, notFound, badRequest } from "../utils/response.js";
+
+const router = Router();
+
+router.get("/", requireAuth, requireRole("admin"), async (req, res, next) => {
+  try { ok(res, await therapistService.getAll()); } catch (e) { next(e); }
+});
+
+router.get("/:id", requireAuth, async (req, res, next) => {
+  try {
+    const t = await therapistService.getById(req.params.id);
+    if (!t) return notFound(res);
+    ok(res, t);
+  } catch (e) { next(e); }
+});
+
+router.post("/", requireAuth, requireRole("admin"), async (req, res, next) => {
+  try {
+    const { name, email, phone, specialty } = req.body;
+    if (!name || !email) return badRequest(res, "Nama dan email wajib diisi");
+    const result = await therapistService.create({ name, email, phone, specialty });
+    created(res, result, "Akun terapis berhasil dibuat");
+  } catch (e) { next(e); }
+});
+
+router.patch("/:id", requireAuth, async (req, res, next) => {
+  try {
+    const result = await therapistService.updateProfile(req.params.id, req.body);
+    if (!result) return notFound(res);
+    ok(res, result);
+  } catch (e) { next(e); }
+});
+
+router.patch("/:id/status", requireAuth, requireRole("admin"), async (req, res, next) => {
+  try {
+    const result = await therapistService.updateStatus(req.params.id, req.body.status);
+    if (!result) return notFound(res);
+    ok(res, result);
+  } catch (e) { next(e); }
+});
+
+router.post("/:id/reset-password", requireAuth, requireRole("admin"), async (req, res, next) => {
+  try {
+    const result = await therapistService.resetPassword(req.params.id);
+    if (!result) return notFound(res);
+    ok(res, result, "Password berhasil direset");
+  } catch (e) { next(e); }
+});
+
+export default router;

@@ -1,12 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from './components/Header';
-import {
-    getUpcomingSessionsForChild,
-    getCompletedSessionsByChild,
-    getChildrenByParent,
-    getClinicSettings
-} from '../../shared/clinicDataStore';
+import { sessionsApi, childrenApi, adminApi } from '../../shared/api/client';
 
 // ── Helpers ────────────────────────────────────────────────────────
 const formatDate = (dateStr) => {
@@ -56,9 +51,10 @@ function App() {
     const [child, setChild]                   = useState(null);
     const [upcomingSessions, setUpcomingSessions] = useState([]);
     const [completedSessions, setCompletedSessions] = useState([]);
+    const [clinicSettings, setClinicSettings] = useState({});
 
     useEffect(() => {
-        const fetchData = () => {
+        const fetchData = async () => {
             const saved = sessionStorage.getItem('parent_user');
             if (!saved) return;
             const user = JSON.parse(saved);
@@ -68,20 +64,30 @@ function App() {
             const parentId = user.parentId;
 
             if (childId) {
-                setUpcomingSessions(getUpcomingSessionsForChild(childId));
-                setCompletedSessions(getCompletedSessionsByChild(childId));
+                try {
+                    const upRes = await sessionsApi.getUpcomingForChild(childId);
+                    setUpcomingSessions(upRes.data?.data || []);
+                    const compRes = await sessionsApi.getCompletedForChild(childId);
+                    setCompletedSessions(compRes.data?.data || []);
+                } catch(e) { console.error(e); }
             }
 
             if (parentId) {
-                const children   = getChildrenByParent(parentId);
-                const activeChild = children.find(c => c.nita === childId) || children[0] || null;
-                setChild(activeChild);
+                try {
+                    const childRes = await childrenApi.getByParent(parentId);
+                    const children = childRes.data?.data || [];
+                    const activeChild = children.find(c => c.nita === childId) || children[0] || null;
+                    setChild(activeChild);
+                } catch(e) { console.error(e); }
             }
+
+            try {
+                const setRes = await adminApi.getSettings();
+                setClinicSettings(setRes.data?.data || {});
+            } catch(e) { console.error(e); }
         };
 
         fetchData();
-        window.addEventListener('clinicDataUpdated', fetchData);
-        return () => window.removeEventListener('clinicDataUpdated', fetchData);
     }, []);
 
     const nextSession    = upcomingSessions[0] || null;
@@ -89,7 +95,6 @@ function App() {
     const childName      = parentUser?.childName || child?.name || 'your child';
     const therapyPrograms = child?.therapyPrograms || [];
     const recentNotes    = completedSessions.slice(0, 2);
-    const clinicSettings = getClinicSettings();
 
     // Compute milestone chart data from completed sessions grouped by month
     const milestoneChartData = (() => {

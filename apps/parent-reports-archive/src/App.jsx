@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Header from './components/Header';
-import { getCompletedSessionsByChild, addSessionRating, getSessionRating, getAllPrograms, getReportsForChild } from '../../shared/clinicDataStore';
+import { sessionsApi, reportsApi, adminApi } from '../../shared/api/client';
 
 // ── Constants ─────────────────────────────────────────────────────────
 const SCALE_MAP = { 1: 'Sangat Kurang', 2: 'Kurang', 3: 'Cukup', 4: 'Baik', 5: 'Sangat Baik' };
@@ -309,7 +309,7 @@ function App() {
 
     const typeColors = React.useMemo(() => buildTypeColors(programsList), [programsList]);
 
-    const loadReports = () => {
+    const loadReports = async () => {
         const saved = sessionStorage.getItem('parent_user');
         let childId = selectedChild;
 
@@ -321,51 +321,72 @@ function App() {
                 const children = actualChildren.length > 0 ? actualChildren : [];
                 
                 setChildrenList(children);
-                setProgramsList(getAllPrograms());
+                const pRes = await adminApi.getPrograms();
+                const progList = pRes.data?.data || [];
+                setProgramsList(progList);
                 if (children.length > 0) {
                     childId = children[0].id;
                     setSelectedChild(childId);
                 }
             } catch { /* ignore */ }
         } else {
-            setProgramsList(getAllPrograms());
+            try {
+                const pRes = await adminApi.getPrograms();
+                setProgramsList(pRes.data?.data || []);
+            } catch(e){}
         }
 
         if (!childId) return;
 
         const savedUser = saved ? (() => { try { return JSON.parse(saved); } catch { return {}; } })() : {};
 
-        const therapistReports = getReportsForChild(childId);
-        const dailyReportMap = new Map(
-            therapistReports
-                .filter(report => report.type === 'harian')
-                .map(report => [report.sessionId || `${report.childId}-${report.date}`, report])
-        );
+        try {
+            const rRes = await reportsApi.getForChild(childId);
+            const therapistReports = rRes.data?.data || [];
+            const dailyReportMap = new Map(
+                therapistReports
+                    .filter(report => report.type === 'harian')
+                    .map(report => [report.sessionId || `${report.childId}-${report.date}`, report])
+            );
 
-        // Daily reports from completed sessions
-        const sessions = getCompletedSessionsByChild(childId);
-        setDailyReports(sessions.map(s => {
-            const rating = getSessionRating(s.id);
-            const savedReport = dailyReportMap.get(s.id) || dailyReportMap.get(`${childId}-${s.date}`) || null;
-            return {
-                id:           s.id,
-                sessionId:    s.id,
-                childId,
-                parentId:     savedUser.parentId || 'p1',
-                date:         s.date,
-                type:         guessTherapyType(savedReport?.sessionFocus || savedReport?.program || s.focus, getAllPrograms()),
-                title:        savedReport?.sessionFocus || s.focus || 'Therapy Session',
-                therapist:    savedReport?.therapistName || s.therapist?.name || 'Terapis',
-                parentRating: rating?.rating || null,
-                ratingComment: rating?.comment || '',
-                description:  savedReport?.description || s.notes || 'Catatan sesi belum ditambahkan oleh terapis.',
-                hasNotes:     !!(savedReport?.description || s.notes || '').trim(),
-                evaluations: savedReport?.evaluations || {},
-                parentNotes: savedReport?.recommendations || '',
-            };
-        }));
+            // Daily reports from completed sessions
+            const sRes = await sessionsApi.getCompletedForChild(childId);
+            const sessions = sRes.data?.data || [];
+            
+            const pRes = await adminApi.getPrograms();
+            const allProg = pRes.data?.data || [];
 
-        setPeriodicReports(therapistReports.filter(report => report.type === 'periodik'));
+            const mapped = await Promise.all(sessions.map(async s => {
+                let rating = null;
+                try {
+                    const rtgRes = await sessionsApi.getRating(s.id);
+                    rating = rtgRes.data?.data;
+                } catch(e){}
+                
+                const savedReport = dailyReportMap.get(s.id) || dailyReportMap.get(`${childId}-${s.date}`) || null;
+                return {
+                    id:           s.id,
+                    sessionId:    s.id,
+                    childId,
+                    parentId:     savedUser.parentId || 'p1',
+                    date:         s.date,
+                    type:         guessTherapyType(savedReport?.sessionFocus || savedReport?.program || s.focus, allProg),
+                    title:        savedReport?.sessionFocus || s.focus || 'Therapy Session',
+                    therapist:    savedReport?.therapistName || s.therapist?.name || 'Terapis',
+                    parentRating: rating?.rating || null,
+                    ratingComment: rating?.comment || '',
+                    description:  savedReport?.description || s.notes || 'Catatan sesi belum ditambahkan oleh terapis.',
+                    hasNotes:     !!(savedReport?.description || s.notes || '').trim(),
+                    evaluations: savedReport?.evaluations || {},
+                    parentNotes: savedReport?.recommendations || '',
+                };
+            }));
+
+            setDailyReports(mapped);
+            setPeriodicReports(therapistReports.filter(report => report.type === 'periodik'));
+        } catch(e) {
+            console.error(e);
+        }
     };
 
     useEffect(() => {
@@ -414,14 +435,23 @@ function App() {
         setToast(`Laporan tanggal ${formatDate(report.date)} berhasil diunduh.`);
     };
 
-    const handleSubmitRating = () => {
+    const handleSubmitRating = async () => {
         if (!ratingModal || hoverRating === 0) return;
-        addSessionRating(ratingModal.sessionId, ratingModal.childId, ratingModal.parentId, hoverRating, ratingComment.trim());
-        setRatingModal(null);
-        setHoverRating(0);
-        setRatingComment('');
-        setToast('Rating sesi berhasil disimpan!');
-        loadReports();
+        try {
+            await sessionsApi.addRating(ratingModal.sessionId, {
+                childId: ratingModal.childId,
+                parentId: ratingModal.parentId,
+                rating: hoverRating,
+                comment: ratingComment.trim()
+            });
+            setRatingModal(null);
+            setHoverRating(0);
+            setRatingComment('');
+            setToast('Rating sesi berhasil disimpan!');
+            loadReports();
+        } catch(e){
+            console.error(e);
+        }
     };
 
     return (

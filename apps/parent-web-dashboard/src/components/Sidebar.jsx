@@ -1,11 +1,16 @@
 import React from 'react';
-import { getClinicSettings } from '../../../shared/clinicDataStore';
+import { adminApi } from '../../../shared/api/client';
 
 const Sidebar = () => {
-    const handleContactSupport = () => {
-        const settings = getClinicSettings();
-        const phone = settings.adminWhatsApp || '6281234567890';
-        window.open(`https://wa.me/${phone}`, '_blank');
+    const handleContactSupport = async () => {
+        try {
+            const res = await adminApi.getSettings();
+            const settings = res.data?.data || {};
+            const phone = settings.adminWhatsApp || '6281234567890';
+            window.open(`https://wa.me/${phone}`, '_blank');
+        } catch (e) {
+            window.open(`https://wa.me/6281234567890`, '_blank');
+        }
     };
     return (
         <div className="hidden md:flex flex-col w-64 h-full bg-surface-light dark:bg-surface-dark border-r border-border-light dark:border-border-dark flex-shrink-0">

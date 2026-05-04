@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getSessionsForTherapist, updateSessionStatus } from '../../shared/clinicDataStore';
+import { sessionsApi } from '../../shared/api/client';
 
 const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -49,40 +49,48 @@ function App() {
 
     const [currentDate, setCurrentDate] = useState(new Date());
     const [sessions, setSessions] = useState([]);
+    const [loading, setLoading] = useState(true);
     
     const [finishModal, setFinishModal] = useState(null);
     const [startModal, setStartModal] = useState(null);
     const [timeLeft, setTimeLeft] = useState(45 * 60);
 
-    const loadSessions = () => {
+    const loadSessions = async () => {
         if (!currentUser) return;
         const dateKey = formatKey(currentDate);
-        const rawSessions = getSessionsForTherapist(currentUser.id, dateKey);
-        
-        const mapped = rawSessions.map(s => {
-            const program = s.child?.therapyPrograms?.[0]?.type || 'General Therapy';
-            const style = getProgramStyle(program);
-            return {
-                id: s.id,
-                name: s.child?.name || 'Unknown Child',
-                type: program,
-                typeTag: style.tag,
-                typeColor: style.color,
-                room: s.roomId || 'Clinic Room',
-                start: s.startTime,
-                end: calculateEndTime(s.startTime, s.duration),
-                status: s.status, // upcoming, active, done
-                raw: s
-            };
-        }).sort((a, b) => a.start.localeCompare(b.start));
-        
-        setSessions(mapped);
+        try {
+            const res = await sessionsApi.getForTherapist(currentUser.id, dateKey);
+            const rawSessions = res.data?.data || [];
+            
+            const mapped = rawSessions.map(s => {
+                const program = s.child?.therapyPrograms?.[0]?.type || 'General Therapy';
+                const style = getProgramStyle(program);
+                return {
+                    id: s.id,
+                    name: s.child?.name || 'Unknown Child',
+                    type: program,
+                    typeTag: style.tag,
+                    typeColor: style.color,
+                    room: s.roomId || 'Clinic Room',
+                    start: s.startTime,
+                    end: calculateEndTime(s.startTime, s.duration),
+                    status: s.status, // upcoming, active, done
+                    raw: s
+                };
+            }).sort((a, b) => a.start.localeCompare(b.start));
+            
+            setSessions(mapped);
+        } catch (e) {
+            console.error('Failed to load therapist schedule', e);
+        }
+        setLoading(false);
     };
 
     useEffect(() => {
+        setLoading(true);
         loadSessions();
-        window.addEventListener('clinicDataUpdated', loadSessions);
-        return () => window.removeEventListener('clinicDataUpdated', loadSessions);
+        window.addEventListener('sessionUpdated', loadSessions);
+        return () => window.removeEventListener('sessionUpdated', loadSessions);
     }, [currentUser, currentDate]);
 
 
@@ -93,7 +101,7 @@ function App() {
                 setTimeLeft(prev => {
                     if (prev <= 1) {
                         clearInterval(interval);
-                        updateSessionStatus(activeSession.id, 'done');
+                        handleAutoFinish(activeSession.id);
                         return 0;
                     }
                     return prev - 1;
@@ -102,6 +110,15 @@ function App() {
             return () => clearInterval(interval);
         }
     }, [sessions]);
+
+    const handleAutoFinish = async (id) => {
+        try {
+            await sessionsApi.updateStatus(id, 'done');
+            loadSessions();
+        } catch (e) {
+            console.error('Failed to auto-finish session', e);
+        }
+    };
 
     const formatTime = (seconds) => {
         const h = Math.floor(seconds / 3600);
@@ -121,17 +138,27 @@ function App() {
     const activeInSchedule = sessions.some(s => s.status === 'active');
 
     const openFinish = (s) => setFinishModal(s);
-    const confirmFinish = () => {
+    const confirmFinish = async () => {
         if (!finishModal) return;
-        updateSessionStatus(finishModal.id, 'done');
+        try {
+            await sessionsApi.updateStatus(finishModal.id, 'done');
+            loadSessions();
+        } catch (e) {
+            console.error('Failed to finish session', e);
+        }
         setFinishModal(null);
     };
 
     const openStart = (s) => setStartModal(s);
-    const confirmStart = () => {
+    const confirmStart = async () => {
         if (!startModal) return;
-        updateSessionStatus(startModal.id, 'active');
-        setTimeLeft(45 * 60);
+        try {
+            await sessionsApi.updateStatus(startModal.id, 'active');
+            setTimeLeft(45 * 60);
+            loadSessions();
+        } catch (e) {
+            console.error('Failed to start session', e);
+        }
         setStartModal(null);
     };
 
@@ -191,91 +218,93 @@ function App() {
                     <div className="space-y-6">
                         <h2 className="text-2xl font-bold mb-6">{isToday ? "Today's Sessions" : `${isTomorrow ? "Tomorrow's" : formatDisplay(currentDate).split(',')[0] + "'s"} Sessions`}</h2>
 
-                        {sessions.length === 0 && (
+                        {loading ? (
+                            <div className="flex justify-center p-10"><span className="text-slate-500">Loading schedule...</span></div>
+                        ) : sessions.length === 0 ? (
                             <div className="flex flex-col items-center justify-center p-16 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700 text-center">
                                 <span className="material-symbols-outlined text-slate-300 dark:text-slate-600 text-5xl mb-4">event_available</span>
                                 <p className="text-slate-500 font-bold text-lg">No sessions scheduled</p>
                                 <p className="text-slate-400 text-sm mt-1">Enjoy your day off, or navigate to another day.</p>
                             </div>
-                        )}
+                        ) : (
+                            sessions.map(session => {
+                                const state = session.status;
+                                const isDone = state === 'done';
+                                const isActive = state === 'active';
+                                const canStart = (state === 'upcoming' || state === 'next') && !activeInSchedule;
 
-                        {sessions.map(session => {
-                            const state = session.status;
-                            const isDone = state === 'done';
-                            const isActive = state === 'active';
-                            const canStart = (state === 'upcoming' || state === 'next') && !activeInSchedule;
+                                return (
+                                    <div key={session.id} className={`relative overflow-hidden flex flex-col lg:flex-row items-start lg:items-center justify-between p-5 sm:p-6 gap-5 lg:gap-0 rounded-2xl shadow-sm transition-all ${
+                                        isActive ? 'border-2 border-primary/50 bg-primary/5 dark:bg-primary/10 shadow-md' :
+                                        isDone ? 'border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/50 opacity-70' :
+                                        'border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/30 opacity-80'
+                                    }`}>
+                                        {isActive && <div className="absolute top-0 right-0 w-64 h-64 bg-primary/10 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none"></div>}
 
-                            return (
-                                <div key={session.id} className={`relative overflow-hidden flex flex-col lg:flex-row items-start lg:items-center justify-between p-5 sm:p-6 gap-5 lg:gap-0 rounded-2xl shadow-sm transition-all ${
-                                    isActive ? 'border-2 border-primary/50 bg-primary/5 dark:bg-primary/10 shadow-md' :
-                                    isDone ? 'border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/50 opacity-70' :
-                                    'border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/30 opacity-80'
-                                }`}>
-                                    {isActive && <div className="absolute top-0 right-0 w-64 h-64 bg-primary/10 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none"></div>}
-
-                                    <div className={`flex items-start sm:items-center gap-4 sm:gap-8 w-full lg:w-auto ${isActive ? 'relative z-10' : ''}`}>
-                                        <div className={`w-1.5 h-16 rounded-full shrink-0 ${isDone ? 'bg-emerald-500' : isActive ? 'bg-primary' : 'bg-slate-300 dark:bg-slate-600'}`}></div>
-                                        <div className="flex flex-col min-w-[70px] sm:min-w-[140px] shrink-0 mt-1 sm:mt-0">
-                                            <span className={`text-lg sm:text-xl font-bold ${isActive ? 'text-primary' : isDone ? 'text-slate-700 dark:text-slate-300' : 'text-slate-700 dark:text-slate-300'}`}>{session.start}</span>
-                                            <span className="text-xs sm:text-sm text-slate-500 font-semibold mt-1">Ends at {session.end}</span>
-                                        </div>
-                                        <div>
-                                            <h3 className="text-lg sm:text-xl font-bold mb-2 leading-tight">{session.name}</h3>
-                                            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-                                                <span className={`px-2 sm:px-3 py-1 rounded-md text-[10px] sm:text-xs font-bold tracking-wide ${session.typeColor}`}>{session.typeTag}</span>
-                                                <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 font-medium">{session.type}</span>
+                                        <div className={`flex items-start sm:items-center gap-4 sm:gap-8 w-full lg:w-auto ${isActive ? 'relative z-10' : ''}`}>
+                                            <div className={`w-1.5 h-16 rounded-full shrink-0 ${isDone ? 'bg-emerald-500' : isActive ? 'bg-primary' : 'bg-slate-300 dark:bg-slate-600'}`}></div>
+                                            <div className="flex flex-col min-w-[70px] sm:min-w-[140px] shrink-0 mt-1 sm:mt-0">
+                                                <span className={`text-lg sm:text-xl font-bold ${isActive ? 'text-primary' : isDone ? 'text-slate-700 dark:text-slate-300' : 'text-slate-700 dark:text-slate-300'}`}>{session.start}</span>
+                                                <span className="text-xs sm:text-sm text-slate-500 font-semibold mt-1">Ends at {session.end}</span>
                                             </div>
-                                        </div>
-                                    </div>
-
-                                    <div className={`flex flex-wrap items-center gap-3 sm:gap-6 w-full lg:w-auto border-t lg:border-t-0 border-slate-200 dark:border-slate-700 pt-4 lg:pt-0 ${isActive ? 'relative z-10' : ''}`}>
-                                        <span className="flex items-center gap-2 text-slate-500 dark:text-slate-400 text-xs sm:text-sm font-semibold bg-slate-50 dark:bg-slate-800 px-3 sm:px-4 py-2 rounded-lg shrink-0">
-                                            <span className="material-symbols-outlined text-[18px] sm:text-[20px]">meeting_room</span>{session.room}
-                                        </span>
-
-                                        {isDone && (
-                                            <div className="flex flex-wrap items-center gap-3">
-                                                <span className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-50 dark:bg-emerald-900/20 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm">
-                                                    <span className="material-symbols-outlined text-[18px]">task_alt</span> Done
-                                                </span>
-                                                <button onClick={() => navigate(`/reports/new?sessionId=${session.id}&childId=${session.raw?.childId || ''}`)} className="flex flex-1 sm:flex-none justify-center items-center gap-2 px-4 py-2 rounded-xl bg-teal-50 dark:bg-teal-900/20 text-teal-700 dark:text-teal-400 font-bold text-xs sm:text-sm hover:bg-teal-100 dark:hover:bg-teal-900/30 transition-colors border border-teal-100 dark:border-teal-800/50 min-w-max">
-                                                    <span className="material-symbols-outlined text-[18px]">edit_note</span> Fill Daily Report
-                                                </button>
-                                            </div>
-                                        )}
-
-                                        {isActive && (
-                                            <div className="flex flex-1 sm:flex-none justify-between items-center gap-4 bg-white dark:bg-slate-800 p-2 pl-4 sm:pl-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm w-full sm:w-auto">
-                                                <div className="flex items-center gap-2 text-slate-800 dark:text-slate-200">
-                                                    <span className="material-symbols-outlined text-primary text-[20px]">hourglass_top</span>
-                                                    <span className="font-mono text-lg sm:text-xl font-bold tracking-tight">{formatTime(timeLeft)}</span>
+                                            <div>
+                                                <h3 className="text-lg sm:text-xl font-bold mb-2 leading-tight">{session.name}</h3>
+                                                <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                                                    <span className={`px-2 sm:px-3 py-1 rounded-md text-[10px] sm:text-xs font-bold tracking-wide ${session.typeColor}`}>{session.typeTag}</span>
+                                                    <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 font-medium">{session.type}</span>
                                                 </div>
-                                                <button
-                                                    onClick={() => openFinish(session)}
-                                                    className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-4 sm:px-6 py-2 sm:py-2.5 rounded-lg font-bold shadow-sm hover:opacity-90 transition-opacity flex items-center justify-center gap-2 text-sm sm:text-base whitespace-nowrap"
-                                                >
-                                                    <span className="material-symbols-outlined text-[20px]">stop_circle</span> End Session
-                                                </button>
                                             </div>
-                                        )}
+                                        </div>
 
-                                        {!isDone && !isActive && (
-                                            <button
-                                                onClick={canStart ? () => openStart(session) : undefined}
-                                                disabled={!canStart}
-                                                className={`flex-1 lg:flex-none px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl font-bold flex items-center justify-center gap-2 border min-w-[160px] transition-colors text-sm sm:text-base ${
-                                                    canStart
-                                                        ? 'bg-primary text-slate-900 border-primary hover:bg-primary/90 cursor-pointer'
-                                                        : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed border-slate-200 dark:border-slate-700'
-                                                }`}
-                                            >
-                                                <span className="material-symbols-outlined text-[20px]">play_circle</span> Start Session
-                                            </button>
-                                        )}
+                                        <div className={`flex flex-wrap items-center gap-3 sm:gap-6 w-full lg:w-auto border-t lg:border-t-0 border-slate-200 dark:border-slate-700 pt-4 lg:pt-0 ${isActive ? 'relative z-10' : ''}`}>
+                                            <span className="flex items-center gap-2 text-slate-500 dark:text-slate-400 text-xs sm:text-sm font-semibold bg-slate-50 dark:bg-slate-800 px-3 sm:px-4 py-2 rounded-lg shrink-0">
+                                                <span className="material-symbols-outlined text-[18px] sm:text-[20px]">meeting_room</span>{session.room}
+                                            </span>
+
+                                            {isDone && (
+                                                <div className="flex flex-wrap items-center gap-3">
+                                                    <span className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-50 dark:bg-emerald-900/20 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm">
+                                                        <span className="material-symbols-outlined text-[18px]">task_alt</span> Done
+                                                    </span>
+                                                    <button onClick={() => navigate(`/reports/new?sessionId=${session.id}&childId=${session.raw?.childId || ''}`)} className="flex flex-1 sm:flex-none justify-center items-center gap-2 px-4 py-2 rounded-xl bg-teal-50 dark:bg-teal-900/20 text-teal-700 dark:text-teal-400 font-bold text-xs sm:text-sm hover:bg-teal-100 dark:hover:bg-teal-900/30 transition-colors border border-teal-100 dark:border-teal-800/50 min-w-max">
+                                                        <span className="material-symbols-outlined text-[18px]">edit_note</span> Fill Daily Report
+                                                    </button>
+                                                </div>
+                                            )}
+
+                                            {isActive && (
+                                                <div className="flex flex-1 sm:flex-none justify-between items-center gap-4 bg-white dark:bg-slate-800 p-2 pl-4 sm:pl-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm w-full sm:w-auto">
+                                                    <div className="flex items-center gap-2 text-slate-800 dark:text-slate-200">
+                                                        <span className="material-symbols-outlined text-primary text-[20px]">hourglass_top</span>
+                                                        <span className="font-mono text-lg sm:text-xl font-bold tracking-tight">{formatTime(timeLeft)}</span>
+                                                    </div>
+                                                    <button
+                                                        onClick={() => openFinish(session)}
+                                                        className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-4 sm:px-6 py-2 sm:py-2.5 rounded-lg font-bold shadow-sm hover:opacity-90 transition-opacity flex items-center justify-center gap-2 text-sm sm:text-base whitespace-nowrap"
+                                                    >
+                                                        <span className="material-symbols-outlined text-[20px]">stop_circle</span> End Session
+                                                    </button>
+                                                </div>
+                                            )}
+
+                                            {!isDone && !isActive && (
+                                                <button
+                                                    onClick={canStart ? () => openStart(session) : undefined}
+                                                    disabled={!canStart}
+                                                    className={`flex-1 lg:flex-none px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl font-bold flex items-center justify-center gap-2 border min-w-[160px] transition-colors text-sm sm:text-base ${
+                                                        canStart
+                                                            ? 'bg-primary text-slate-900 border-primary hover:bg-primary/90 cursor-pointer'
+                                                            : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed border-slate-200 dark:border-slate-700'
+                                                    }`}
+                                                >
+                                                    <span className="material-symbols-outlined text-[20px]">play_circle</span> Start Session
+                                                </button>
+                                            )}
+                                        </div>
                                     </div>
-                                </div>
-                            );
-                        })}
+                                );
+                            })
+                        )}
                     </div>
                 </div>
             </main>

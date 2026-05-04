@@ -1,9 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {
-    getUpcomingSessionsForChild,
-    getRescheduleRequests,
-    addRescheduleRequest,
-} from '../../../shared/clinicDataStore';
+import { sessionsApi, rescheduleApi } from '../../../shared/api/client';
 
 const formatDate = (dateStr) => {
     if (!dateStr) return '';
@@ -40,33 +36,37 @@ const RescheduleForm = () => {
     const [error, setError]                   = useState('');
 
     useEffect(() => {
-        const load = () => {
+        const load = async () => {
             const saved = sessionStorage.getItem('parent_user');
             if (!saved) return;
             const user  = JSON.parse(saved);
             const childId = user.childId;
             if (!childId) return;
 
-            const sessions = getUpcomingSessionsForChild(childId);
-            setUpcomingSessions(sessions);
-            if (sessions.length > 0) setSelectedSessionId(sessions[0].id);
+            try {
+                const sRes = await sessionsApi.getUpcomingForChild(childId);
+                const sessions = sRes.data?.data || [];
+                setUpcomingSessions(sessions);
+                if (sessions.length > 0) setSelectedSessionId(sessions[0].id);
+            } catch(e) {}
 
             // Check for existing pending request
             const parentId  = user.parentId;
-            const requests  = getRescheduleRequests(parentId);
-            const pending   = requests.find(r => r.status === 'pending');
-            setPendingRequest(pending || null);
+            try {
+                const rRes = await rescheduleApi.getByParent(parentId);
+                const requests = rRes.data?.data || [];
+                const pending   = requests.find(r => r.status === 'pending');
+                setPendingRequest(pending || null);
+            } catch(e) {}
         };
         load();
-        window.addEventListener('clinicDataUpdated', load);
-        return () => window.removeEventListener('clinicDataUpdated', load);
     }, []);
 
     const updateSlot = (index, field, value) => {
         setSlots(prev => prev.map((s, i) => i === index ? { ...s, [field]: value } : s));
     };
 
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
         if (requestType === 'reschedule' && !selectedSessionId) { setError('Pilih sesi yang ingin direschedule.'); return; }
         if (!reason)             { setError('Pilih alasan perubahan jadwal atau sesi baru.'); return; }
         if (!slots[0].date || !slots[0].time) { setError('Masukkan minimal 1 preferensi waktu baru (Preference 1).'); return; }
@@ -76,17 +76,20 @@ const RescheduleForm = () => {
         const user   = saved ? JSON.parse(saved) : {};
         const proposedSlots = slots.filter(s => s.date && s.time);
 
-        addRescheduleRequest({
-            parentId:   user.parentId,
-            childId:    user.childId,
-            requestType, // 'reschedule' or 'new'
-            sessionId:  requestType === 'reschedule' ? selectedSessionId : 'NEW_SESSION',
-            reason,
-            details,
-            proposedSlots,
-        });
-
-        setSubmitted(true);
+        try {
+            await rescheduleApi.create({
+                parentId:   user.parentId,
+                childId:    user.childId,
+                requestType, // 'reschedule' or 'new'
+                sessionId:  requestType === 'reschedule' ? selectedSessionId : 'NEW_SESSION',
+                reason,
+                details,
+                proposedSlots,
+            });
+            setSubmitted(true);
+        } catch(e) {
+            setError('Gagal mengirim request');
+        }
     };
 
     if (submitted) {

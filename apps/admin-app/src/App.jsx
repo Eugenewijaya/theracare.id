@@ -35,7 +35,17 @@ function Loading() {
 }
 
 function ProtectedRoute({ children }) {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, loading } = useAuth();
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-slate-50">
+        <div className="flex flex-col items-center gap-3">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          <p className="text-sm text-slate-500 font-medium">Memverifikasi sesi...</p>
+        </div>
+      </div>
+    );
+  }
   return isAuthenticated ? children : <Navigate to="/login" replace />;
 }
 

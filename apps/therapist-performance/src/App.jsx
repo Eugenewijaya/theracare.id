@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Header from './components/Header';
 import TherapistProfile from './components/TherapistProfile';
-import { getSessionsForTherapist, getSessionRating, getReportsForTherapist, updateTherapistProfile } from '../../shared/clinicDataStore';
+import { sessionsApi, reportsApi, therapistsApi } from '../../shared/api/client';
 
 const INITIAL_GROWTH = [
     { id: 1, icon: 'workspace_premium', title: 'Advanced ASD Intervention Certification', subtitle: 'Completed: May 2023' },
@@ -81,62 +81,76 @@ function App() {
     useEffect(() => {
         if (!currentUser) return;
         
-        // Listen for global data updates
-        const updateStats = () => {
-            const sessions = getSessionsForTherapist(currentUser.id);
-            const total = sessions.length;
-            const doneSessions = sessions.filter(s => s.status === 'done');
-            const dailyReports = getReportsForTherapist(currentUser.id, 'harian');
-            const attendance = total > 0 ? Math.round((doneSessions.length / total) * 100) : 0;
-            
-            // Calculate rating
-            let totalRating = 0;
-            let ratingCount = 0;
-            const comments = [];
-            doneSessions.forEach(s => {
-                const r = getSessionRating(s.id);
-                if (r && r.rating) {
-                    totalRating += r.rating;
-                    ratingCount++;
-                    if (r.comment?.trim()) {
-                        comments.push({
-                            id: r.id,
-                            stars: r.rating,
-                            date: s.date,
-                            time: formatRelativeDate(s.date),
-                            text: `"${r.comment.trim()}"`,
-                        });
-                    }
-                }
-            });
-            const avgRating = ratingCount > 0 ? (totalRating / ratingCount).toFixed(1) : 'N/A';
-            const series = buildMonthlySeries(sessions);
-            const scheduledSixMonths = series.reduce((sum, item) => sum + item.scheduled, 0);
-            const completedSixMonths = series.reduce((sum, item) => sum + item.completed, 0);
-            const previousMonth = series[4]?.scheduled || 0;
-            const currentMonth = series[5]?.scheduled || 0;
-            const delta = previousMonth > 0 ? `${currentMonth >= previousMonth ? '+' : ''}${Math.round(((currentMonth - previousMonth) / previousMonth) * 100)}%` : currentMonth > 0 ? '+100%' : '0%';
-            const completionRate = scheduledSixMonths > 0 ? `${Math.round((completedSixMonths / scheduledSixMonths) * 100)}%` : '0%';
+        const updateStats = async () => {
+            try {
+                const [sessionsRes, reportsRes] = await Promise.all([
+                    sessionsApi.getForTherapist(currentUser.id),
+                    reportsApi.getForTherapist(currentUser.id, 'harian')
+                ]);
+                
+                const sessions = sessionsRes.data?.data || [];
+                const dailyReports = reportsRes.data?.data || [];
 
-            setStats([
-                { label: 'Attendance Rate', value: `${attendance}%`, change: `${doneSessions.length}/${total || 0} completed`, positive: attendance >= 70 },
-                { label: 'Avg. Parent Rating', value: `${avgRating}/5`, change: `${ratingCount} review${ratingCount === 1 ? '' : 's'}`, positive: ratingCount === 0 || Number(avgRating) >= 4 },
-                { label: 'Daily Reports', value: `${dailyReports.length}`, change: `${dailyReports.filter(report => report.status === 'approved').length} approved`, positive: true },
-                { label: 'Total Sessions', value: `${total}`, change: `${scheduledSixMonths} in last 6 months`, positive: true },
-            ]);
-            setMonthlySeries(series);
-            setVolumeSummary({
-                scheduled: scheduledSixMonths,
-                completed: completedSixMonths,
-                delta,
-                completionRate,
-            });
-            setFeedbackFeed(comments.sort((a, b) => (b.date || '').localeCompare(a.date || '')));
+                const total = sessions.length;
+                const doneSessions = sessions.filter(s => s.status === 'done');
+                const attendance = total > 0 ? Math.round((doneSessions.length / total) * 100) : 0;
+                
+                // Calculate rating
+                let totalRating = 0;
+                let ratingCount = 0;
+                const comments = [];
+
+                const ratingsPromises = doneSessions.map(s => sessionsApi.getRating(s.id).then(r => ({ session: s, res: r })));
+                const ratingsResults = await Promise.all(ratingsPromises);
+
+                ratingsResults.forEach(({ session, res }) => {
+                    const r = res.data?.data;
+                    if (r && r.rating) {
+                        totalRating += r.rating;
+                        ratingCount++;
+                        if (r.comment?.trim()) {
+                            comments.push({
+                                id: r.id,
+                                stars: r.rating,
+                                date: session.date,
+                                time: formatRelativeDate(session.date),
+                                text: `"${r.comment.trim()}"`,
+                            });
+                        }
+                    }
+                });
+
+                const avgRating = ratingCount > 0 ? (totalRating / ratingCount).toFixed(1) : 'N/A';
+                const series = buildMonthlySeries(sessions);
+                const scheduledSixMonths = series.reduce((sum, item) => sum + item.scheduled, 0);
+                const completedSixMonths = series.reduce((sum, item) => sum + item.completed, 0);
+                const previousMonth = series[4]?.scheduled || 0;
+                const currentMonth = series[5]?.scheduled || 0;
+                const delta = previousMonth > 0 ? `${currentMonth >= previousMonth ? '+' : ''}${Math.round(((currentMonth - previousMonth) / previousMonth) * 100)}%` : currentMonth > 0 ? '+100%' : '0%';
+                const completionRate = scheduledSixMonths > 0 ? `${Math.round((completedSixMonths / scheduledSixMonths) * 100)}%` : '0%';
+
+                setStats([
+                    { label: 'Attendance Rate', value: `${attendance}%`, change: `${doneSessions.length}/${total || 0} completed`, positive: attendance >= 70 },
+                    { label: 'Avg. Parent Rating', value: `${avgRating}/5`, change: `${ratingCount} review${ratingCount === 1 ? '' : 's'}`, positive: ratingCount === 0 || Number(avgRating) >= 4 },
+                    { label: 'Daily Reports', value: `${dailyReports.length}`, change: `${dailyReports.filter(report => report.status === 'approved').length} approved`, positive: true },
+                    { label: 'Total Sessions', value: `${total}`, change: `${scheduledSixMonths} in last 6 months`, positive: true },
+                ]);
+                setMonthlySeries(series);
+                setVolumeSummary({
+                    scheduled: scheduledSixMonths,
+                    completed: completedSixMonths,
+                    delta,
+                    completionRate,
+                });
+                setFeedbackFeed(comments.sort((a, b) => (b.date || '').localeCompare(a.date || '')));
+            } catch (e) {
+                console.error('Failed to update performance stats', e);
+            }
         };
 
         updateStats();
-        window.addEventListener('clinicDataUpdated', updateStats);
-        return () => window.removeEventListener('clinicDataUpdated', updateStats);
+        window.addEventListener('sessionUpdated', updateStats);
+        return () => window.removeEventListener('sessionUpdated', updateStats);
     }, [currentUser]);
 
     const [growthModal, setGrowthModal] = useState(false);
@@ -156,20 +170,36 @@ function App() {
         setProfileModal(true); 
     };
 
-    const saveProfile = () => { 
+    const saveProfile = async () => { 
         if (currentUser) {
-            const updated = updateTherapistProfile(currentUser.id, profileDraft);
-            if (updated) setCurrentUser(updated);
+            try {
+                const res = await therapistsApi.updateProfile(currentUser.id, profileDraft);
+                if (res.data?.data) {
+                    const updated = { ...currentUser, ...res.data.data };
+                    setCurrentUser(updated);
+                    sessionStorage.setItem('therapist_user', JSON.stringify(updated));
+                }
+            } catch (e) {
+                console.error('Failed to update profile', e);
+            }
         }
         setProfileModal(false); 
         showToast('Profile updated successfully.'); 
     };
 
-    const handlePhotoUpdate = (photoBase64) => {
+    const handlePhotoUpdate = async (photoBase64) => {
         if (currentUser) {
-            const updated = updateTherapistProfile(currentUser.id, { avatar: photoBase64 });
-            if (updated) setCurrentUser(updated);
-            showToast('Profile photo updated.');
+            try {
+                const res = await therapistsApi.updateProfile(currentUser.id, { avatar: photoBase64 });
+                if (res.data?.data) {
+                    const updated = { ...currentUser, ...res.data.data };
+                    setCurrentUser(updated);
+                    sessionStorage.setItem('therapist_user', JSON.stringify(updated));
+                }
+                showToast('Profile photo updated.');
+            } catch (e) {
+                console.error('Failed to update photo', e);
+            }
         }
     };
 

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { getAllRooms, addRoom, updateRoom, deleteRoom } from '../../shared/clinicDataStore';
+import { adminApi } from '../../shared/api/client';
 
 const availableEquipment = [
   'Swing', 'Ball Pit', 'Crash Mat', 'Trampoline', 'Tactile Wall', 
@@ -12,10 +12,15 @@ function App() {
   const [toast, setToast] = useState(null);
 
   useEffect(() => {
-    const load = () => setRooms(getAllRooms());
+    const load = async () => {
+      try {
+        const res = await adminApi.getRooms();
+        setRooms(res.data?.data || []);
+      } catch (e) {
+        console.error(e);
+      }
+    };
     load();
-    window.addEventListener('clinicDataUpdated', load);
-    return () => window.removeEventListener('clinicDataUpdated', load);
   }, []);
 
   
@@ -52,26 +57,36 @@ function App() {
     setFormError('');
   };
 
-  const handleSave = (e) => {
+  const handleSave = async (e) => {
     e.preventDefault();
     if (!formData.name.trim()) { setFormError('Nama ruangan wajib diisi.'); return; }
     setFormError('');
 
-    if (editingRoom) {
-      updateRoom(editingRoom.id, formData);
-      showToast(`Ruangan "${formData.name}" berhasil diperbarui.`);
-    } else {
-      addRoom(formData);
-      showToast(`Ruangan "${formData.name}" berhasil ditambahkan.`);
+    try {
+      if (editingRoom) {
+        await adminApi.updateRoom(editingRoom.id, formData);
+        showToast(`Ruangan "${formData.name}" berhasil diperbarui.`);
+      } else {
+        await adminApi.createRoom(formData);
+        showToast(`Ruangan "${formData.name}" berhasil ditambahkan.`);
+      }
+      handleCloseModal();
+      const res = await adminApi.getRooms();
+      setRooms(res.data?.data || []);
+    } catch(e) {
+      showToast('Terjadi kesalahan', 'error');
     }
-    handleCloseModal();
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     const name = deleteConfirm.name;
-    deleteRoom(deleteConfirm.id);
-    setDeleteConfirm(null);
-    showToast(`Ruangan "${name}" telah dihapus.`, 'warning');
+    try {
+      await adminApi.deleteRoom(deleteConfirm.id);
+      setDeleteConfirm(null);
+      showToast(`Ruangan "${name}" telah dihapus.`, 'warning');
+      const res = await adminApi.getRooms();
+      setRooms(res.data?.data || []);
+    } catch(e) {}
   };
 
   const toggleEquipment = (eq) => {

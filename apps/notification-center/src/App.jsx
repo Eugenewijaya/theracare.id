@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Header from './components/Header';
 import SettingsSidebar from './components/SettingsSidebar';
-import { getAllAnnouncements, addAnnouncement, deleteAnnouncement } from '../../shared/clinicDataStore';
+import { adminApi } from '../../shared/api/client';
 
 const tabs = ['Semua', 'Notifikasi Baru', 'Parent / Orang Tua', 'Terapis', 'Umum / Global'];
 
@@ -15,31 +15,32 @@ function App() {
     const [newTitle, setNewTitle] = useState('');
     const [newDesc, setNewDesc] = useState('');
 
-    const refreshData = () => {
-        const raw = getAllAnnouncements();
-        // Since we are adding features for tracking "read" state locally for admin, we'll just mock unread status
-        // based on time (e.g. within 24h = unread, or store it in state)
-        const mapped = raw.map(a => {
-            const isUnread = (Date.now() - new Date(a.createdAt).getTime()) < 1000 * 60 * 60 * 24; // 24h
-            return {
-                id: a.id,
-                title: a.title || 'Pengumuman Tanpa Judul',
-                desc: a.content || '',
-                action: a.action || '',
-                audience: a.targetRoles && a.targetRoles.length === 2 ? 'all' : (a.targetRoles ? a.targetRoles[0] : 'admin'),
-                icon: a.icon || (a.targetRoles?.includes('parent') ? 'family_restroom' : 'campaign'),
-                time: new Date(a.createdAt).toLocaleDateString('id-ID', { hour:'2-digit', minute:'2-digit', day:'numeric', month:'short' }),
-                unread: isUnread,
-                rawRoles: a.targetRoles
-            };
-        });
-        setNotifications(mapped);
+    const refreshData = async () => {
+        try {
+            const res = await adminApi.getAnnouncements();
+            const raw = res.data?.data || [];
+            const mapped = raw.map(a => {
+                const isUnread = (Date.now() - new Date(a.createdAt).getTime()) < 1000 * 60 * 60 * 24; // 24h
+                return {
+                    id: a.id,
+                    title: a.title || 'Pengumuman Tanpa Judul',
+                    desc: a.content || '',
+                    action: a.action || '',
+                    audience: a.targetRoles && a.targetRoles.length === 2 ? 'all' : (a.targetRoles ? a.targetRoles[0] : 'admin'),
+                    icon: a.icon || (a.targetRoles?.includes('parent') ? 'family_restroom' : 'campaign'),
+                    time: new Date(a.createdAt).toLocaleDateString('id-ID', { hour:'2-digit', minute:'2-digit', day:'numeric', month:'short' }),
+                    unread: isUnread,
+                    rawRoles: a.targetRoles
+                };
+            });
+            setNotifications(mapped);
+        } catch (e) {
+            console.error(e);
+        }
     };
 
     useEffect(() => {
         refreshData();
-        window.addEventListener('clinicDataUpdated', refreshData);
-        return () => window.removeEventListener('clinicDataUpdated', refreshData);
     }, []);
 
     const markAllRead = () => {
@@ -51,13 +52,17 @@ function App() {
         setNotifications(notifications.map(n => n.id === id ? { ...n, unread: !n.unread } : n));
     };
 
-    const handleDelete = (id, e) => {
+    const handleDelete = async (id, e) => {
         e.stopPropagation();
-        deleteAnnouncement(id);
-        window.dispatchEvent(new CustomEvent('clinicDataUpdated'));
+        try {
+            await adminApi.deleteAnnouncement(id);
+            refreshData();
+        } catch (e) {
+            console.error(e);
+        }
     };
 
-    const handleCreate = () => {
+    const handleCreate = async () => {
         if (!newTitle.trim() || !newDesc.trim()) return;
         
         let roles = ['admin'];
@@ -65,18 +70,22 @@ function App() {
         else if (audienceFilter === 'parent') roles = ['parent'];
         else if (audienceFilter === 'therapist') roles = ['therapist'];
 
-        addAnnouncement({
-            title: newTitle,
-            content: newDesc,
-            targetRoles: roles,
-            createdBy: 'Admin',
-            icon: 'notifications_active'
-        });
-        
-        setNewTitle('');
-        setNewDesc('');
-        setIsCreating(false);
-        window.dispatchEvent(new CustomEvent('clinicDataUpdated'));
+        try {
+            await adminApi.createAnnouncement({
+                title: newTitle,
+                content: newDesc,
+                targetRoles: roles,
+                createdBy: 'Admin',
+                icon: 'notifications_active'
+            });
+            
+            setNewTitle('');
+            setNewDesc('');
+            setIsCreating(false);
+            refreshData();
+        } catch (e) {
+            console.error(e);
+        }
     };
 
     const filteredNotifications = notifications.filter(n => {

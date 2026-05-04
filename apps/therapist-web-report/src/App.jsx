@@ -1,16 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import Header from './components/Header';
-import { getSessionsForTherapist, getReportsForTherapist, saveTherapistReport } from '../../shared/clinicDataStore';
+import { sessionsApi, reportsApi } from '../../shared/api/client';
 
 // ── Shared data store helpers ──────────
-const getTherapistSessions = (therapistId) => {
-    return getSessionsForTherapist(therapistId);
-};
 
-const getChildrenForTherapist = (therapistId) => {
+const getChildrenFromSessions = (sessions) => {
     try {
-        if (!therapistId) return [];
-        const sessions = getSessionsForTherapist(therapistId);
         const childMap = new Map();
         sessions.forEach(s => {
             if (s.child && !childMap.has(s.child.id)) {
@@ -28,11 +23,6 @@ const getChildrenForTherapist = (therapistId) => {
     } catch { return []; }
 };
 
-const getSavedReports = (therapistId) => {
-    if (!therapistId) return [];
-    return getReportsForTherapist(therapistId);
-};
-
 const buildEvaluationMap = (values) => {
     const result = {};
     EVAL_ASPECTS.forEach(aspect => {
@@ -43,41 +33,33 @@ const buildEvaluationMap = (values) => {
     return result;
 };
 
-const getDailyContextFromRoute = (therapistId) => {
+const getDailyContextFromRoute = () => {
     if (typeof window === 'undefined') return { openComposer: false, childId: '', sessionId: '' };
     const url = new URL(window.location.href);
     const openComposer = url.pathname.endsWith('/reports/new');
     const childId = url.searchParams.get('childId') || '';
     const sessionId = url.searchParams.get('sessionId') || '';
 
-    if (!therapistId) {
-        return { openComposer, childId, sessionId };
-    }
-
-    const session = sessionId
-        ? getSessionsForTherapist(therapistId).find(item => item.id === sessionId)
-        : null;
-
     return {
         openComposer,
-        childId: childId || session?.childId || session?.child?.id || '',
-        sessionId: sessionId || session?.id || '',
+        childId,
+        sessionId,
     };
 };
 
-const findLinkedSession = (therapistId, childId, preferredSessionId = '') => {
-    if (!therapistId || !childId) return null;
+const findLinkedSession = (sessions, childId, preferredSessionId = '') => {
+    if (!childId) return null;
 
-    const sessions = getSessionsForTherapist(therapistId)
+    const childSessions = sessions
         .filter(session => session.childId === childId)
         .sort((a, b) => `${b.date} ${b.startTime}`.localeCompare(`${a.date} ${a.startTime}`));
 
     if (preferredSessionId) {
-        const preferred = sessions.find(session => session.id === preferredSessionId);
+        const preferred = childSessions.find(session => session.id === preferredSessionId);
         if (preferred) return preferred;
     }
 
-    return sessions.find(session => session.status === 'done') || sessions[0] || null;
+    return childSessions.find(session => session.status === 'done') || childSessions[0] || null;
 };
 
 // ── Constants ────────────────────────────────────────────────────────
@@ -178,8 +160,8 @@ function ReportLanding({ children, onSelectType }) {
 }
 
 // ── Daily Report Gate ────────────────────────────────────────────────
-function DailyReportGate({ onConfirm, onBack, currentUser, initialChildId = '' }) {
-    const children = getChildrenForTherapist(currentUser?.id);
+function DailyReportGate({ onConfirm, onBack, childrenData, initialChildId = '' }) {
+    const children = childrenData;
     const [selectedChild, setSelectedChild] = useState(initialChildId);
 
     useEffect(() => {
@@ -244,8 +226,8 @@ function DailyReportGate({ onConfirm, onBack, currentUser, initialChildId = '' }
 }
 
 // ── Periodic Report Gate ─────────────────────────────────────────────
-function PeriodicReportGate({ onConfirm, onBack, currentUser }) {
-    const children = getChildrenForTherapist(currentUser?.id);
+function PeriodicReportGate({ onConfirm, onBack, childrenData }) {
+    const children = childrenData;
     const [selectedChild, setSelectedChild] = useState('');
     const [showBlock, setShowBlock] = useState(false);
 
@@ -325,11 +307,11 @@ function PeriodicReportGate({ onConfirm, onBack, currentUser }) {
     );
 }
 
-// ── Daily Form (mirroring therapist-report/ReportForm) ───────────────
-function DailyReportForm({ childId, sessionId, onBack, onSaved, currentUser }) {
-    const children = getChildrenForTherapist(currentUser?.id);
+// ── Daily Form ───────────────
+function DailyReportForm({ childId, sessionId, onBack, onSaved, currentUser, childrenData, sessions, onReportSaved }) {
+    const children = childrenData;
     const child = children.find(c => c.id === childId);
-    const linkedSession = findLinkedSession(currentUser?.id, childId, sessionId);
+    const linkedSession = findLinkedSession(sessions, childId, sessionId);
 
     const [aspects, setAspects] = useState({});
     const [rating, setRating] = useState(4);
@@ -341,7 +323,7 @@ function DailyReportForm({ childId, sessionId, onBack, onSaved, currentUser }) {
     const [submitted, setSubmitted] = useState(false);
     const toggleAspect = (key) => setAspects(prev => ({ ...prev, [key]: !prev[key] }));
 
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
         const report = {
             type: 'harian',
             childId,
@@ -360,8 +342,13 @@ function DailyReportForm({ childId, sessionId, onBack, onSaved, currentUser }) {
             recommendations,
             internalNotes
         };
-        saveTherapistReport(report);
-        setSubmitted(true);
+        try {
+            await reportsApi.create(report);
+            onReportSaved && onReportSaved();
+            setSubmitted(true);
+        } catch (e) {
+            console.error(e);
+        }
     };
 
     if (submitted) return (
@@ -481,8 +468,8 @@ function DailyReportForm({ childId, sessionId, onBack, onSaved, currentUser }) {
 }
 
 // ── Periodic Report Form ─────────────────────────────────────────────
-function PeriodicReportForm({ childId, onBack, currentUser }) {
-    const children = getChildrenForTherapist(currentUser?.id);
+function PeriodicReportForm({ childId, onBack, currentUser, childrenData, onReportSaved }) {
+    const children = childrenData;
     const child = children.find(c => c.id === childId);
 
     const [dateFrom, setDateFrom] = useState('');
@@ -499,7 +486,7 @@ function PeriodicReportForm({ childId, onBack, currentUser }) {
     const addItem = (setter) => setter(prev => [...prev, '']);
     const removeItem = (setter, idx) => setter(prev => prev.filter((_, i) => i !== idx));
 
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
         const report = {
             type: 'periodik',
             childId,
@@ -515,8 +502,13 @@ function PeriodicReportForm({ childId, onBack, currentUser }) {
             summary,
             parentNotes
         };
-        saveTherapistReport(report);
-        setSubmitted(true);
+        try {
+            await reportsApi.create(report);
+            onReportSaved && onReportSaved();
+            setSubmitted(true);
+        } catch (e) {
+            console.error(e);
+        }
     };
 
     if (submitted) return (
@@ -671,15 +663,7 @@ function PeriodicReportForm({ childId, onBack, currentUser }) {
 }
 
 // ── History Panel (inside landing) ──────────────────────────────────
-function ReportHistory({ onSelectReport, currentUser }) {
-    const [reports, setReports] = useState([]);
-    useEffect(() => {
-        const loadReports = () => setReports(getSavedReports(currentUser?.id));
-        loadReports();
-        window.addEventListener('clinicDataUpdated', loadReports);
-        return () => window.removeEventListener('clinicDataUpdated', loadReports);
-    }, [currentUser]);
-
+function ReportHistory({ onSelectReport, reports }) {
     if (!reports.length) return (
         <div className="py-10 text-center">
             <span className="material-symbols-outlined text-4xl text-slate-300 dark:text-slate-600">inventory_2</span>
@@ -717,12 +701,18 @@ function ReportHistory({ onSelectReport, currentUser }) {
 
 function ReportDetail({ report, onBack }) {
     return (
-        <div className="max-w-2xl mx-auto p-6 bg-white dark:bg-slate-800 rounded-xl shadow-lg">
-            <button onClick={onBack} className="mb-4 text-sm text-primary hover:underline">← Kembali</button>
+        <div className="max-w-2xl mx-auto p-6 bg-white dark:bg-slate-800 rounded-xl shadow-lg mt-6">
+            <button onClick={onBack} className="mb-4 text-sm text-primary hover:underline font-bold flex items-center gap-1">
+                <span className="material-symbols-outlined text-[18px]">arrow_back</span> Kembali
+            </button>
             <h2 className="text-2xl font-bold mb-4">Detail {report.type === 'periodik' ? 'Laporan Periodik' : 'Laporan Harian'}</h2>
-            <p><strong>Nama Anak:</strong> {report.childName || report.childId}</p>
-            <p><strong>Tanggal:</strong> {report.date || report.dateFrom || '—'}</p>
-            <p><strong>Status:</strong> {report.status === 'approved' ? 'Siap Dibaca' : 'Menunggu Review'}</p>
+            <div className="space-y-3">
+                <p><strong>Nama Anak:</strong> {report.childName || report.childId}</p>
+                <p><strong>Tanggal:</strong> {report.date || report.dateFrom || '—'}</p>
+                <p><strong>Status:</strong> <span className={`px-2 py-1 rounded font-bold text-xs ${report.status === 'approved' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>{report.status === 'approved' ? 'Siap Dibaca' : 'Menunggu Review'}</span></p>
+                {report.summary && <div className="mt-4"><p><strong>Ringkasan:</strong></p><p className="mt-1 text-slate-600 dark:text-slate-300">{report.summary}</p></div>}
+                {report.description && <div className="mt-4"><p><strong>Deskripsi:</strong></p><p className="mt-1 text-slate-600 dark:text-slate-300">{report.description}</p></div>}
+            </div>
         </div>
     );
 }
@@ -732,7 +722,7 @@ function App() {
     const [currentUser, setCurrentUser] = useState(() => {
         try { return JSON.parse(sessionStorage.getItem('therapist_user')); } catch { return null; }
     });
-    const initialDailyContext = getDailyContextFromRoute(currentUser?.id);
+    const initialDailyContext = getDailyContextFromRoute();
 
     // screen: 'landing' | 'daily-gate' | 'daily-form' | 'periodic-gate' | 'periodic-form'
     const [screen, setScreen] = useState(() => {
@@ -742,6 +732,30 @@ function App() {
     const [selectedChildId, setSelectedChildId] = useState(initialDailyContext.childId);
     const [selectedSessionId, setSelectedSessionId] = useState(initialDailyContext.sessionId);
     const [selectedReport, setSelectedReport] = useState(null);
+
+    const [sessions, setSessions] = useState([]);
+    const [reports, setReports] = useState([]);
+    const [loadingData, setLoadingData] = useState(true);
+
+    const loadData = async () => {
+        if (!currentUser?.id) { setLoadingData(false); return; }
+        try {
+            const [sessRes, repRes] = await Promise.all([
+                sessionsApi.getForTherapist(currentUser.id),
+                reportsApi.getForTherapist(currentUser.id)
+            ]);
+            setSessions(sessRes.data?.data || []);
+            setReports(repRes.data?.data || []);
+        } catch (e) {
+            console.error(e);
+        }
+        setLoadingData(false);
+    };
+
+    useEffect(() => {
+        setLoadingData(true);
+        loadData();
+    }, [currentUser]);
 
     const goBack = () => {
         setScreen('landing');
@@ -754,39 +768,48 @@ function App() {
         setSelectedReport(report);
         setScreen('report-detail');
     };
-        return (
+
+    const childrenData = getChildrenFromSessions(sessions);
+
+    return (
         <div className="relative flex h-screen w-full flex-col overflow-hidden bg-slate-50 dark:bg-background-dark font-sans text-slate-900 dark:text-slate-100">
             <main className="flex-1 flex flex-col overflow-hidden">
                 <Header />
                 <div className="flex-1 overflow-y-auto">
-                    {screen === 'landing' && (
-                        <ReportLanding onSelectType={(type) => setScreen(type === 'harian' ? 'daily-gate' : 'periodic-gate')}>
-                            <ReportHistory onSelectReport={handleSelectReport} currentUser={currentUser} />
-                        </ReportLanding>
-                    )}
-                    {screen === 'daily-gate' && (
-                        <DailyReportGate
-                            onBack={goBack}
-                            currentUser={currentUser}
-                            initialChildId={selectedChildId}
-                            onConfirm={(id) => { setSelectedChildId(id); setScreen('daily-form'); }}
-                        />
-                    )}
-                    {screen === 'daily-form' && (
-                        <DailyReportForm childId={selectedChildId} sessionId={selectedSessionId} onBack={goBack} onSaved={goBack} currentUser={currentUser} />
-                    )}
-                    {screen === 'periodic-gate' && (
-                        <PeriodicReportGate
-                            onBack={goBack}
-                            currentUser={currentUser}
-                            onConfirm={(id) => { setSelectedChildId(id); setSelectedSessionId(''); setScreen('periodic-form'); }}
-                        />
-                    )}
-                    {screen === 'periodic-form' && (
-                        <PeriodicReportForm childId={selectedChildId} onBack={goBack} currentUser={currentUser} />
-                    )}
-                    {screen === 'report-detail' && selectedReport && (
-                        <ReportDetail report={selectedReport} onBack={goBack} />
+                    {loadingData ? (
+                        <div className="flex justify-center p-10"><span className="text-slate-500">Loading data...</span></div>
+                    ) : (
+                        <>
+                            {screen === 'landing' && (
+                                <ReportLanding onSelectType={(type) => setScreen(type === 'harian' ? 'daily-gate' : 'periodic-gate')}>
+                                    <ReportHistory onSelectReport={handleSelectReport} reports={reports} />
+                                </ReportLanding>
+                            )}
+                            {screen === 'daily-gate' && (
+                                <DailyReportGate
+                                    onBack={goBack}
+                                    childrenData={childrenData}
+                                    initialChildId={selectedChildId}
+                                    onConfirm={(id) => { setSelectedChildId(id); setScreen('daily-form'); }}
+                                />
+                            )}
+                            {screen === 'daily-form' && (
+                                <DailyReportForm childId={selectedChildId} sessionId={selectedSessionId} onBack={goBack} onSaved={goBack} currentUser={currentUser} childrenData={childrenData} sessions={sessions} onReportSaved={loadData} />
+                            )}
+                            {screen === 'periodic-gate' && (
+                                <PeriodicReportGate
+                                    onBack={goBack}
+                                    childrenData={childrenData}
+                                    onConfirm={(id) => { setSelectedChildId(id); setSelectedSessionId(''); setScreen('periodic-form'); }}
+                                />
+                            )}
+                            {screen === 'periodic-form' && (
+                                <PeriodicReportForm childId={selectedChildId} onBack={goBack} currentUser={currentUser} childrenData={childrenData} onReportSaved={loadData} />
+                            )}
+                            {screen === 'report-detail' && selectedReport && (
+                                <ReportDetail report={selectedReport} onBack={goBack} />
+                            )}
+                        </>
                     )}
                 </div>
             </main>

@@ -1,0 +1,46 @@
+import { Router } from "express";
+import { requireAuth, requireRole } from "../middleware/auth.middleware.js";
+import { parentService } from "../services/parent.service.js";
+import { ok, created, notFound, badRequest } from "../utils/response.js";
+
+const router = Router();
+
+router.get("/", requireAuth, requireRole("admin"), async (req, res, next) => {
+  try { ok(res, await parentService.getAll()); } catch (e) { next(e); }
+});
+
+router.get("/:id", requireAuth, async (req, res, next) => {
+  try {
+    const parent = await parentService.getById(req.params.id);
+    if (!parent) return notFound(res);
+    ok(res, parent);
+  } catch (e) { next(e); }
+});
+
+router.post("/", requireAuth, requireRole("admin"), async (req, res, next) => {
+  try {
+    const { name, email, phone, address } = req.body;
+    if (!name || !email) return badRequest(res, "Nama dan email wajib diisi");
+    const lastId = await parentService.getLastId();
+    const result = await parentService.create({ name, email, phone, address }, lastId);
+    created(res, result, "Akun orang tua berhasil dibuat");
+  } catch (e) { next(e); }
+});
+
+router.patch("/:id/status", requireAuth, requireRole("admin"), async (req, res, next) => {
+  try {
+    const result = await parentService.updateStatus(req.params.id, req.body.status);
+    if (!result) return notFound(res);
+    ok(res, result);
+  } catch (e) { next(e); }
+});
+
+router.post("/:id/reset-password", requireAuth, requireRole("admin"), async (req, res, next) => {
+  try {
+    const result = await parentService.resetPassword(req.params.id);
+    if (!result) return notFound(res);
+    ok(res, result, "Password berhasil direset");
+  } catch (e) { next(e); }
+});
+
+export default router;

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getChildrenByParent, getAnnouncements } from '../../../shared/clinicDataStore';
+import { parentsApi, adminApi } from '../../../shared/api/client';
 
 const Header = ({ title = "Reschedule" }) => {
     const [children, setChildren] = useState([]);
@@ -11,25 +11,33 @@ const Header = ({ title = "Reschedule" }) => {
     const navigate = useNavigate();
 
     useEffect(() => {
-        const load = () => {
+        const load = async () => {
             const saved = sessionStorage.getItem('parent_user');
             if (!saved) return;
             const user = JSON.parse(saved);
             const parentId = user.parentId;
             if (parentId) {
-                const list = getChildrenByParent(parentId);
-                setChildren(list);
-                setActiveChildId(user.childId || list[0]?.nita || '');
+                try {
+                    const res = await parentsApi.getChildren(parentId);
+                    const list = res.data?.data || [];
+                    setChildren(list);
+                    if (list.length > 0 && !user.childId) {
+                        setActiveChildId(list[0].nita);
+                    } else {
+                        setActiveChildId(user.childId || '');
+                    }
+                } catch(e){}
             }
             
-            const anns = getAnnouncements('parent').slice(0, 5);
-            setNotifications(anns);
+            try {
+                const aRes = await adminApi.getAnnouncements({ audience: 'parent' });
+                const anns = (aRes.data?.data || []).slice(0, 5);
+                setNotifications(anns);
+            } catch(e){}
             const read = JSON.parse(sessionStorage.getItem('read_notifs') || '[]');
             setReadIds(read);
         };
         load();
-        window.addEventListener('clinicDataUpdated', load);
-        return () => window.removeEventListener('clinicDataUpdated', load);
     }, []);
 
     const markRead = (id) => {

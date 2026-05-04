@@ -1,13 +1,17 @@
 import React, { useState } from 'react';
-import { getClinicSettings } from '../../../shared/clinicDataStore';
+import { adminApi } from '../../../shared/api/client';
 
 const SupportWidget = () => {
     const [sent, setSent] = useState(false);
 
-    const handleReachOut = () => {
-        const settings = getClinicSettings();
-        const phone = settings.adminWhatsApp || '6281234567890';
-        window.open(`https://wa.me/${phone}`, '_blank');
+    const handleReachOut = async () => {
+        try {
+            const res = await adminApi.getSettings();
+            const phone = res.data?.data?.adminWhatsApp || '6281234567890';
+            window.open(`https://wa.me/${phone}`, '_blank');
+        } catch (e) {
+            window.open(`https://wa.me/6281234567890`, '_blank');
+        }
     };
     return (
         <div className="bg-gradient-to-br from-teal-900 to-slate-900 p-7 rounded-3xl text-white shadow-xl shadow-teal-900/20 relative overflow-hidden group">

@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { getAllTherapists, updateChild, getAllPrograms } from '../../../shared/clinicDataStore';
+import { therapistsApi, adminApi, childrenApi } from '../../../shared/api/client';
 
 const EditChildModal = ({ child, onClose }) => {
     const [therapists, setTherapists] = useState([]);
     const [programsList, setProgramsList] = useState([]);
+    const [isSaving, setIsSaving] = useState(false);
 
     const [formData, setFormData] = useState({
         firstName: child.firstName || child.name?.split(' ')[0] || '',
@@ -15,8 +16,19 @@ const EditChildModal = ({ child, onClose }) => {
     });
     
     useEffect(() => {
-        setTherapists(getAllTherapists());
-        setProgramsList(getAllPrograms());
+        const loadFormData = async () => {
+            try {
+                const [tRes, pRes] = await Promise.all([
+                    therapistsApi.getAll(),
+                    adminApi.getPrograms()
+                ]);
+                setTherapists(tRes.data?.data || []);
+                setProgramsList(pRes.data?.data || []);
+            } catch (e) {
+                console.error('Failed to load therapists/programs', e);
+            }
+        };
+        loadFormData();
     }, []);
 
     const handleChange = (e) => {
@@ -24,25 +36,29 @@ const EditChildModal = ({ child, onClose }) => {
         setFormData(prev => ({ ...prev, [name]: value }));
     };
 
-    const handleSave = () => {
+    const handleSave = async () => {
+        setIsSaving(true);
         // Build updates
         const updates = { ...formData };
         if (updates.program) {
-            // Find option to get label if value was code, but here value IS label
             updates.programs = [{ name: updates.program, color: 'emerald' }];
-            updates.program = updates.program; 
         }
         
         // Find therapist name for display purposes if needed
         const t = therapists.find(th => th.id === updates.therapistId);
         if (t) updates.therapist = t.name;
 
-        // Perform update in store
-        updateChild(child.id || child.nita, updates);
-        
-        // Dispatch event so UI updates
-        window.dispatchEvent(new CustomEvent('clinicDataUpdated'));
-        onClose();
+        try {
+            await childrenApi.update(child.id || child.nita, updates);
+            // Dispatch event so UI updates
+            window.dispatchEvent(new CustomEvent('childUpdated'));
+            onClose();
+        } catch (e) {
+            console.error('Failed to update child', e);
+            alert('Failed to save changes.');
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     return (
@@ -53,7 +69,7 @@ const EditChildModal = ({ child, onClose }) => {
                         <span className="material-symbols-outlined text-primary">edit</span>
                         Edit Profil Anak
                     </h3>
-                    <button onClick={onClose} className="p-1 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition">
+                    <button onClick={onClose} disabled={isSaving} className="p-1 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition disabled:opacity-50">
                         <span className="material-symbols-outlined">close</span>
                     </button>
                 </div>
@@ -98,8 +114,10 @@ const EditChildModal = ({ child, onClose }) => {
                 </div>
                 
                 <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 flex justify-end gap-3">
-                    <button onClick={onClose} className="px-4 py-2 rounded-lg font-medium text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800">Batal</button>
-                    <button onClick={handleSave} className="px-4 py-2 rounded-lg font-medium text-white bg-primary hover:bg-primary/90">Simpan Perubahan</button>
+                    <button onClick={onClose} disabled={isSaving} className="px-4 py-2 rounded-lg font-medium text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50">Batal</button>
+                    <button onClick={handleSave} disabled={isSaving} className="px-4 py-2 rounded-lg font-medium text-white bg-primary hover:bg-primary/90 disabled:opacity-50">
+                        {isSaving ? 'Menyimpan...' : 'Simpan Perubahan'}
+                    </button>
                 </div>
             </div>
         </div>

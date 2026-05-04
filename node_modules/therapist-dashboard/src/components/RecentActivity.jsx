@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getRecentActivityForTherapist } from '../../../shared/clinicDataStore';
+import { notificationsApi } from '../../../shared/api/client';
 
 const formatActivityTime = (timeStr) => {
     if (!timeStr) return '';
@@ -26,17 +26,26 @@ const RecentActivity = () => {
     const [activities, setActivities] = useState([]);
 
     useEffect(() => {
-        const fetchActivities = () => {
-            const userStr = sessionStorage.getItem('therapist_user');
-            const user    = userStr ? JSON.parse(userStr) : null;
-            const nit     = user?.id || 'SARAH260411001';
-            const data    = getRecentActivityForTherapist(nit, 5);
-            setActivities(data);
+        const fetchActivities = async () => {
+            try {
+                const res = await notificationsApi.getAll();
+                const notifs = res.data?.data || [];
+                const mapped = notifs.slice(0, 5).map(n => ({
+                    iconBg: 'bg-teal-50 dark:bg-teal-900/30',
+                    iconColor: 'text-teal-600 dark:text-teal-400',
+                    icon: 'event_note',
+                    message: n.title,
+                    highlight: '',
+                    focus: n.message,
+                    time: n.createdAt
+                }));
+                setActivities(mapped);
+            } catch (e) {
+                console.error(e);
+            }
         };
 
         fetchActivities();
-        window.addEventListener('clinicDataUpdated', fetchActivities);
-        return () => window.removeEventListener('clinicDataUpdated', fetchActivities);
     }, []);
 
     return (

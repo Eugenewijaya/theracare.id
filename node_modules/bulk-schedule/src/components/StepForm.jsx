@@ -1,8 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {
-    getAllChildren, getAllTherapists, getAllPrograms, getAllRooms,
-    getStore, saveStore
-} from '../../../shared/clinicDataStore';
+import { therapistsApi, childrenApi, adminApi } from '../../../shared/api/client';
 
 // ── Step 1: Criteria ──────────────────────────────────────────────────
 function StepCriteria({ data, update }) {
@@ -12,15 +9,21 @@ function StepCriteria({ data, update }) {
     const [rooms, setRooms] = useState([]);
 
     useEffect(() => {
-        const loadData = () => {
-            setTherapists(getAllTherapists());
-            setChildren(getAllChildren());
-            setPrograms(getAllPrograms());
-            setRooms(getAllRooms());
+        const loadData = async () => {
+            try {
+                const [tRes, cRes, pRes, rRes] = await Promise.all([
+                    therapistsApi.getAll(),
+                    childrenApi.getAll(),
+                    adminApi.getPrograms(),
+                    adminApi.getRooms()
+                ]);
+                setTherapists(tRes.data?.data || []);
+                setChildren(cRes.data?.data || []);
+                setPrograms(pRes.data?.data || []);
+                setRooms(rRes.data?.data || []);
+            } catch(e) {}
         };
         loadData();
-        window.addEventListener('clinicDataUpdated', loadData);
-        return () => window.removeEventListener('clinicDataUpdated', loadData);
     }, []);
 
     return (
@@ -163,11 +166,21 @@ function StepPreview({ data }) {
     const [resolved, setResolved] = useState({ therapistName: '', childName: '' });
 
     useEffect(() => {
-        const therapists = getAllTherapists();
-        const children = getAllChildren();
-        const t = therapists.find(th => th.id === data.therapist);
-        const c = children.find(ch => (ch.nita || ch.id) === data.child);
-        setResolved({ therapistName: t?.name || data.therapist || '—', childName: c?.name || data.child || '—' });
+        const load = async () => {
+            try {
+                const [tRes, cRes] = await Promise.all([
+                    therapistsApi.getAll(),
+                    childrenApi.getAll()
+                ]);
+                const therapists = tRes.data?.data || [];
+                const children = cRes.data?.data || [];
+                
+                const t = therapists.find(th => th.id === data.therapist);
+                const c = children.find(ch => (ch.nita || ch.id) === data.child);
+                setResolved({ therapistName: t?.name || data.therapist || '—', childName: c?.name || data.child || '—' });
+            } catch(e) {}
+        };
+        load();
     }, [data.therapist, data.child]);
 
     const rows = [

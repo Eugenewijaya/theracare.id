@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getAllParents } from '../../../shared/clinicDataStore';
+import { parentsApi } from '../../../shared/api/client';
 
 export default function RegistrationModeStep({ onSelectMode, onSelectParent }) {
     const [mode, setMode] = useState(null); // 'new' | 'existing'
@@ -8,7 +8,15 @@ export default function RegistrationModeStep({ onSelectMode, onSelectParent }) {
     const [selectedParentId, setSelectedParentId] = useState('');
 
     useEffect(() => {
-        setParents(getAllParents());
+        const load = async () => {
+            try {
+                const res = await parentsApi.getAll();
+                setParents(res.data?.data || []);
+            } catch (e) {
+                console.error(e);
+            }
+        };
+        load();
     }, []);
 
     const filteredParents = parents.filter(p =>

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState } from 'react';
-import { getStore } from '../../../shared/clinicDataStore';
+import { authApi } from '../../../shared/api/client';
 
 const AuthContext = createContext(null);
 
@@ -15,37 +15,41 @@ export function AuthProvider({ children }) {
    * @param {string} password - Parent's temporary password (e.g. "TheraCare@2024")
    * @returns {boolean} true if login successful
    */
-  const login = (phone, password) => {
-    const store = getStore();
-
-    // 1. Normalize phone number
+  const login = async (phone, password) => {
     const normalizedPhone = (phone || '').replace(/\D/g, '');
+    const email = `${normalizedPhone}@parent.theracare.id`;
 
-    // 2. Find parent by phone
-    const parent = (store.parents || []).find(
-      p => (p.phone || '').replace(/\D/g, '') === normalizedPhone
-    );
-    if (!parent) return false;
-
-    // 3. Validate password against parent's tempPassword
-    if (parent.tempPassword !== password) return false;
-
-    // 4. Store session with enriched data
-    const userData = {
-      id:        parent.id,
-      name:      parent.name,
-      role:      'parent',
-      avatar:    parent.name.charAt(0).toUpperCase(),
-      phone:     parent.phone,
-      children:  parent.children || [], // array of NITAs
-    };
-
-    setUser(userData);
-    sessionStorage.setItem('parent_user', JSON.stringify(userData));
-    return true;
+    try {
+      const res = await authApi.signIn(email, password);
+      if (res.ok) {
+        const sessionRes = await authApi.getSession();
+        if (sessionRes.ok && sessionRes.data?.user) {
+          const u = sessionRes.data.user;
+          const userData = {
+            id: u.id,
+            parentId: u.id,
+            name: u.name,
+            role: u.role || 'parent',
+            avatar: (u.name || 'P').charAt(0).toUpperCase(),
+            phone: u.phone,
+            children: [],
+          };
+          setUser(userData);
+          sessionStorage.setItem('parent_user', JSON.stringify(userData));
+          return true;
+        }
+      }
+      return false;
+    } catch (err) {
+      console.error(err);
+      return false;
+    }
   };
 
-  const logout = () => {
+  const logout = async () => {
+    try {
+      await authApi.signOut();
+    } catch(e) {}
     setUser(null);
     sessionStorage.removeItem('parent_user');
   };

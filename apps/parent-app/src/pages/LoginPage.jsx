@@ -29,7 +29,7 @@ export default function LoginPage() {
     // Small delay to feel responsive
     await new Promise(r => setTimeout(r, 400));
 
-    const success = login(phone.trim(), password);
+    const success = await login(phone.trim(), password);
     setIsLoading(false);
 
     if (success) {

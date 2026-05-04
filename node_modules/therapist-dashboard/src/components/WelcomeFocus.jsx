@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getSessionsForTherapist } from '../../../shared/clinicDataStore';
+import { sessionsApi } from '../../../shared/api/client';
 
 const WelcomeFocus = () => {
     const navigate = useNavigate();
@@ -10,21 +10,24 @@ const WelcomeFocus = () => {
     const [pendingReports, setPendingReports] = useState(0);
 
     useEffect(() => {
-        const loadUser = () => {
+        const loadUser = async () => {
             const userStr = sessionStorage.getItem('therapist_user');
             const user = userStr ? JSON.parse(userStr) : null;
             if (user?.name) setTherapistName(user.name);
 
             // Count sessions that are 'done' but have no notes = pending reports
             const nit = user?.id || 'SARAH260411001';
-            const sessions = getSessionsForTherapist(nit);
-            const pending = sessions.filter(s => s.status === 'done' && !s.notes?.trim()).length;
-            setPendingReports(pending);
+            try {
+                const res = await sessionsApi.getForTherapist(nit);
+                const sessions = res.data?.data || [];
+                const pending = sessions.filter(s => s.status === 'done' && !s.notes?.trim()).length;
+                setPendingReports(pending);
+            } catch (e) {
+                console.error(e);
+            }
         };
 
         loadUser();
-        window.addEventListener('clinicDataUpdated', loadUser);
-        return () => window.removeEventListener('clinicDataUpdated', loadUser);
     }, []);
 
     // Extract first name for greeting

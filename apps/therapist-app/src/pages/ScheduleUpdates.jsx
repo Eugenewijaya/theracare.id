@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getRescheduleRequestsForTherapist, markNotificationRead, getNotificationsForRole } from '../../../shared/clinicDataStore';
+import { rescheduleApi, notificationsApi, sessionsApi } from '../../../shared/api/client';
 
 const formatDate = (dateStr) => {
     if (!dateStr) return '';
@@ -18,48 +18,52 @@ export default function ScheduleUpdates() {
     const [filter, setFilter] = useState('all'); // 'all' | 'approved' | 'rejected'
 
     useEffect(() => {
-        const load = () => {
+        const load = async () => {
             const saved = sessionStorage.getItem('therapist_user');
             if (!saved) return;
             const user = JSON.parse(saved);
 
-            // Get all reschedule requests for this therapist from the central store
-            const requests = getRescheduleRequestsForTherapist(user.id);
+            try {
+                const [reqRes, notifRes, sessRes] = await Promise.all([
+                    rescheduleApi.getForTherapist(user.id),
+                    notificationsApi.getAll(),
+                    sessionsApi.getForTherapist(user.id)
+                ]);
 
-            // Mark schedule-change notifications as read when viewing this page
-            const notifs = getNotificationsForRole('therapist', user.id);
-            notifs
-                .filter(n => (n.type === 'schedule_change' || n.type === 'new_session') && !(n.readBy || []).includes(user.id))
-                .forEach(n => markNotificationRead(n.id, user.id));
+                const requests = reqRes.data?.data || [];
+                const notifs = notifRes.data?.data || [];
+                const sessions = sessRes.data?.data || [];
 
-            const mapped = requests
-                .filter(r => r.status === 'approved' || r.status === 'rejected' || r.status === 'review')
-                .map(r => ({
-                    id: r.id,
-                    childName: r.child?.name || 'Anak',
-                    parentName: r.parent?.name || 'Orang Tua',
-                    originalDate: r.sessionId ? (() => {
-                        // Get original session info
-                        try {
-                            const store = JSON.parse(localStorage.getItem('clinicData') || '{}');
-                            const session = (store.sessions || []).find(s => s.id === r.sessionId);
+                const unreadNotifs = notifs.filter(n => (n.type === 'schedule_change' || n.type === 'new_session') && !n.isRead && !(n.readBy || []).includes(user.id));
+                for (const n of unreadNotifs) {
+                    await notificationsApi.markRead(n.id);
+                }
+
+                const mapped = requests
+                    .filter(r => r.status === 'approved' || r.status === 'rejected' || r.status === 'review')
+                    .map(r => ({
+                        id: r.id,
+                        childName: r.child?.name || 'Anak',
+                        parentName: r.parent?.name || 'Orang Tua',
+                        originalDate: r.sessionId ? (() => {
+                            const session = sessions.find(s => s.id === r.sessionId);
                             return session ? `${formatDate(session.date)} • ${session.startTime} (${session.focus || 'Therapy'})` : 'Sesi Asli';
-                        } catch { return 'Sesi Asli'; }
-                    })() : 'Sesi Asli',
-                    newDate: r.newDate ? `${formatDate(r.newDate)}${r.newStartTime ? ` • ${r.newStartTime}` : ''}` : '—',
-                    outcome: r.status,
-                    resolvedOn: r.resolvedAt ? formatDateTime(r.resolvedAt) : '',
-                    adminNote: r.reviewNote || (r.status === 'approved' ? 'Disetujui oleh Admin' : r.status === 'rejected' ? 'Ditolak oleh Admin' : 'Sedang direview'),
-                    reason: r.reason || r.details || '',
-                    createdAt: r.createdAt,
-                }))
-                .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+                        })() : 'Sesi Asli',
+                        newDate: r.newDate ? `${formatDate(r.newDate)}${r.newStartTime ? ` • ${r.newStartTime}` : ''}` : '—',
+                        outcome: r.status,
+                        resolvedOn: r.resolvedAt ? formatDateTime(r.resolvedAt) : '',
+                        adminNote: r.reviewNote || (r.status === 'approved' ? 'Disetujui oleh Admin' : r.status === 'rejected' ? 'Ditolak oleh Admin' : 'Sedang direview'),
+                        reason: r.reason || r.details || '',
+                        createdAt: r.createdAt,
+                    }))
+                    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-            setUpdates(mapped);
+                setUpdates(mapped);
+            } catch (err) {
+                console.error(err);
+            }
         };
         load();
-        window.addEventListener('clinicDataUpdated', load);
-        return () => window.removeEventListener('clinicDataUpdated', load);
     }, []);
 
     const getOutcomeConfig = (outcome) => {

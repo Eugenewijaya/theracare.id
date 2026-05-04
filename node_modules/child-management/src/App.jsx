@@ -2,25 +2,35 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from './components/Header';
 import ChildTable from './components/ChildTable';
-import { getAllPrograms, getAllChildren } from '../../shared/clinicDataStore';
-
+import { childrenApi, adminApi } from '../../shared/api/client';
 
 function App() {
     const navigate = useNavigate();
     const [searchTerm, setSearchTerm]       = useState('');
     const [programFilter, setProgramFilter] = useState('');
     const [statusFilter, setStatusFilter]   = useState('');
-    const [allChildren, setAllChildren]     = useState(getAllChildren());
-    const [programs, setPrograms]           = useState(getAllPrograms());
+    const [allChildren, setAllChildren]     = useState([]);
+    const [programs, setPrograms]           = useState([]);
+    const [loading, setLoading]             = useState(true);
+
+    const loadData = async () => {
+        try {
+            const [cRes, pRes] = await Promise.all([
+                childrenApi.getAll(),
+                adminApi.getPrograms()
+            ]);
+            setAllChildren(cRes.data?.data || []);
+            setPrograms(pRes.data?.data || []);
+        } catch (e) {
+            console.error('Failed to load child management data', e);
+        }
+        setLoading(false);
+    };
 
     useEffect(() => {
-        const update = () => {
-            setAllChildren(getAllChildren());
-            setPrograms(getAllPrograms());
-        };
-        update();
-        window.addEventListener('clinicDataUpdated', update);
-        return () => window.removeEventListener('clinicDataUpdated', update);
+        loadData();
+        window.addEventListener('childUpdated', loadData);
+        return () => window.removeEventListener('childUpdated', loadData);
     }, []);
 
     const filtered = allChildren.filter(child => {
@@ -80,7 +90,11 @@ function App() {
                             </div>
                         </section>
 
-                        <ChildTable children={filtered} />
+                        {loading ? (
+                            <div className="text-center py-10">Loading children data...</div>
+                        ) : (
+                            <ChildTable children={filtered} />
+                        )}
                     </main>
                 </div>
             </div>

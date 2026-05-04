@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { getAllTherapists, getAllChildren, getAllPrograms } from '../../../shared/clinicDataStore';
+import { therapistsApi, childrenApi, adminApi } from '../../../shared/api/client';
 
 const MONTH_NAMES = [
     'January', 'February', 'March', 'April', 'May', 'June',
@@ -60,17 +60,24 @@ const CalendarHeader = ({ currentView, setCurrentView, currentMonth, currentYear
     const [programsList, setProgramsList] = useState(['All Programs']);
 
     useEffect(() => {
-        const load = () => {
-            const t = getAllTherapists().map(t => t.name);
-            const c = getAllChildren().map(c => c.name);
-            const p = getAllPrograms().map(p => p.name);
-            setTherapistsList(['All Therapists', ...t]);
-            setChildrenList(['All Children', ...c]);
-            setProgramsList(['All Programs', ...p]);
+        const load = async () => {
+            try {
+                const [therRes, childRes, progRes] = await Promise.all([
+                    therapistsApi.getAll(),
+                    childrenApi.getAll(),
+                    adminApi.getPrograms()
+                ]);
+                const t = (therRes.data?.data || []).map(t => t.name);
+                const c = (childRes.data?.data || []).map(c => c.name);
+                const p = (progRes.data?.data || []).map(p => p.name);
+                setTherapistsList(['All Therapists', ...t]);
+                setChildrenList(['All Children', ...c]);
+                setProgramsList(['All Programs', ...p]);
+            } catch (e) {
+                console.error(e);
+            }
         };
         load();
-        window.addEventListener('clinicDataUpdated', load);
-        return () => window.removeEventListener('clinicDataUpdated', load);
     }, []);
     return (
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between px-6 py-4 gap-4 border-b border-slate-200 dark:border-slate-800 shrink-0">

@@ -1,9 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import EditChildModal from './EditChildModal';
-import { findParentById } from '../../../shared/clinicDataStore';
-
-
+import { parentsApi } from '../../../shared/api/client';
 
 const programColors = {
     emerald: 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400',
@@ -32,18 +30,24 @@ const ChildTable = ({ children }) => {
     const navigate = useNavigate();
     const [editingChild, setEditingChild] = useState(null);
 
-    const handleContactParent = (child) => {
+    const handleContactParent = async (child) => {
         if (!child.parentId) {
-            alert('Parent ID not found for this child (Mock Data).');
+            alert('Parent ID not found for this child.');
             return;
         }
-        const parent = findParentById(child.parentId);
-        if (parent && parent.phone) {
-            let phone = parent.phone.replace(/\D/g, '');
-            if (phone.startsWith('0')) phone = '62' + phone.substring(1);
-            window.open(`https://wa.me/${phone}`, '_blank');
-        } else {
-            alert('Parent phone number not found.');
+        try {
+            const res = await parentsApi.getById(child.parentId);
+            const parent = res.data?.data;
+            if (parent && parent.phone) {
+                let phone = parent.phone.replace(/\D/g, '');
+                if (phone.startsWith('0')) phone = '62' + phone.substring(1);
+                window.open(`https://wa.me/${phone}`, '_blank');
+            } else {
+                alert('Parent phone number not found.');
+            }
+        } catch (e) {
+            console.error('Failed to get parent info', e);
+            alert('Failed to get parent info.');
         }
     };
 
@@ -219,7 +223,7 @@ const ChildTable = ({ children }) => {
             <div className="flex items-center justify-between border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-6 py-3">
                 <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
                     <p className="text-sm text-slate-700 dark:text-slate-400">
-                        Showing <span className="font-medium text-slate-900 dark:text-slate-100">1</span> to <span className="font-medium text-slate-900 dark:text-slate-100">{children.length}</span> of <span className="font-medium text-slate-900 dark:text-slate-100">{children.length}</span> results
+                        Showing <span className="font-medium text-slate-900 dark:text-slate-100">{children.length > 0 ? 1 : 0}</span> to <span className="font-medium text-slate-900 dark:text-slate-100">{children.length}</span> of <span className="font-medium text-slate-900 dark:text-slate-100">{children.length}</span> results
                     </p>
                     <nav className="isolate inline-flex -space-x-px rounded-md shadow-sm">
                         <a href="#" className="relative inline-flex items-center rounded-l-md px-2 py-2 text-slate-400 ring-1 ring-inset ring-slate-300 hover:bg-slate-50 dark:ring-slate-700 dark:hover:bg-slate-800">

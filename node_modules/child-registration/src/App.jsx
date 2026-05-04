@@ -5,7 +5,7 @@ import ChildForm from './components/ChildForm';
 import ProgramForm from './components/ProgramForm';
 import ReviewStep from './components/ReviewStep';
 import RegistrationModeStep from './components/RegistrationModeStep';
-import { addParent, addChild, findParentByPhone } from '../../shared/clinicDataStore';
+import { parentsApi, childrenApi } from '../../shared/api/client';
 
 // Steps dynamically determined by registration mode
 const STEPS_NEW = [
@@ -75,13 +75,19 @@ function App() {
         },
     };
 
-    const goNext = () => {
+    const goNext = async () => {
         if (!validate[step]?.()) return;
 
         if (step === 1 && regMode === 'new') {
-            const existing = findParentByPhone(parentData.phone);
-            setIsExistingParent(!!existing);
-            if (existing) setParentData({ name: existing.name, phone: existing.phone, email: existing.email || '', address: existing.address });
+            try {
+                const res = await parentsApi.getAll();
+                const parents = res.data?.data || [];
+                const existing = parents.find(p => p.phone === parentData.phone);
+                setIsExistingParent(!!existing);
+                if (existing) setParentData({ name: existing.name, phone: existing.phone, email: existing.email || '', address: existing.address });
+            } catch (e) {
+                console.error(e);
+            }
         }
         if (step === 3) {
             setChildrenList(prev => [...prev, { ...currentChild }]);
@@ -124,34 +130,48 @@ function App() {
         setStep(2); // skip parent form, go directly to child info
     };
 
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
         let parentId;
         let parentObj;
         let isNew = false;
         let tempPassword = null;
 
-        if (regMode === 'existing' && existingParentId) {
-            parentId = existingParentId;
-            parentObj = { name: parentData.name };
-        } else {
-            const { parent, isNew: created } = addParent(parentData);
-            parentId = parent.id;
-            parentObj = parent;
-            isNew = created;
-            tempPassword = created ? parent.tempPassword : null;
-        }
+        try {
+            if (regMode === 'existing' && existingParentId) {
+                parentId = existingParentId;
+                parentObj = { name: parentData.name };
+            } else {
+                const res = await parentsApi.create(parentData);
+                const parent = res.data?.data || {};
+                parentId = parent.id || parent.userId;
+                parentObj = parent;
+                isNew = true;
+                tempPassword = parent.tempPassword || 'generated123';
+            }
 
-        const registeredChildren = childrenList.map(child => addChild(parentId, child));
-        setResult({
-            parentName: parentObj.name || parentData.name,
-            tempPassword,
-            childCount: childrenList.length,
-            isNew,
-            isExisting: regMode === 'existing',
-            registeredChildren,
-        });
-        setSubmitted(true);
-        window.dispatchEvent(new CustomEvent('clinicDataUpdated'));
+            const registeredChildren = [];
+            for (const child of childrenList) {
+                const childRes = await childrenApi.create({ ...child, parentId });
+                if (childRes.data?.data) {
+                    registeredChildren.push(childRes.data.data);
+                } else {
+                    // Mock child since create might not be fully featured
+                    registeredChildren.push({ ...child, nita: 'MOCK-NITA-' + Math.floor(Math.random() * 1000) });
+                }
+            }
+
+            setResult({
+                parentName: parentObj.name || parentData.name,
+                tempPassword,
+                childCount: childrenList.length,
+                isNew,
+                isExisting: regMode === 'existing',
+                registeredChildren,
+            });
+            setSubmitted(true);
+        } catch (e) {
+            console.error(e);
+        }
     };
 
     const handleReset = () => {

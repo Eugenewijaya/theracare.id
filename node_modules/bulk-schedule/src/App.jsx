@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import TopNavBar from './components/TopNavBar';
 import Stepper from './components/Stepper';
 import StepForm from './components/StepForm';
-import { addBulkSessions } from '../../shared/clinicDataStore';
+import { sessionsApi } from '../../shared/api/client';
 
 const TOTAL_STEPS = 4;
 
@@ -188,7 +188,7 @@ function App() {
         setShowConfirm(true);
     };
 
-    const handleConfirmGenerate = () => {
+    const handleConfirmGenerate = async () => {
         setShowConfirm(false);
 
         const dates = generateSessionDates(formData);
@@ -207,14 +207,16 @@ function App() {
             };
         });
 
-        // Simpan menggunakan fungsi SSoT agar notifikasi juga terkirim
-        addBulkSessions(newSessionsData);
-
-        setGeneratedCount(dates.length);
-        setShowSuccess(true);
-        // reset form
-        setFormData(INITIAL_DATA);
-        setCurrentStep(1);
+        try {
+            await sessionsApi.createBulk(newSessionsData);
+            setGeneratedCount(dates.length);
+            setShowSuccess(true);
+            // reset form
+            setFormData(INITIAL_DATA);
+            setCurrentStep(1);
+        } catch(e) {
+            console.error(e);
+        }
     };
 
     const handleSuccessClose = () => {

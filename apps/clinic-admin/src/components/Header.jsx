@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAdmin } from '../../../admin-app/src/context/AdminContext';
 import { useNavigate } from 'react-router-dom';
-import { getAllAnnouncements } from '../../../shared/clinicDataStore';
+import { adminApi, notificationsApi } from '../../../shared/api/client';
 
 const Header = () => {
     const { clinicName, brandColor } = useAdmin();
@@ -10,25 +10,31 @@ const Header = () => {
     const [notifications, setNotifications] = useState([]);
     const dropdownRef = useRef(null);
     
-    const refreshNotifications = () => {
-        const raw = getAllAnnouncements();
-        const mapped = raw.map(a => {
-            const isUnread = (Date.now() - new Date(a.createdAt).getTime()) < 1000 * 60 * 60 * 24; // 24h
-            return {
-                id: a.id,
-                title: a.title || 'Pengumuman Tanpa Judul',
-                desc: a.content || '',
-                time: new Date(a.createdAt).toLocaleDateString('id-ID', { hour:'2-digit', minute:'2-digit', day:'numeric', month:'short' }),
-                read: !isUnread,
-            };
-        });
-        setNotifications(mapped);
+    const refreshNotifications = async () => {
+        try {
+            // Fetch both announcements and unread counts or use announcements as notifications
+            const res = await adminApi.getAnnouncementsForRole('admin');
+            const raw = res.data?.data || [];
+            const mapped = raw.map(a => {
+                const isUnread = (Date.now() - new Date(a.createdAt).getTime()) < 1000 * 60 * 60 * 24; // 24h
+                return {
+                    id: a.id,
+                    title: a.title || 'Pengumuman Tanpa Judul',
+                    desc: a.content || '',
+                    time: new Date(a.createdAt).toLocaleDateString('id-ID', { hour:'2-digit', minute:'2-digit', day:'numeric', month:'short' }),
+                    read: !isUnread,
+                };
+            });
+            setNotifications(mapped);
+        } catch (e) {
+            console.error("Failed to fetch notifications", e);
+        }
     };
 
     useEffect(() => {
         refreshNotifications();
-        window.addEventListener('clinicDataUpdated', refreshNotifications);
-        return () => window.removeEventListener('clinicDataUpdated', refreshNotifications);
+        const interval = setInterval(refreshNotifications, 60000);
+        return () => clearInterval(interval);
     }, []);
 
     const unreadCount = notifications.filter(n => !n.read).length;
@@ -81,7 +87,9 @@ const Header = () => {
                                     )}
                                 </div>
                                 <div className="flex flex-col max-h-72 overflow-y-auto">
-                                    {notifications.map(n => (
+                                    {notifications.length === 0 ? (
+                                        <div className="px-4 py-6 text-center text-slate-500 text-sm">Tidak ada notifikasi</div>
+                                    ) : notifications.map(n => (
                                         <div key={n.id} className={`flex gap-3 px-4 py-3 border-b border-slate-50 last:border-0 ${!n.read ? 'bg-primary/5' : ''}`}>
                                             <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${!n.read ? 'bg-primary' : 'bg-transparent'}`} />
                                             <div>

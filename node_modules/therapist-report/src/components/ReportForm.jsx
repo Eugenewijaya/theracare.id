@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getAllChildren } from '../../../shared/clinicDataStore';
+import { childrenApi } from '../../../shared/api/client';
 
 const ReportForm = () => {
     const navigate = useNavigate();
@@ -10,7 +10,15 @@ const ReportForm = () => {
     const [error, setError] = useState('');
 
     useEffect(() => {
-        setChildren(getAllChildren() || []);
+        const load = async () => {
+            try {
+                const res = await childrenApi.getAll();
+                setChildren(res.data?.data || []);
+            } catch (e) {
+                console.error(e);
+            }
+        };
+        load();
     }, []);
     const [aspects, setAspects] = useState({
         fineMotor: true,

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAdmin } from '../context/AdminContext';
-import { getUnreadNotificationCount, getNotificationsForRole, getRescheduleRequests } from '../../../shared/clinicDataStore';
+import { rescheduleApi, notificationsApi } from '../../../shared/api/client';
 
 const navGroups = [
   {
@@ -50,22 +50,22 @@ export default function Sidebar({ isOpen, onClose }) {
   const { clinicName, brandColor, adminProfile, sidebarCollapsed, setSidebarCollapsed } = useAdmin();
   const [badgeCounts, setBadgeCounts] = useState({ requests: 0, notifications: 0 });
 
-  // Compute notification badges
+  // Compute notification badges from API
   useEffect(() => {
-    const computeBadges = () => {
-      // Count pending reschedule requests
-      const allReqs = getRescheduleRequests();
-      const pendingCount = allReqs.filter(r => r.status === 'pending').length;
-
-      // Count unread admin notifications
-      const adminNotifs = getNotificationsForRole('admin', 'admin');
-      const unreadNotifs = adminNotifs.filter(n => !(n.readBy || []).includes('admin')).length;
-
-      setBadgeCounts({ requests: pendingCount, notifications: unreadNotifs });
+    const computeBadges = async () => {
+      try {
+        const [reqRes, unreadRes] = await Promise.all([
+          rescheduleApi.getAll(),
+          notificationsApi.getUnreadCount(),
+        ]);
+        const pendingCount = (reqRes.data?.data || []).filter(r => r.status === 'pending').length;
+        const unreadNotifs = unreadRes.data?.data?.count || 0;
+        setBadgeCounts({ requests: pendingCount, notifications: unreadNotifs });
+      } catch {}
     };
     computeBadges();
-    window.addEventListener('clinicDataUpdated', computeBadges);
-    return () => window.removeEventListener('clinicDataUpdated', computeBadges);
+    const interval = setInterval(computeBadges, 30000); // Poll every 30s
+    return () => clearInterval(interval);
   }, []);
 
   // Close sidebar on route change (mobile)
@@ -128,11 +128,11 @@ export default function Sidebar({ isOpen, onClose }) {
               className="size-9 rounded-full flex items-center justify-center font-bold text-sm border flex-shrink-0"
               style={{ backgroundColor: `${brandColor}20`, color: brandColor, borderColor: `${brandColor}30` }}
             >
-              {adminProfile?.avatar || 'A'}
+              {(user?.name || adminProfile?.name || 'A').charAt(0).toUpperCase()}
             </div>
             {!isCollapsed && (
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-white truncate">{adminProfile?.name || 'Admin'}</p>
+                <p className="text-sm font-semibold text-white truncate">{user?.name || adminProfile?.name || 'Admin'}</p>
                 <p className="text-xs text-slate-400 truncate">{adminProfile?.role || 'Administrator'}</p>
               </div>
             )}

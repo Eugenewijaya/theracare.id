@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getSessionsForTherapist, updateSessionStatus, saveSessionNote } from '../../../shared/clinicDataStore';
+import { sessionsApi } from '../../../shared/api/client';
 import ChildProfileModal from './ChildProfileModal';
 
 const TimelineList = () => {
@@ -13,21 +13,22 @@ const TimelineList = () => {
     const [timeLeft, setTimeLeft] = useState(45 * 60); // 45 minutes
     const [profileModalSession, setProfileModalSession] = useState(null);
 
-    useEffect(() => {
-        const fetchSessions = () => {
-            const userStr = sessionStorage.getItem('therapist_user');
-            const user = userStr ? JSON.parse(userStr) : null;
-            const nit = user ? user.id : 'NIT-001';
-            
-            // To simplify, we'll fetch all sessions for this therapist
-            // In a real app we'd filter by today's date
-            const todaySessions = getSessionsForTherapist(nit);
+    const fetchSessions = async () => {
+        const userStr = sessionStorage.getItem('therapist_user');
+        const user = userStr ? JSON.parse(userStr) : null;
+        const nit = user ? user.id : 'NIT-001';
+        
+        try {
+            const res = await sessionsApi.getForTherapist(nit);
+            const todaySessions = res.data?.data || [];
             setSessions(todaySessions);
-        };
+        } catch (e) {
+            console.error(e);
+        }
+    };
 
+    useEffect(() => {
         fetchSessions();
-        window.addEventListener('clinicDataUpdated', fetchSessions);
-        return () => window.removeEventListener('clinicDataUpdated', fetchSessions);
     }, []);
 
     useEffect(() => {
@@ -38,8 +39,7 @@ const TimelineList = () => {
                     if (prev <= 1) {
                         clearInterval(interval);
                         // Auto-complete if time runs out
-                        updateSessionStatus(activeSession.id, 'done');
-                        window.dispatchEvent(new CustomEvent('clinicDataUpdated'));
+                        sessionsApi.updateStatus(activeSession.id, 'done').then(fetchSessions);
                         return 0;
                     }
                     return prev - 1;
@@ -59,26 +59,32 @@ const TimelineList = () => {
     const openCompleteModal = (session) => setCompleteModal(session);
     const closeCompleteModal = () => setCompleteModal(null);
 
-    const confirmComplete = () => {
+    const confirmComplete = async () => {
         if (!completeModal) return;
-        updateSessionStatus(completeModal.id, 'done');
-        window.dispatchEvent(new CustomEvent('clinicDataUpdated'));
+        try {
+            await sessionsApi.updateStatus(completeModal.id, 'done');
+            await fetchSessions();
+        } catch(e) { console.error(e); }
         closeCompleteModal();
     };
 
-    const handleSaveNote = () => {
-        saveSessionNote(noteOpenId, noteText);
-        window.dispatchEvent(new CustomEvent('clinicDataUpdated'));
-        setNoteOpenId(null);
-        setNoteText('');
-        setNoteSaved(true);
-        setTimeout(() => setNoteSaved(false), 3000);
+    const handleSaveNote = async () => {
+        try {
+            await sessionsApi.saveNotes(noteOpenId, noteText);
+            await fetchSessions();
+            setNoteOpenId(null);
+            setNoteText('');
+            setNoteSaved(true);
+            setTimeout(() => setNoteSaved(false), 3000);
+        } catch (e) { console.error(e); }
     };
 
-    const startSession = (sessionId) => {
-        updateSessionStatus(sessionId, 'active');
-        window.dispatchEvent(new CustomEvent('clinicDataUpdated'));
-        setTimeLeft(45 * 60); // reset timer
+    const startSession = async (sessionId) => {
+        try {
+            await sessionsApi.updateStatus(sessionId, 'active');
+            await fetchSessions();
+            setTimeLeft(45 * 60); // reset timer
+        } catch (e) { console.error(e); }
     };
 
     return (

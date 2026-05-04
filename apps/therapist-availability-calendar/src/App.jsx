@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Header from './components/Header';
-import { getSessionsForTherapist } from '../../shared/clinicDataStore';
+import { sessionsApi } from '../../shared/api/client';
 
 const WEEK_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const HOURS = Array.from({ length: 10 }, (_, index) => 8 + index);
@@ -92,22 +92,28 @@ function App() {
     const [events, setEvents] = useState([]);
 
     useEffect(() => {
-        const loadEvents = () => {
+        const loadEvents = async () => {
             if (!currentUser?.id) {
                 setEvents([]);
                 return;
             }
 
-            const mapped = getSessionsForTherapist(currentUser.id)
-                .map(toCalendarEvent)
-                .sort((a, b) => `${a.date} ${a.startTime}`.localeCompare(`${b.date} ${b.startTime}`));
+            try {
+                const res = await sessionsApi.getForTherapist(currentUser.id);
+                const rawSessions = res.data?.data || [];
+                const mapped = rawSessions
+                    .map(toCalendarEvent)
+                    .sort((a, b) => `${a.date} ${a.startTime}`.localeCompare(`${b.date} ${b.startTime}`));
 
-            setEvents(mapped);
+                setEvents(mapped);
+            } catch (e) {
+                console.error('Failed to load sessions', e);
+            }
         };
 
         loadEvents();
-        window.addEventListener('clinicDataUpdated', loadEvents);
-        return () => window.removeEventListener('clinicDataUpdated', loadEvents);
+        window.addEventListener('sessionUpdated', loadEvents);
+        return () => window.removeEventListener('sessionUpdated', loadEvents);
     }, [currentUser]);
 
     const weekDates = useMemo(() => {

@@ -4,21 +4,7 @@ import CalendarHeader from './components/CalendarHeader';
 import CalendarGrid from './components/CalendarGrid';
 import Legend from './components/Legend';
 import SidePanel from './components/SidePanel';
-import { getAllChildren, getAllTherapists, getAllPrograms } from '../../shared/clinicDataStore';
-
-const CLINIC_DATA_KEY = 'clinicData';
-
-function getClinicData() {
-    try {
-        const raw = localStorage.getItem(CLINIC_DATA_KEY);
-        return raw ? JSON.parse(raw) : { sessions: [] };
-    } catch { return { sessions: [] }; }
-}
-
-function saveClinicData(data) {
-    localStorage.setItem(CLINIC_DATA_KEY, JSON.stringify(data));
-    window.dispatchEvent(new CustomEvent('clinicDataUpdated'));
-}
+import { sessionsApi, childrenApi, therapistsApi, adminApi } from '../../shared/api/client';
 
 // ── Toast Notification ──────────────────────────────────────────────────────
 function Toast({ message, type = 'success', onClose }) {
@@ -204,22 +190,29 @@ function App() {
     const [programsList, setProgramsList] = useState([]);
 
     useEffect(() => {
-        const loadDb = () => {
-            const db = getClinicData();
-            setAllSessions(db.sessions || []);
-            setChildrenList(getAllChildren());
-            setTherapistsList(getAllTherapists());
-            setProgramsList(getAllPrograms());
+        const loadDb = async () => {
+            try {
+                const [sessRes, childRes, therRes, progRes] = await Promise.all([
+                    sessionsApi.getAll(),
+                    childrenApi.getAll(),
+                    therapistsApi.getAll(),
+                    adminApi.getPrograms()
+                ]);
+                setAllSessions(sessRes.data?.data || []);
+                setChildrenList(childRes.data?.data || []);
+                setTherapistsList(therRes.data?.data || []);
+                setProgramsList(progRes.data?.data || []);
+            } catch (e) {
+                console.error(e);
+            }
         };
         loadDb();
-        window.addEventListener('clinicDataUpdated', loadDb);
-        return () => window.removeEventListener('clinicDataUpdated', loadDb);
     }, []);
 
     const filteredSessions = React.useMemo(() => {
         return allSessions.filter(s => {
             if (filters.therapist !== 'All Therapists') {
-                const tr = (getClinicData().therapists || []).find(t => t.id === s.therapistId);
+                const tr = therapistsList.find(t => t.id === s.therapistId);
                 if (!tr || tr.name !== filters.therapist) return false;
             }
             if (filters.child !== 'All Children') {
@@ -282,7 +275,7 @@ function App() {
         setToast({ message, type });
     };
 
-    const handleSaveSession = () => {
+    const handleSaveSession = async () => {
         if (!newSession.child) {
             showToast('Pilih anak/pasien terlebih dahulu', 'error');
             return;
@@ -296,11 +289,7 @@ function App() {
             dateStr = `${y}-${m}-${d}`;
         }
 
-        const clinic = getClinicData() || { sessions: [] };
-        if (!clinic.sessions) clinic.sessions = [];
-
         const sessionObj = {
-            id: `S-ADMIN-${Date.now()}`,
             therapistId: newSession.therapistId || '',
             childId: newSession.child,
             date: dateStr,
@@ -312,39 +301,51 @@ function App() {
             addedByAdmin: true,
         };
 
-        clinic.sessions.push(sessionObj);
-        saveClinicData(clinic);
-
-        setIsAddModalOpen(false);
-        showToast('Sesi berhasil ditambahkan ke jadwal!');
+        try {
+            await sessionsApi.create(sessionObj);
+            setIsAddModalOpen(false);
+            showToast('Sesi berhasil ditambahkan ke jadwal!');
+            
+            // Reload sessions
+            const res = await sessionsApi.getAll();
+            setAllSessions(res.data?.data || []);
+        } catch(e) {
+            showToast('Gagal menambahkan sesi', 'error');
+        }
     };
 
     // ── Edit: save changes ─────────────────────────────────────────────
-    const handleEditSave = (sessionId, form) => {
-        const clinic = getClinicData();
-        const idx = (clinic.sessions || []).findIndex(s => s.id === sessionId);
-        if (idx !== -1) {
-            clinic.sessions[idx] = {
-                ...clinic.sessions[idx],
+    const handleEditSave = async (sessionId, form) => {
+        try {
+            await sessionsApi.update(sessionId, {
                 therapistId: form.therapistId,
                 focus:       form.program,
                 startTime:   form.startTime,
                 duration:    `${form.duration} mins`,
-            };
-            saveClinicData(clinic);
+            });
             showToast('Sesi berhasil diperbarui!');
+            setEditSession(null);
+            
+            const res = await sessionsApi.getAll();
+            setAllSessions(res.data?.data || []);
+        } catch (e) {
+            showToast('Gagal memperbarui sesi', 'error');
         }
-        setEditSession(null);
     };
 
     // ── Edit: delete session ───────────────────────────────────────────
-    const handleEditDelete = (sessionId) => {
+    const handleEditDelete = async (sessionId) => {
         if (!window.confirm('Yakin ingin menghapus sesi ini? Tindakan ini tidak dapat dibatalkan.')) return;
-        const clinic = getClinicData();
-        clinic.sessions = (clinic.sessions || []).filter(s => s.id !== sessionId);
-        saveClinicData(clinic);
-        setEditSession(null);
-        showToast('Sesi berhasil dihapus.', 'info');
+        try {
+            await sessionsApi.delete(sessionId);
+            setEditSession(null);
+            showToast('Sesi berhasil dihapus.', 'info');
+            
+            const res = await sessionsApi.getAll();
+            setAllSessions(res.data?.data || []);
+        } catch (e) {
+            showToast('Gagal menghapus sesi', 'error');
+        }
     };
 
     return (

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
-import { getClinicSettings, updateClinicSettings } from '../../shared/clinicDataStore';
+import { adminApi } from '../../shared/api/client';
 
 function App() {
     const [activeSection, setActiveSection] = useState('branding');
@@ -12,10 +12,16 @@ function App() {
     const [toast, setToast] = useState(null);
 
     useEffect(() => {
-        const settings = getClinicSettings();
-        if (settings && settings.adminWhatsApp) {
-            setAdminWhatsApp(settings.adminWhatsApp);
-        }
+        const loadSettings = async () => {
+            try {
+                const res = await adminApi.getSettings();
+                const settings = res.data?.data || {};
+                if (settings.adminWhatsApp) {
+                    setAdminWhatsApp(settings.adminWhatsApp);
+                }
+            } catch(e) {}
+        };
+        loadSettings();
     }, []);
 
     const showToast = (msg, type = 'success') => {
@@ -23,7 +29,7 @@ function App() {
         setTimeout(() => setToast(null), 3500);
     };
 
-    const handleSave = () => {
+    const handleSave = async () => {
         if (adminWhatsApp && !/^\d+$/.test(adminWhatsApp)) {
             showToast('Nomor WhatsApp tidak valid. Hanya gunakan angka tanpa karakter khusus (misal: 6281234567890).', 'error');
             return;
@@ -31,20 +37,25 @@ function App() {
         try {
             const existing = JSON.parse(localStorage.getItem('adminSettings') || '{}');
             localStorage.setItem('adminSettings', JSON.stringify({ ...existing, clinicName, primaryColor, secondaryColor }));
-            updateClinicSettings({ adminWhatsApp });
+            await adminApi.updateSettings({ adminWhatsApp });
             window.dispatchEvent(new CustomEvent('adminSettingsUpdated'));
-        } catch {}
-        showToast(`Pengaturan berhasil disimpan!`);
+            showToast(`Pengaturan berhasil disimpan!`);
+        } catch (e) {
+            showToast('Gagal menyimpan pengaturan', 'error');
+        }
     };
 
-    const handleCancel = () => {
+    const handleCancel = async () => {
         setClinicName('TheraCare');
         setPrimaryColor('#30abe8');
         setSecondaryColor('#4e7f97');
-        const settings = getClinicSettings();
-        if (settings && settings.adminWhatsApp) {
-            setAdminWhatsApp(settings.adminWhatsApp);
-        }
+        try {
+            const res = await adminApi.getSettings();
+            const settings = res.data?.data || {};
+            if (settings.adminWhatsApp) {
+                setAdminWhatsApp(settings.adminWhatsApp);
+            }
+        } catch(e){}
         showToast('Pengaturan dikembalikan ke nilai terakhir yang disimpan.', 'info');
     };
 

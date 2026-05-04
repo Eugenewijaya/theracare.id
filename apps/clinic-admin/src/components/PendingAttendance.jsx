@@ -1,56 +1,61 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getAllSessionsWithDetails, updateSessionStatus } from '../../../shared/clinicDataStore';
+import { sessionsApi } from '../../../shared/api/client';
 
 const PendingAttendance = () => {
     const navigate = useNavigate();
-    const [items, setItems]   = useState([]);
-    const [toast, setToast]   = useState(null);
+    const [items, setItems] = useState([]);
+    const [toast, setToast] = useState(null);
+    const [loading, setLoading] = useState(true);
+
+    const loadSessions = async () => {
+        try {
+            const res = await sessionsApi.getAll();
+            const allSessions = res.data?.data || [];
+            const today = new Date().toISOString().split('T')[0];
+            const pending = allSessions
+                .filter(s => s.status === 'upcoming' && s.date === today)
+                .sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
+
+            setItems(pending.map(s => ({
+                id: s.id,
+                name: s.child?.name || s.childId || 'Anak',
+                role: `${s.focus || 'Therapy'} w/ ${s.therapist?.name || 'Terapis'}`,
+                time: s.startTime,
+                initial: (s.child?.name || 'A').charAt(0).toUpperCase(),
+            })));
+        } catch {}
+        setLoading(false);
+    };
 
     useEffect(() => {
-        const load = () => {
-            const today = new Date().toISOString().split('T')[0];
-            const allSessions = getAllSessionsWithDetails();
-            // Show upcoming sessions for today
-            const pending = allSessions.filter(s => s.status === 'upcoming' && s.date === today)
-                .sort((a,b) => a.startTime.localeCompare(b.startTime));
-            
-            const transformed = pending.map(s => ({
-                id: s.id,
-                name: s.child ? s.child.name : 'Unknown Child',
-                role: `${s.focus || 'Therapy'} w/ ${s.therapist ? s.therapist.name : 'Therapist'}`,
-                time: s.startTime,
-                avatarObj: "url('https://lh3.googleusercontent.com/aida-public/AB6AXuDQeL2J2P2O5uH8P506H6yP924t0M1qH1R6_4tSXY37m8vA5239uA3d8gV9902iSxwI4wA0V1d0V90N7O8V32z1_82_1dD3AXY8o50F8L_sX51O5N4V8w6y3tEcxkY72P8K4pQvJ7WbQ0O22WwYn3C7N90X5Z12K8R9_E2gG4_V988L0sD8H930R7W19A208B8V45p0z45Z_d1tU')",
-            }));
-            setItems(transformed);
-        };
-        load();
-        window.addEventListener('clinicDataUpdated', load);
-        return () => window.removeEventListener('clinicDataUpdated', load);
+        loadSessions();
+        const interval = setInterval(loadSessions, 60000);
+        return () => clearInterval(interval);
     }, []);
+
     const showToast = (message, type = 'success') => {
         setToast({ message, type });
         setTimeout(() => setToast(null), 3000);
     };
 
-    const handleApprove = (item) => {
-        updateSessionStatus(item.id, 'done');
+    const handleApprove = async (item) => {
+        await sessionsApi.updateStatus(item.id, 'done');
         showToast(`Kehadiran ${item.name} berhasil disetujui.`, 'success');
+        loadSessions();
     };
 
-    const handleReject = (item) => {
-        updateSessionStatus(item.id, 'cancelled');
+    const handleReject = async (item) => {
+        await sessionsApi.updateStatus(item.id, 'cancelled');
         showToast(`Sesi ${item.name} telah dibatalkan.`, 'error');
+        loadSessions();
     };
 
     return (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col relative">
-            {/* Inline Toast */}
             {toast && (
                 <div className={`absolute top-3 right-3 left-3 z-10 flex items-center gap-2 px-4 py-3 rounded-lg text-sm font-semibold shadow-lg border transition-all ${
-                    toast.type === 'success'
-                        ? 'bg-green-50 text-green-800 border-green-200'
-                        : 'bg-red-50 text-red-800 border-red-200'
+                    toast.type === 'success' ? 'bg-green-50 text-green-800 border-green-200' : 'bg-red-50 text-red-800 border-red-200'
                 }`}>
                     <span className="material-symbols-outlined text-[18px]">{toast.type === 'success' ? 'check_circle' : 'cancel'}</span>
                     {toast.message}
@@ -66,7 +71,11 @@ const PendingAttendance = () => {
             </div>
 
             <div className="p-2 flex-1 flex flex-col gap-1">
-                {items.length === 0 ? (
+                {loading ? (
+                    <div className="flex flex-col gap-2 p-3">
+                        {[1,2,3].map(i => <div key={i} className="h-12 bg-slate-100 rounded-lg animate-pulse" />)}
+                    </div>
+                ) : items.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-8 text-slate-400 gap-2">
                         <span className="material-symbols-outlined text-3xl">check_circle</span>
                         <p className="text-sm font-medium">Semua kehadiran telah dikonfirmasi / Sesi kosong</p>
@@ -74,7 +83,7 @@ const PendingAttendance = () => {
                 ) : items.map((item) => (
                     <div key={item.id} className="flex items-center justify-between p-3 hover:bg-slate-50 rounded-lg transition-colors group">
                         <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-cover bg-center border border-slate-200" style={{ backgroundImage: item.avatarObj }} />
+                            <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-700 font-bold flex items-center justify-center text-sm border border-blue-200">{item.initial}</div>
                             <div>
                                 <p className="text-sm font-bold text-slate-900">{item.name}</p>
                                 <p className="text-xs text-slate-500">{item.role} • Check-in: {item.time}</p>

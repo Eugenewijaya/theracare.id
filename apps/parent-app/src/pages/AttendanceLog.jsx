@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getStore, getAllPrograms } from '../../../shared/clinicDataStore';
+import { childrenApi, adminApi, sessionsApi, therapistsApi } from '../../../shared/api/client';
 
 // Calculate end time from startTime + duration string (e.g. "09:00" + "60 mins")
 const calculateEndTime = (startTime, duration) => {
@@ -20,60 +20,72 @@ export default function AttendanceLog() {
     const [attendanceRate, setAttendanceRate] = useState(0);
 
     useEffect(() => {
-        const loadData = () => {
+        const loadData = async () => {
             const saved = sessionStorage.getItem('parent_user');
             if (!saved) return;
             const user = JSON.parse(saved);
             const childId = user.childId;
-            if (!childId) return;
+            const parentId = user.parentId;
+            if (!childId && !parentId) return;
 
-            const store = getStore();
-            const found = (store.children || []).find(c => c.nita === childId || c.id === childId);
-            setChild(found);
-            
-            const allProgs = getAllPrograms();
-            setPrograms(allProgs);
+            try {
+                let targetChildId = childId;
+                if (!targetChildId && parentId) {
+                    const cres = await childrenApi.getByParent(parentId);
+                    const childrenList = cres.data?.data || [];
+                    if (childrenList.length > 0) {
+                        targetChildId = childrenList[0].id || childrenList[0].nita;
+                    }
+                }
 
-            if (found) {
-                const childSessions = (store.sessions || []).filter(s => s.childId === found.id);
-                const logs = childSessions.map(s => {
-                    let status = 'rescheduled';
-                    if (s.status === 'done') status = 'present';
-                    else if (s.status === 'cancelled') status = 'absent';
+                if (targetChildId) {
+                    const childRes = await childrenApi.getById(targetChildId);
+                    setChild(childRes.data?.data || null);
                     
-                    // Resolve therapist name from therapistId
-                    const therapist = (store.therapists || []).find(t => t.id === s.therapistId);
+                    const progsRes = await adminApi.getPrograms();
+                    setPrograms(progsRes.data?.data || []);
 
-                    return {
-                        id: s.id,
-                        date: s.date,
-                        program: s.focus || 'Therapy',
-                        status: status,
-                        checkIn: s.status === 'done' ? s.startTime : null,
-                        checkOut: s.status === 'done' ? calculateEndTime(s.startTime, s.duration) : null,
-                        note: s.notes || (status === 'rescheduled' ? 'Sesi dipindahkan' : ''),
-                        therapist: therapist ? therapist.name : 'Terapis'
-                    };
-                }).sort((a,b) => new Date(b.date) - new Date(a.date));
-                setAttendanceLog(logs);
+                    const sessionsRes = await sessionsApi.getCompletedForChild(targetChildId);
+                    const childSessions = sessionsRes.data?.data || [];
+                    
+                    const therapistsRes = await therapistsApi.getAll();
+                    const therapistsList = therapistsRes.data?.data || [];
 
-                // Compute actual attendance rate for current month
-                const now = new Date();
-                const thisMonth = now.getMonth();
-                const thisYear = now.getFullYear();
-                const monthSessions = logs.filter(l => {
-                    const d = new Date(l.date);
-                    return d.getMonth() === thisMonth && d.getFullYear() === thisYear;
-                });
-                const presentCount = monthSessions.filter(l => l.status === 'present').length;
-                const rate = monthSessions.length > 0 ? Math.round((presentCount / monthSessions.length) * 100) : 0;
-                setAttendanceRate(rate);
-            }
+                    const logs = childSessions.map(s => {
+                        let status = 'rescheduled';
+                        if (s.status === 'done') status = 'present';
+                        else if (s.status === 'cancelled') status = 'absent';
+                        
+                        const therapist = therapistsList.find(t => t.id === s.therapistId);
+
+                        return {
+                            id: s.id,
+                            date: s.date,
+                            program: s.focus || 'Therapy',
+                            status: status,
+                            checkIn: s.status === 'done' ? s.startTime : null,
+                            checkOut: s.status === 'done' ? calculateEndTime(s.startTime, s.duration) : null,
+                            note: s.notes || (status === 'rescheduled' ? 'Sesi dipindahkan' : ''),
+                            therapist: therapist ? therapist.name : 'Terapis'
+                        };
+                    }).sort((a,b) => new Date(b.date) - new Date(a.date));
+                    setAttendanceLog(logs);
+
+                    const now = new Date();
+                    const thisMonth = now.getMonth();
+                    const thisYear = now.getFullYear();
+                    const monthSessions = logs.filter(l => {
+                        const d = new Date(l.date);
+                        return d.getMonth() === thisMonth && d.getFullYear() === thisYear;
+                    });
+                    const presentCount = monthSessions.filter(l => l.status === 'present').length;
+                    const rate = monthSessions.length > 0 ? Math.round((presentCount / monthSessions.length) * 100) : 0;
+                    setAttendanceRate(rate);
+                }
+            } catch(e) { console.error(e); }
         };
 
         loadData();
-        window.addEventListener('clinicDataUpdated', loadData);
-        return () => window.removeEventListener('clinicDataUpdated', loadData);
     }, []);
 
     const getStatusStyle = (status) => {

@@ -1,44 +1,50 @@
 import React, { useState, useEffect } from 'react';
-
-const getClinStats = () => {
-    try {
-        const d = JSON.parse(localStorage.getItem('clinicData') || '{}');
-        const kids = d.children || [];
-        const therapists = d.therapists || [];
-        const sessions = d.sessions || [];
-        const today = new Date().toISOString().split('T')[0];
-        
-        const todaySessions = sessions.filter(s => s.date === today);
-        const completedSessions = todaySessions.filter(s => s.status === 'done').length;
-
-        const activeTherapists = therapists.filter(t => t.status === 'active').length;
-
-        return { 
-            activeChildren: kids.filter(c => c.status === 'active').length || kids.length || 45,
-            totalSessionsToday: todaySessions.length,
-            completedSessionsToday: completedSessions,
-            totalTherapists: therapists.length,
-            activeTherapists: activeTherapists
-        };
-    } catch { 
-        return { activeChildren: 45, totalSessionsToday: 15, completedSessionsToday: 12, totalTherapists: 10, activeTherapists: 8 }; 
-    }
-};
-
-const getPendingCount = () => {
-    try { return JSON.parse(localStorage.getItem('adminRequests_pending') || '[]').length; }
-    catch { return 3; }
-};
+import { adminApi, rescheduleApi } from '../../../shared/api/client';
 
 const QuickStats = () => {
-    const [stats, setStats] = useState({ ...getClinStats(), pendingRequests: getPendingCount() });
+    const [stats, setStats] = useState({
+        activeChildren: 0, totalSessionsToday: 0, completedSessionsToday: 0,
+        totalTherapists: 0, activeTherapists: 0, pendingRequests: 0,
+    });
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const update = () => setStats({ ...getClinStats(), pendingRequests: getPendingCount() });
-        window.addEventListener('requestsDataUpdated', update);
-        window.addEventListener('clinicDataUpdated', update);
-        return () => { window.removeEventListener('requestsDataUpdated', update); window.removeEventListener('clinicDataUpdated', update); };
+        const load = async () => {
+            try {
+                const [statsRes, reqRes] = await Promise.all([
+                    adminApi.getStats(),
+                    rescheduleApi.getAll(),
+                ]);
+                const s = statsRes.data?.data || {};
+                const pendingCount = (reqRes.data?.data || []).filter(r => r.status === 'pending').length;
+                setStats({
+                    activeChildren: s.activeChildren || 0,
+                    totalSessionsToday: s.totalSessionsToday || 0,
+                    completedSessionsToday: s.completedSessionsToday || 0,
+                    totalTherapists: s.totalTherapists || 0,
+                    activeTherapists: s.totalTherapists || 0,
+                    pendingRequests: pendingCount,
+                });
+            } catch {}
+            setLoading(false);
+        };
+        load();
+        const interval = setInterval(load, 60000);
+        return () => clearInterval(interval);
     }, []);
+
+    if (loading) {
+        return (
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                {[1,2,3,4].map(i => (
+                    <div key={i} className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm animate-pulse">
+                        <div className="h-4 bg-slate-200 rounded w-24 mb-4"></div>
+                        <div className="h-8 bg-slate-200 rounded w-16"></div>
+                    </div>
+                ))}
+            </div>
+        );
+    }
 
     return (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">

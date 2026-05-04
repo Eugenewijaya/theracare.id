@@ -1,10 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {
-    getAllAnnouncements,
-    addAnnouncement,
-    updateAnnouncement,
-    deleteAnnouncement,
-} from '../../../shared/clinicDataStore';
+import { adminApi } from '../../../shared/api/client';
 
 const ROLES = [
     { id: 'parent', label: 'Orang Tua', icon: 'family_restroom', color: 'sky' },
@@ -129,13 +124,20 @@ export default function AnnouncementsPage() {
     const [modal, setModal] = useState(null); // null | 'create' | {ann object}
     const [deleteConfirm, setDeleteConfirm] = useState(null);
     const [toast, setToast] = useState('');
+    const [loading, setLoading] = useState(true);
 
-    const load = () => setAnnouncements(getAllAnnouncements());
+    const load = async () => {
+        try {
+            const res = await adminApi.getAnnouncements();
+            setAnnouncements(res.data?.data || []);
+        } catch (e) {
+            console.error(e);
+        }
+        setLoading(false);
+    };
 
     useEffect(() => {
         load();
-        window.addEventListener('clinicDataUpdated', load);
-        return () => window.removeEventListener('clinicDataUpdated', load);
     }, []);
 
     const showToast = (msg) => {
@@ -143,20 +145,20 @@ export default function AnnouncementsPage() {
         setTimeout(() => setToast(''), 3000);
     };
 
-    const handleSave = (data) => {
+    const handleSave = async (data) => {
         if (modal === 'create') {
-            addAnnouncement({ ...data, createdBy: 'admin' });
+            await adminApi.createAnnouncement(data);
             showToast('Pengumuman berhasil dibuat dan dikirim!');
         } else {
-            updateAnnouncement(modal.id, data);
+            await adminApi.updateAnnouncement(modal.id, data);
             showToast('Pengumuman berhasil diperbarui.');
         }
         setModal(null);
         load();
     };
 
-    const handleDelete = (id) => {
-        deleteAnnouncement(id);
+    const handleDelete = async (id) => {
+        await adminApi.deleteAnnouncement(id);
         setDeleteConfirm(null);
         showToast('Pengumuman berhasil dihapus.');
         load();
@@ -192,7 +194,11 @@ export default function AnnouncementsPage() {
 
             {/* Table */}
             <div className="flex-1 overflow-y-auto p-4 sm:p-6">
-                {announcements.length === 0 ? (
+                {loading ? (
+                    <div className="flex flex-col gap-3">
+                        {[1, 2, 3].map(i => <div key={i} className="h-24 bg-slate-100 rounded-2xl animate-pulse" />)}
+                    </div>
+                ) : announcements.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full gap-4 text-center">
                         <div className="w-20 h-20 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
                             <span className="material-symbols-outlined text-4xl text-slate-400">campaign</span>

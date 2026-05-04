@@ -1,15 +1,20 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { getAllPrograms, addProgram, updateProgram, deleteProgram } from '../../shared/clinicDataStore';
+import { adminApi } from '../../shared/api/client';
 
 function App() {
   const [programs, setPrograms] = useState([]);
   const [search, setSearch] = useState('');
 
   useEffect(() => {
-    const load = () => setPrograms(getAllPrograms());
+    const load = async () => {
+      try {
+        const res = await adminApi.getPrograms();
+        setPrograms(res.data?.data || []);
+      } catch (e) {
+        console.error(e);
+      }
+    };
     load();
-    window.addEventListener('clinicDataUpdated', load);
-    return () => window.removeEventListener('clinicDataUpdated', load);
   }, []);
   const [toast, setToast] = useState(null);
   const [formError, setFormError] = useState('');
@@ -46,7 +51,7 @@ function App() {
     setFormError('');
   };
 
-  const handleSave = (e) => {
+  const handleSave = async (e) => {
     e.preventDefault();
     if (!formData.name.trim() || !formData.code.trim()) {
       setFormError('Nama program dan kode wajib diisi.');
@@ -60,21 +65,31 @@ function App() {
       goals: formData.goals.filter(g => g.trim() !== '')
     };
 
-    if (editingProgram) {
-      updateProgram(editingProgram.id, cleanedData);
-      showToast(`Program "${cleanedData.name}" berhasil diperbarui.`);
-    } else {
-      addProgram(cleanedData);
-      showToast(`Program "${cleanedData.name}" berhasil ditambahkan.`);
+    try {
+      if (editingProgram) {
+        await adminApi.updateProgram(editingProgram.id, cleanedData);
+        showToast(`Program "${cleanedData.name}" berhasil diperbarui.`);
+      } else {
+        await adminApi.createProgram(cleanedData);
+        showToast(`Program "${cleanedData.name}" berhasil ditambahkan.`);
+      }
+      handleCloseModal();
+      const res = await adminApi.getPrograms();
+      setPrograms(res.data?.data || []);
+    } catch(e) {
+      showToast('Terjadi kesalahan', 'error');
     }
-    handleCloseModal();
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     const name = deleteConfirm.name;
-    deleteProgram(deleteConfirm.id);
-    setDeleteConfirm(null);
-    showToast(`Program "${name}" telah dihapus.`, 'warning');
+    try {
+      await adminApi.deleteProgram(deleteConfirm.id);
+      setDeleteConfirm(null);
+      showToast(`Program "${name}" telah dihapus.`, 'warning');
+      const res = await adminApi.getPrograms();
+      setPrograms(res.data?.data || []);
+    } catch(e) {}
   };
 
   // --- Form Goal Array Handlers ---

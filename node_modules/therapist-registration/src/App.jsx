@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { addTherapist, getAllPrograms } from '../../shared/clinicDataStore';
+import { therapistsApi, adminApi } from '../../shared/api/client';
 
 // ─── Pop-up Notification ─────────────────────────────────────────────────────
 function PopupNotif({ popup, onClose }) {
@@ -434,9 +434,13 @@ function App() {
     const [submitting, setSubmitting] = useState(false);
 
     useEffect(() => {
-        setPrograms(getAllPrograms());
-        window.addEventListener('clinicDataUpdated', () => setPrograms(getAllPrograms()));
-        return () => window.removeEventListener('clinicDataUpdated', () => setPrograms(getAllPrograms()));
+        const load = async () => {
+            try {
+                const pRes = await adminApi.getPrograms();
+                setPrograms(pRes.data?.data || []);
+            } catch (e) {}
+        };
+        load();
     }, []);
 
     const showPopup = (type, title, message) => setPopup({ type, title, message });
@@ -480,7 +484,7 @@ function App() {
 
     const handleBack = () => setCurrentStep(p => p - 1);
 
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
         const scheduleEmpty = Object.values(formData.schedule).filter(Boolean).length === 0;
         if (scheduleEmpty) {
             showPopup('error', 'Jadwal Diperlukan', 'Pilih setidaknya satu hari kerja untuk terapis.');
@@ -490,7 +494,8 @@ function App() {
         try {
             const fullName = `${formData.firstName} ${formData.lastName}`.trim();
             const specialization = formData.specialty === 'Lainnya' ? formData.customSpecialty : formData.specialty;
-            const therapist = addTherapist({
+            
+            const res = await therapistsApi.create({
                 name: fullName,
                 phone: formData.phone,
                 email: formData.email,
@@ -510,10 +515,13 @@ function App() {
                 maxClients: formData.maxClients ? parseInt(formData.maxClients) : null,
                 tempPassword: formData.tempPassword,
             });
+
+            const therapist = res.data?.data || {};
+
             setPopup({
                 type: 'success',
                 title: 'Terapis Berhasil Didaftarkan!',
-                message: `${fullName} telah berhasil didaftarkan dengan NIT: ${therapist.nit}. Password sementara: ${formData.tempPassword}`,
+                message: `${fullName} telah berhasil didaftarkan dengan NIT: ${therapist.nit || 'Generated'}. Password sementara: ${formData.tempPassword}`,
                 onClose: () => navigate('/therapists'),
             });
         } catch (err) {

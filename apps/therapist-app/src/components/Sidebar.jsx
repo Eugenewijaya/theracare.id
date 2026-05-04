@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { getUnreadNotificationCount, getNotificationsForRole } from '../../../shared/clinicDataStore';
+import { notificationsApi } from '../../../shared/api/client';
 
 const navItems = [
   { path: '/', icon: 'space_dashboard', label: 'Dasbor', end: true },
@@ -24,22 +24,23 @@ export default function Sidebar({ isOpen, onClose }) {
 
   // Compute notification badges
   useEffect(() => {
-    const computeBadges = () => {
+    const computeBadges = async () => {
       if (!user?.id) return;
-      const userId = user.id;
-      const total = getUnreadNotificationCount('therapist', userId);
-      setTotalUnread(total);
-
-      const allNotifs = getNotificationsForRole('therapist', userId);
-      const unread = allNotifs.filter(n => !(n.readBy || []).includes(userId));
-      const scheduleCount = unread.filter(n => n.type === 'schedule_change' || n.type === 'new_session').length;
-      const notifCount = unread.filter(n => n.type === 'announcement' || n.type === 'reschedule_request').length;
-      setBadgeCounts({ schedule: scheduleCount, notification: notifCount });
+      try {
+        const res = await notificationsApi.getAll();
+        const allNotifs = res.data?.data || [];
+        const unread = allNotifs.filter(n => !n.isRead && !(n.readBy || []).includes(user.id));
+        setTotalUnread(unread.length);
+        
+        const scheduleCount = unread.filter(n => n.type === 'schedule_change' || n.type === 'new_session').length;
+        const notifCount = unread.filter(n => n.type === 'announcement' || n.type === 'reschedule_request').length;
+        setBadgeCounts({ schedule: scheduleCount, notification: notifCount });
+      } catch (err) {
+        console.error('Failed to load notifications', err);
+      }
     };
     computeBadges();
-    window.addEventListener('clinicDataUpdated', computeBadges);
-    return () => window.removeEventListener('clinicDataUpdated', computeBadges);
-  }, [user]);
+  }, [user, location.pathname]);
 
   // Close sidebar on route change (mobile)
   useEffect(() => {

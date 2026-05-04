@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getAllChildren, getAllTherapists } from '../../../shared/clinicDataStore';
+import { childrenApi, therapistsApi } from '../../../shared/api/client';
 
 const PROGRAM_COLORS = {
     'Occupational Therapy (OT)': { bg: 'bg-blue-100 dark:bg-blue-900/30', dot: 'bg-blue-500', text: 'text-blue-700 dark:text-blue-300' },
@@ -27,13 +27,19 @@ const SidePanel = ({ onClose, selectedDate, sessions = [], onEventClick }) => {
     const [therapistsList, setTherapistsList] = useState([]);
 
     useEffect(() => {
-        const load = () => {
-            setChildrenList(getAllChildren());
-            setTherapistsList(getAllTherapists());
+        const load = async () => {
+            try {
+                const [childRes, therRes] = await Promise.all([
+                    childrenApi.getAll(),
+                    therapistsApi.getAll()
+                ]);
+                setChildrenList(childRes.data?.data || []);
+                setTherapistsList(therRes.data?.data || []);
+            } catch (e) {
+                console.error(e);
+            }
         };
         load();
-        window.addEventListener('clinicDataUpdated', load);
-        return () => window.removeEventListener('clinicDataUpdated', load);
     }, []);
 
     const daySessions = sessions.filter(s => s.date === dateStr).sort((a, b) => a.startTime.localeCompare(b.startTime));

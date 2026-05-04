@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { getUnreadNotificationCount, getNotificationsForRole } from '../../../shared/clinicDataStore';
+import { notificationsApi } from '../../../shared/api/client';
 
 const navItems = [
   { path: '/', icon: 'dashboard', label: 'Dasbor', end: true },
@@ -22,20 +22,18 @@ export default function Sidebar({ isOpen, onClose }) {
 
   // Compute notification badges
   useEffect(() => {
-    const computeBadges = () => {
+    const computeBadges = async () => {
       if (!user?.parentId) return;
-      const userId = user.parentId;
-
-      // Breakdown by type
-      const allNotifs = getNotificationsForRole('parent', userId);
-      const unread = allNotifs.filter(n => !(n.readBy || []).includes(userId));
-      const rescheduleCount = unread.filter(n => n.type === 'reschedule_result' || n.type === 'schedule_change').length;
-      const announcementCount = unread.filter(n => n.type === 'announcement' || n.type === 'new_session' || n.type === 'session_completed').length;
-      setBadgeCounts({ reschedule: rescheduleCount, announcement: announcementCount });
+      try {
+        const res = await notificationsApi.getAll();
+        const allNotifs = res.data?.data || [];
+        const unread = allNotifs.filter(n => !n.isRead);
+        const rescheduleCount = unread.filter(n => n.type === 'reschedule_result' || n.type === 'schedule_change').length;
+        const announcementCount = unread.filter(n => n.type === 'announcement' || n.type === 'new_session' || n.type === 'session_completed').length;
+        setBadgeCounts({ reschedule: rescheduleCount, announcement: announcementCount });
+      } catch(e) {}
     };
     computeBadges();
-    window.addEventListener('clinicDataUpdated', computeBadges);
-    return () => window.removeEventListener('clinicDataUpdated', computeBadges);
   }, [user]);
 
   // Close sidebar on route change (mobile)

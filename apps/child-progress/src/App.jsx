@@ -1,10 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Header from './components/Header';
-import {
-    getAllChildren,
-    getCompletedSessionsByChild,
-    getSessionRating,
-} from '../../shared/clinicDataStore';
+import { childrenApi, sessionsApi } from '../../shared/api/client';
 
 // ── Helpers ──────────────────────────────────────────────────────────
 const guessTherapyType = (focus = '') => {
@@ -48,10 +44,15 @@ function App() {
     const [sessions, setSessions] = useState([]);
 
     useEffect(() => {
-        const load = () => setStoreChildren(getAllChildren());
+        const load = async () => {
+            try {
+                const res = await childrenApi.getAll();
+                setStoreChildren(res.data?.data || []);
+            } catch (e) {
+                console.error(e);
+            }
+        };
         load();
-        window.addEventListener('clinicDataUpdated', load);
-        return () => window.removeEventListener('clinicDataUpdated', load);
     }, []);
 
     // Build combined list: store children first
@@ -96,21 +97,35 @@ function App() {
     // Load sessions for selected child
     useEffect(() => {
         if (!selectedId) return;
-        const raw = getCompletedSessionsByChild(selectedId);
-        setSessions(raw.map(s => {
-            const rating = getSessionRating(s.id);
-            const ttype = guessTherapyType(s.focus);
-            return {
-                id: s.id,
-                date: formatDate(s.date),
-                type: ttype.label,
-                typeBg: ttype.bg,
-                therapist: s.therapist?.name || 'Therapist',
-                stars: rating?.rating || -1,
-                ratingComment: rating?.comment || '',
-                notes: s.notes || '',
-            };
-        }));
+        const loadSessions = async () => {
+            try {
+                const rawRes = await sessionsApi.getCompletedForChild(selectedId);
+                const raw = rawRes.data?.data || [];
+                const mapped = await Promise.all(raw.map(async s => {
+                    let ratingData = null;
+                    try {
+                        const rRes = await sessionsApi.getRating(s.id);
+                        ratingData = rRes.data?.data;
+                    } catch(e) {}
+                    const rating = ratingData;
+                    const ttype = guessTherapyType(s.focus);
+                    return {
+                        id: s.id,
+                        date: formatDate(s.date),
+                        type: ttype.label,
+                        typeBg: ttype.bg,
+                        therapist: s.therapist?.name || 'Therapist',
+                        stars: rating?.rating || -1,
+                        ratingComment: rating?.comment || '',
+                        notes: s.notes || '',
+                    };
+                }));
+                setSessions(mapped);
+            } catch(e) {
+                console.error(e);
+            }
+        };
+        loadSessions();
     }, [selectedId, storeChildren]);
 
     const child = filteredChildren.find(c => c.id === selectedId) || filteredChildren[0] || null;

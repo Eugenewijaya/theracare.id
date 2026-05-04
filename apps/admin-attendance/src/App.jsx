@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getAllSessionsWithDetails, updateSessionStatus } from '../../shared/clinicDataStore';
+import { sessionsApi } from '../../shared/api/client';
 import Header from './components/Header';
 import AttendanceCard from './components/AttendanceCard';
 
@@ -10,23 +10,30 @@ function App() {
     const [activeTab, setActiveTab] = useState('today');
     const [historyFilter, setHistoryFilter] = useState('all');
     const [statusFilter, setStatusFilter] = useState('');
+    const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        const load = () => {
-            const allSessions = getAllSessionsWithDetails();
-            setAttendanceData(allSessions);
-        };
-        load();
-        window.addEventListener('clinicDataUpdated', load);
-        return () => window.removeEventListener('clinicDataUpdated', load);
-    }, []);
-
-    const handleApprove = (id) => {
-        updateSessionStatus(id, 'done');
+    const load = async () => {
+        try {
+            const res = await sessionsApi.getAll();
+            setAttendanceData(res.data?.data || []);
+        } catch (e) {
+            console.error('Failed to load sessions', e);
+        }
+        setLoading(false);
     };
 
-    const handleReject = (id) => {
-        updateSessionStatus(id, 'cancelled');
+    useEffect(() => {
+        load();
+    }, []);
+
+    const handleApprove = async (id) => {
+        const res = await sessionsApi.updateStatus(id, 'done');
+        if (res.ok) load();
+    };
+
+    const handleReject = async (id) => {
+        const res = await sessionsApi.updateStatus(id, 'cancelled');
+        if (res.ok) load();
     };
 
     const today = new Date().toISOString().split('T')[0];
@@ -34,12 +41,12 @@ function App() {
     // Filter today's pending sessions for cards
     const pendingTodaySessions = attendanceData
         .filter(s => s.date === today && s.status !== 'cancelled' && s.status !== 'done')
-        .sort((a,b) => a.startTime.localeCompare(b.startTime))
+        .sort((a,b) => (a.startTime || '').localeCompare(b.startTime || ''))
         .map(s => {
             const now = new Date();
             const currentHour = now.getHours();
             const currentMin = now.getMinutes();
-            const [startH, startM] = s.startTime.split(':').map(Number);
+            const [startH, startM] = (s.startTime || '00:00').split(':').map(Number);
             let checkInStatus = 'On Time';
             let statusColor = 'green';
             let minutesDiff = (currentHour * 60 + currentMin) - (startH * 60 + startM);
@@ -51,8 +58,8 @@ function App() {
 
             return {
                 id: s.id,
-                name: s.child ? s.child.name : 'Unknown Child',
-                role: `${s.focus || 'Therapy'} w/ ${s.therapist ? s.therapist.name : 'Therapist'}`,
+                name: s.child?.name || 'Unknown Child',
+                role: `${s.focus || 'Therapy'} w/ ${s.therapist?.name || 'Therapist'}`,
                 avatar: "url('https://lh3.googleusercontent.com/aida-public/AB6AXuDQeL2J2P2O5uH8P506H6yP924t0M1qH1R6_4tSXY37m8vA5239uA3d8gV9902iSxwI4wA0V1d0V90N7O8V32z1_82_1dD3AXY8o50F8L_sX51O5N4V8w6y3tEcxkY72P8K4pQvJ7WbQ0O22WwYn3C7N90X5Z12K8R9_E2gG4_V988L0sD8H930R7W19A208B8V45p0z45Z_d1tU')",
                 checkedIn: '--:--',
                 scheduled: s.startTime,
@@ -91,7 +98,7 @@ function App() {
             return isWithinTimeRange(s.date, historyFilter);
         })
         .filter(item => {
-            const cName = item.child ? item.child.name.toLowerCase() : '';
+            const cName = item.child?.name?.toLowerCase() || '';
             return cName.includes(searchTerm.toLowerCase());
         })
         .sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -180,21 +187,25 @@ function App() {
                         {/* Attendance Cards Grid */}
                         <div className="flex flex-col gap-4 mt-4">
                             <h2 className="text-lg font-bold text-slate-900 dark:text-white">Menunggu Persetujuan</h2>
-                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                                {pendingTodaySessions.map((child) => (
-                                    <AttendanceCard 
-                                        key={child.id} 
-                                        {...child} 
-                                        onApprove={() => handleApprove(child.id)}
-                                        onReject={() => handleReject(child.id)}
-                                    />
-                                ))}
-                                {pendingTodaySessions.length === 0 && (
-                                    <div className="col-span-1 md:col-span-2 xl:col-span-3 text-center py-12 text-slate-500">
-                                        Tidak ada anak yang menunggu persetujuan.
-                                    </div>
-                                )}
-                            </div>
+                            {loading ? (
+                                <div className="text-center py-12">Loading...</div>
+                            ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                                    {pendingTodaySessions.map((child) => (
+                                        <AttendanceCard 
+                                            key={child.id} 
+                                            {...child} 
+                                            onApprove={() => handleApprove(child.id)}
+                                            onReject={() => handleReject(child.id)}
+                                        />
+                                    ))}
+                                    {pendingTodaySessions.length === 0 && (
+                                        <div className="col-span-1 md:col-span-2 xl:col-span-3 text-center py-12 text-slate-500">
+                                            Tidak ada anak yang menunggu persetujuan.
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </>
                 )}
@@ -238,7 +249,7 @@ function App() {
                                     ))}
                                     {logsData.length === 0 && (
                                         <tr>
-                                            <td colSpan="5" className="px-6 py-8 text-center text-slate-500">
+                                            <td colSpan="6" className="px-6 py-8 text-center text-slate-500">
                                                 Tidak ada log kehadiran ditemukan.
                                             </td>
                                         </tr>

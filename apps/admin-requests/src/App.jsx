@@ -1,13 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import Header from './components/Header';
 import RequestCard from './components/RequestCard';
-import { getRescheduleRequests, updateRescheduleRequest } from '../../shared/clinicDataStore';
-
-// Helper to format mock fallback since we still need rich UI
-const getClinicData = () => {
-    try { return JSON.parse(localStorage.getItem('clinicData') || '{}'); }
-    catch { return {}; }
-};
+import { rescheduleApi } from '../../shared/api/client';
 
 // ── Notification Popup Component ──────────────────────────────────
 function NotificationPopup({ isOpen, message, type, onClose, onConfirm, showConfirmButtons }) {
@@ -164,48 +158,49 @@ function ResolvedRow({ name, parentName, session, originalDate, newDate, resolve
 function App() {
     const [activeTab, setActiveTab] = useState('pending');
     const [allRequests, setAllRequests] = useState([]);
+    const [loading, setLoading] = useState(true);
 
     const [popup, setPopup] = useState({ isOpen: false, message: '', type: 'success', showConfirm: false });
     const [pendingAction, setPendingAction] = useState(null);
     const [searchQuery, setSearchQuery] = useState('');
 
-    const refreshData = () => {
-        const store = getClinicData();
-        const raw = store.rescheduleRequests || [];
-        const mapped = raw.map(r => {
-            const child = store.children?.find(c => c.id === r.childId) || {};
-            const parent = store.parents?.find(p => p.id === r.parentId) || {};
-            const session = store.sessions?.find(s => s.id === r.sessionId) || {};
+    const refreshData = async () => {
+        try {
+            const res = await rescheduleApi.getAll();
+            const raw = res.data?.data || [];
             
-            return {
-                id: r.id,
-                name: child.name || `${child.firstName || ''} ${child.lastName || ''}`.trim() || 'Unknown Child',
-                parentName: parent.name || parent.firstName || 'Unknown Parent',
-                session: session.focus || 'Therapy Session',
-                date: session.date ? `${session.date} • ${session.startTime}` : 'Date TBD',
-                reason: r.reason || r.details || 'No reason provided',
-                submittedAgo: new Date(r.createdAt || Date.now()).toLocaleDateString(),
-                slots: (r.proposedSlots || []).map((s, idx) => ({ time: s, status: idx===0?'available':'conflict' })),
-                status: r.status || 'pending',
-                reviewNote: r.reviewNote || '',
-                reviewedBy: 'Admin',
-                originalDate: session.date ? `${session.date} • ${session.startTime}` : 'TBD',
-                newDate: r.newDate ? `${r.newDate} • ${r.newStartTime || session.startTime}` : '—',
-                resolvedOn: r.resolvedAt ? new Date(r.resolvedAt).toLocaleDateString() : '',
-                outcome: r.status
-            };
-        });
-        setAllRequests(mapped.reverse());
+            const mapped = raw.map(r => {
+                const child = r.child || {};
+                const parent = r.parent || {};
+                const session = r.session || {};
+                
+                return {
+                    id: r.id,
+                    name: child.name || `${child.firstName || ''} ${child.lastName || ''}`.trim() || 'Unknown Child',
+                    parentName: parent.name || parent.firstName || 'Unknown Parent',
+                    session: session.focus || 'Therapy Session',
+                    date: session.date ? `${session.date} • ${session.startTime}` : 'Date TBD',
+                    reason: r.reason || r.details || 'No reason provided',
+                    submittedAgo: new Date(r.createdAt || Date.now()).toLocaleDateString(),
+                    slots: (r.proposedSlots || []).map((s, idx) => ({ time: s, status: idx===0?'available':'conflict' })),
+                    status: r.status || 'pending',
+                    reviewNote: r.reviewNote || '',
+                    reviewedBy: 'Admin',
+                    originalDate: session.date ? `${session.date} • ${session.startTime}` : 'TBD',
+                    newDate: r.newDate ? `${r.newDate} • ${r.newStartTime || session.startTime}` : '—',
+                    resolvedOn: r.resolvedAt ? new Date(r.resolvedAt).toLocaleDateString() : '',
+                    outcome: r.status
+                };
+            });
+            setAllRequests(mapped.reverse());
+        } catch (e) {
+            console.error('Failed to load reschedule requests', e);
+        }
+        setLoading(false);
     };
 
     useEffect(() => {
         refreshData();
-        window.addEventListener('clinicDataUpdated', refreshData);
-        window.addEventListener('requestsDataUpdated', refreshData);
-        return () => {
-            window.removeEventListener('clinicDataUpdated', refreshData);
-            window.removeEventListener('requestsDataUpdated', refreshData);
-        };
     }, []);
 
     const filterByName = (arr) => arr.filter(req => !searchQuery || req.name.toLowerCase().includes(searchQuery.toLowerCase()) || req.parentName.toLowerCase().includes(searchQuery.toLowerCase()));
@@ -218,18 +213,18 @@ function App() {
         setPopup({ isOpen: true, message, type, showConfirm });
     };
 
-    const confirmAction = () => {
+    const confirmAction = async () => {
         if (!pendingAction) return;
         const { type, req } = pendingAction;
         
         if (type === 'reject') {
-            updateRescheduleRequest(req.id, 'rejected');
-            window.dispatchEvent(new CustomEvent('clinicDataUpdated'));
+            await rescheduleApi.updateStatus(req.id, 'rejected');
+            refreshData();
             setTimeout(() => showPopup(`Request from ${req.name} has been rejected.`, 'success'), 300);
         }
         else if (type === 'process') {
-            updateRescheduleRequest(req.id, 'review', { reviewNote: 'Under internal review.' });
-            window.dispatchEvent(new CustomEvent('clinicDataUpdated'));
+            await rescheduleApi.updateStatus(req.id, 'review', { reviewNote: 'Under internal review.' });
+            refreshData();
             setTimeout(() => {
                 showPopup(`Request from ${req.name} moved to Under Review.`);
                 setActiveTab('review');
@@ -242,8 +237,8 @@ function App() {
                 // mock parse format from "Wed, Oct 25 • 4:00 PM"
                 newD = chosenSlot.time.substring(0, 12);
             }
-            updateRescheduleRequest(req.id, 'approved', { newDate: newD || '2023-11-01' }); // naive fallback
-            window.dispatchEvent(new CustomEvent('clinicDataUpdated'));
+            await rescheduleApi.updateStatus(req.id, 'approved', { newDate: newD || '2023-11-01' }); 
+            refreshData();
             setTimeout(() => showPopup(`Request from ${req.name} has been approved.`, 'success'), 300);
         }
         
@@ -330,63 +325,69 @@ function App() {
                         </div>
                     </div>
 
-                    {/* ── Pending Tab ── */}
-                    {activeTab === 'pending' && (
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                            {pending.length === 0 ? (
-                                <div className="col-span-2 flex flex-col items-center justify-center py-20 text-slate-400 gap-3">
-                                    <span className="material-symbols-outlined text-5xl">inventory_2</span>
-                                    <p className="text-lg font-semibold">{searchQuery ? 'No matching pending requests' : 'No pending requests'}</p>
+                    {loading ? (
+                        <div className="text-center py-12">Loading...</div>
+                    ) : (
+                        <>
+                            {/* ── Pending Tab ── */}
+                            {activeTab === 'pending' && (
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                    {pending.length === 0 ? (
+                                        <div className="col-span-2 flex flex-col items-center justify-center py-20 text-slate-400 gap-3">
+                                            <span className="material-symbols-outlined text-5xl">inventory_2</span>
+                                            <p className="text-lg font-semibold">{searchQuery ? 'No matching pending requests' : 'No pending requests'}</p>
+                                        </div>
+                                    ) : pending.map((req, i) => (
+                                        <RequestCard 
+                                            key={i} 
+                                            {...req} 
+                                            onReject={() => handleReject(req)}
+                                            onProcess={() => handleProcess(req)}
+                                            onApprove={() => handleApprove(req)}
+                                        />
+                                    ))}
                                 </div>
-                            ) : pending.map((req, i) => (
-                                <RequestCard 
-                                    key={i} 
-                                    {...req} 
-                                    onReject={() => handleReject(req)}
-                                    onProcess={() => handleProcess(req)}
-                                    onApprove={() => handleApprove(req)}
-                                />
-                            ))}
-                        </div>
-                    )}
+                            )}
 
-                    {/* ── Under Review Tab ── */}
-                    {activeTab === 'review' && (
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                            {review.length === 0 ? (
-                                <div className="col-span-2 flex flex-col items-center justify-center py-20 text-slate-400 gap-3">
-                                    <span className="material-symbols-outlined text-5xl">manage_search</span>
-                                    <p className="text-lg font-semibold">{searchQuery ? 'No matching requests under review' : 'No requests under review'}</p>
+                            {/* ── Under Review Tab ── */}
+                            {activeTab === 'review' && (
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                    {review.length === 0 ? (
+                                        <div className="col-span-2 flex flex-col items-center justify-center py-20 text-slate-400 gap-3">
+                                            <span className="material-symbols-outlined text-5xl">manage_search</span>
+                                            <p className="text-lg font-semibold">{searchQuery ? 'No matching requests under review' : 'No requests under review'}</p>
+                                        </div>
+                                    ) : review.map((req, i) => (
+                                        <ReviewCard 
+                                            key={i} 
+                                            {...req} 
+                                            onReject={() => handleReject(req)}
+                                            onApprove={() => handleApprove(req)}
+                                        />
+                                    ))}
                                 </div>
-                            ) : review.map((req, i) => (
-                                <ReviewCard 
-                                    key={i} 
-                                    {...req} 
-                                    onReject={() => handleReject(req)}
-                                    onApprove={() => handleApprove(req)}
-                                />
-                            ))}
-                        </div>
-                    )}
+                            )}
 
-                    {/* ── Resolved History Tab ── */}
-                    {activeTab === 'resolved' && (
-                        <div className="flex flex-col gap-4">
-                            {/* Summary bar */}
-                            <div className="flex gap-4 flex-wrap mb-2">
-                                {[
-                                    { label: 'Approved',       count: resolved.filter(r => r.outcome === 'approved').length,        color: 'text-emerald-600 bg-emerald-50 border-emerald-100' },
-                                    { label: 'Rejected',        count: resolved.filter(r => r.outcome === 'rejected').length,         color: 'text-red-600 bg-red-50 border-red-100' },
-                                ].map(s => (
-                                    <div key={s.label} className={`flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-semibold ${s.color}`}>
-                                        {s.label}: <span className="font-bold">{s.count}</span>
+                            {/* ── Resolved History Tab ── */}
+                            {activeTab === 'resolved' && (
+                                <div className="flex flex-col gap-4">
+                                    {/* Summary bar */}
+                                    <div className="flex gap-4 flex-wrap mb-2">
+                                        {[
+                                            { label: 'Approved',       count: resolved.filter(r => r.outcome === 'approved').length,        color: 'text-emerald-600 bg-emerald-50 border-emerald-100' },
+                                            { label: 'Rejected',        count: resolved.filter(r => r.outcome === 'rejected').length,         color: 'text-red-600 bg-red-50 border-red-100' },
+                                        ].map(s => (
+                                            <div key={s.label} className={`flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-semibold ${s.color}`}>
+                                                {s.label}: <span className="font-bold">{s.count}</span>
+                                            </div>
+                                        ))}
                                     </div>
-                                ))}
-                            </div>
-                            {resolved.map((r, i) => (
-                                <ResolvedRow key={i} {...r} />
-                            ))}
-                        </div>
+                                    {resolved.map((r, i) => (
+                                        <ResolvedRow key={i} {...r} />
+                                    ))}
+                                </div>
+                            )}
+                        </>
                     )}
 
                 </div>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getAllTherapists, getAllPrograms } from '../../../shared/clinicDataStore';
+import { therapistsApi, adminApi } from '../../../shared/api/client';
 
 const colors = {
     emerald: { border: 'border-emerald-500',  bg: 'bg-emerald-50 dark:bg-emerald-900/20', icon: 'text-emerald-600' },
@@ -33,8 +33,19 @@ const ProgramForm = ({ data, onChange, errors }) => {
     const [programsList, setProgramsList] = useState([]);
     
     useEffect(() => {
-        setTherapists(getAllTherapists());
-        setProgramsList(getAllPrograms());
+        const load = async () => {
+            try {
+                const [tRes, pRes] = await Promise.all([
+                    therapistsApi.getAll(),
+                    adminApi.getPrograms()
+                ]);
+                setTherapists(tRes.data?.data || []);
+                setProgramsList(pRes.data?.data || []);
+            } catch (e) {
+                console.error(e);
+            }
+        };
+        load();
     }, []);
 
     return (

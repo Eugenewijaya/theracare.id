@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getAnnouncements } from '../../../shared/clinicDataStore';
+import { adminApi } from '../../../shared/api/client';
 
 const formatDate = (dateStr) => {
     if (!dateStr) return '';
@@ -12,12 +12,13 @@ export default function Announcements() {
     const [expanded, setExpanded] = useState(null);
 
     useEffect(() => {
-        const load = () => {
-            setAnnouncements(getAnnouncements('parent'));
+        const load = async () => {
+            try {
+                const res = await adminApi.getAnnouncementsForRole('parent');
+                setAnnouncements(res.data?.data || []);
+            } catch(e) { console.error(e); }
         };
         load();
-        window.addEventListener('clinicDataUpdated', load);
-        return () => window.removeEventListener('clinicDataUpdated', load);
     }, []);
 
     return (

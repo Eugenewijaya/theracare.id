@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getAnnouncements, getRescheduleRequestsForTherapist } from '../../../shared/clinicDataStore';
+import { adminApi, rescheduleApi } from '../../../shared/api/client';
 
 const formatDate = (dateStr) => {
     if (!dateStr) return '';
@@ -20,17 +20,22 @@ export default function Announcements() {
     const [activeTab, setActiveTab] = useState('announcements'); // 'announcements' | 'reschedules'
 
     useEffect(() => {
-        const load = () => {
-            setAnnouncements(getAnnouncements('therapist'));
-            const saved = sessionStorage.getItem('therapist_user');
-            if (saved) {
-                const user = JSON.parse(saved);
-                setReschedules(getRescheduleRequestsForTherapist(user.id));
+        const load = async () => {
+            try {
+                const annRes = await adminApi.getAnnouncementsForRole('therapist');
+                setAnnouncements(annRes.data?.data || []);
+                
+                const saved = sessionStorage.getItem('therapist_user');
+                if (saved) {
+                    const user = JSON.parse(saved);
+                    const resRes = await rescheduleApi.getForTherapist(user.id);
+                    setReschedules(resRes.data?.data || []);
+                }
+            } catch (e) {
+                console.error(e);
             }
         };
         load();
-        window.addEventListener('clinicDataUpdated', load);
-        return () => window.removeEventListener('clinicDataUpdated', load);
     }, []);
 
     const pendingReschedules = reschedules.filter(r => r.status === 'pending').length;

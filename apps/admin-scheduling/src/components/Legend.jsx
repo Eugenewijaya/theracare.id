@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getAllPrograms } from '../../../shared/clinicDataStore';
+import { adminApi } from '../../../shared/api/client';
 
 const PROGRAM_COLORS = {
     'OT': 'bg-blue-500',
@@ -14,10 +14,13 @@ const Legend = () => {
     const [programs, setPrograms] = useState([]);
 
     useEffect(() => {
-        const load = () => setPrograms(getAllPrograms());
+        const load = async () => {
+            try {
+                const res = await adminApi.getPrograms();
+                setPrograms(res.data?.data || []);
+            } catch (e) {}
+        };
         load();
-        window.addEventListener('clinicDataUpdated', load);
-        return () => window.removeEventListener('clinicDataUpdated', load);
     }, []);
 
     return (

@@ -1,24 +1,23 @@
 import React, { useState, useEffect } from 'react';
-import { getStore } from '../../../shared/clinicDataStore';
+import { childrenApi } from '../../../shared/api/client';
 
 export default function ProgressSummary() {
     const [children, setChildren] = useState([]);
 
     useEffect(() => {
-        const load = () => {
+        const load = async () => {
             const saved = sessionStorage.getItem('parent_user');
             if (!saved) return;
             const user = JSON.parse(saved);
             const parentId = user.parentId;
             if (!parentId) return;
 
-            const store = getStore();
-            const parentChildren = (store.children || []).filter(c => c.parentId === parentId);
-            setChildren(parentChildren);
+            try {
+                const res = await childrenApi.getByParent(parentId);
+                setChildren(res.data?.data || []);
+            } catch(e) {}
         };
         load();
-        window.addEventListener('clinicDataUpdated', load);
-        return () => window.removeEventListener('clinicDataUpdated', load);
     }, []);
 
     // Helper to get initials

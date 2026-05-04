@@ -1,30 +1,40 @@
 import React, { useState, useEffect } from 'react';
-import { getStore, getCompletedSessionsByChild } from '../../../shared/clinicDataStore';
+import { childrenApi, sessionsApi } from '../../../shared/api/client';
 
 export default function ChildProfile() {
     const [child, setChild] = useState(null);
     const [completedSessions, setCompletedSessions] = useState([]);
 
     useEffect(() => {
-        const loadProfile = () => {
+        const loadProfile = async () => {
             const saved = sessionStorage.getItem('parent_user');
             if (!saved) return;
             const user = JSON.parse(saved);
             const childId = user.childId;
-            if (!childId) return;
+            const parentId = user.parentId;
+            if (!childId && !parentId) return;
 
-            const store = getStore();
-            const found = (store.children || []).find(c => c.nita === childId || c.id === childId);
-            setChild(found);
-
-            if (found) {
-                setCompletedSessions(getCompletedSessionsByChild(found.nita));
-            }
+            try {
+                let targetChildId = childId;
+                if (!targetChildId && parentId) {
+                    const cres = await childrenApi.getByParent(parentId);
+                    const children = cres.data?.data || [];
+                    if (children.length > 0) {
+                        targetChildId = children[0].id || children[0].nita;
+                    }
+                }
+                
+                if (targetChildId) {
+                    const res = await childrenApi.getById(targetChildId);
+                    setChild(res.data?.data || null);
+                    
+                    const sessRes = await sessionsApi.getCompletedForChild(targetChildId);
+                    setCompletedSessions(sessRes.data?.data || []);
+                }
+            } catch(e) { console.error(e); }
         };
 
         loadProfile();
-        window.addEventListener('clinicDataUpdated', loadProfile);
-        return () => window.removeEventListener('clinicDataUpdated', loadProfile);
     }, []);
 
     if (!child) {
