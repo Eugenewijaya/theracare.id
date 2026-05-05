@@ -10,12 +10,12 @@ router.get("/", requireAuth, requireRole("admin"), async (req, res, next) => {
 });
 
 router.get("/by-parent/:parentId", requireAuth, async (req, res, next) => {
-  try { ok(res, await childService.getByParent(req.params.parentId)); } catch (e) { next(e); }
+  try { ok(res, await childService.getByParent(req.params.parentId as string)); } catch (e) { next(e); }
 });
 
 router.get("/:id", requireAuth, async (req, res, next) => {
   try {
-    const child = await childService.getById(req.params.id);
+    const child = await childService.getById(req.params.id as string);
     if (!child) return notFound(res);
     ok(res, child);
   } catch (e) { next(e); }
@@ -32,7 +32,7 @@ router.post("/", requireAuth, requireRole("admin"), async (req, res, next) => {
 
 router.patch("/:id", requireAuth, requireRole("admin"), async (req, res, next) => {
   try {
-    const updated = await childService.update(req.params.id, req.body);
+    const updated = await childService.update(req.params.id as string, req.body);
     if (!updated) return notFound(res);
     ok(res, updated);
   } catch (e) { next(e); }

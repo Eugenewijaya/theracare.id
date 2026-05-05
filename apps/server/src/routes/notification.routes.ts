@@ -14,7 +14,7 @@ router.get("/unread-count", requireAuth, async (req, res, next) => {
 });
 
 router.patch("/:id/read", requireAuth, async (req, res, next) => {
-  try { await notificationService.markRead(req.params.id, req.user!.id); ok(res, { success: true }); } catch (e) { next(e); }
+  try { await notificationService.markRead(req.params.id as string, req.user!.id); ok(res, { success: true }); } catch (e) { next(e); }
 });
 
 router.post("/read-all", requireAuth, async (req, res, next) => {

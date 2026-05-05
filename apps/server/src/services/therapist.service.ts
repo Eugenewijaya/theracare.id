@@ -33,9 +33,9 @@ export const therapistService = {
         email: data.email,
         password: tempPassword,
         name: data.name,
-        role: "therapist",
+        role: "therapist" as any,
         phone: data.phone || "",
-      },
+      } as any,
     });
 
     const [therapist] = await db.insert(therapists).values({

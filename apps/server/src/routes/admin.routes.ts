@@ -11,16 +11,16 @@ router.get("/announcements", requireAuth, requireRole("admin"), async (req, res,
   try { ok(res, await announcementService.getAll()); } catch (e) { next(e); }
 });
 router.get("/announcements/role/:role", requireAuth, async (req, res, next) => {
-  try { ok(res, await announcementService.getForRole(req.params.role)); } catch (e) { next(e); }
+  try { ok(res, await announcementService.getForRole(req.params.role as string)); } catch (e) { next(e); }
 });
 router.post("/announcements", requireAuth, requireRole("admin"), async (req, res, next) => {
   try { created(res, await announcementService.create({ ...req.body, createdBy: req.user!.id })); } catch (e) { next(e); }
 });
 router.patch("/announcements/:id", requireAuth, requireRole("admin"), async (req, res, next) => {
-  try { ok(res, await announcementService.update(req.params.id, req.body)); } catch (e) { next(e); }
+  try { ok(res, await announcementService.update(req.params.id as string, req.body)); } catch (e) { next(e); }
 });
 router.delete("/announcements/:id", requireAuth, requireRole("admin"), async (req, res, next) => {
-  try { await announcementService.delete(req.params.id); ok(res, { deleted: true }); } catch (e) { next(e); }
+  try { await announcementService.delete(req.params.id as string); ok(res, { deleted: true }); } catch (e) { next(e); }
 });
 
 // ── Rooms ──
@@ -31,10 +31,10 @@ router.post("/rooms", requireAuth, requireRole("admin"), async (req, res, next) 
   try { created(res, await adminService.createRoom(req.body)); } catch (e) { next(e); }
 });
 router.patch("/rooms/:id", requireAuth, requireRole("admin"), async (req, res, next) => {
-  try { ok(res, await adminService.updateRoom(req.params.id, req.body)); } catch (e) { next(e); }
+  try { ok(res, await adminService.updateRoom(req.params.id as string, req.body)); } catch (e) { next(e); }
 });
 router.delete("/rooms/:id", requireAuth, requireRole("admin"), async (req, res, next) => {
-  try { await adminService.deleteRoom(req.params.id); ok(res, { deleted: true }); } catch (e) { next(e); }
+  try { await adminService.deleteRoom(req.params.id as string); ok(res, { deleted: true }); } catch (e) { next(e); }
 });
 
 // ── Programs ──
@@ -45,10 +45,10 @@ router.post("/programs", requireAuth, requireRole("admin"), async (req, res, nex
   try { created(res, await adminService.createProgram(req.body)); } catch (e) { next(e); }
 });
 router.patch("/programs/:id", requireAuth, requireRole("admin"), async (req, res, next) => {
-  try { ok(res, await adminService.updateProgram(req.params.id, req.body)); } catch (e) { next(e); }
+  try { ok(res, await adminService.updateProgram(req.params.id as string, req.body)); } catch (e) { next(e); }
 });
 router.delete("/programs/:id", requireAuth, requireRole("admin"), async (req, res, next) => {
-  try { await adminService.deleteProgram(req.params.id); ok(res, { deleted: true }); } catch (e) { next(e); }
+  try { await adminService.deleteProgram(req.params.id as string); ok(res, { deleted: true }); } catch (e) { next(e); }
 });
 
 // ── Settings & Stats ──

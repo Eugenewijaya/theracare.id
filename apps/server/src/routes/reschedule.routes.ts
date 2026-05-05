@@ -10,11 +10,11 @@ router.get("/", requireAuth, requireRole("admin"), async (req, res, next) => {
 });
 
 router.get("/parent/:id", requireAuth, async (req, res, next) => {
-  try { ok(res, await rescheduleService.getByParent(req.params.id)); } catch (e) { next(e); }
+  try { ok(res, await rescheduleService.getByParent(req.params.id as string)); } catch (e) { next(e); }
 });
 
 router.get("/therapist/:id", requireAuth, async (req, res, next) => {
-  try { ok(res, await rescheduleService.getForTherapist(req.params.id)); } catch (e) { next(e); }
+  try { ok(res, await rescheduleService.getForTherapist(req.params.id as string)); } catch (e) { next(e); }
 });
 
 router.post("/", requireAuth, requireRole("parent"), async (req, res, next) => {
@@ -28,7 +28,7 @@ router.post("/", requireAuth, requireRole("parent"), async (req, res, next) => {
 router.patch("/:id", requireAuth, requireRole("admin"), async (req, res, next) => {
   try {
     const { status, ...updates } = req.body;
-    const result = await rescheduleService.updateStatus(req.params.id, status, updates);
+    const result = await rescheduleService.updateStatus(req.params.id as string, status, updates);
     if (!result) return notFound(res);
     ok(res, result);
   } catch (e) { next(e); }

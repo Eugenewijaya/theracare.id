@@ -10,15 +10,15 @@ router.get("/", requireAuth, requireRole("admin"), async (req, res, next) => {
 });
 
 router.get("/therapist/:id", requireAuth, async (req, res, next) => {
-  try { ok(res, await sessionService.getForTherapist(req.params.id, req.query.date as string)); } catch (e) { next(e); }
+  try { ok(res, await sessionService.getForTherapist(req.params.id as string, req.query.date as string as string)); } catch (e) { next(e); }
 });
 
 router.get("/child/:id/upcoming", requireAuth, async (req, res, next) => {
-  try { ok(res, await sessionService.getUpcomingForChild(req.params.id)); } catch (e) { next(e); }
+  try { ok(res, await sessionService.getUpcomingForChild(req.params.id as string)); } catch (e) { next(e); }
 });
 
 router.get("/child/:id/completed", requireAuth, async (req, res, next) => {
-  try { ok(res, await sessionService.getCompletedForChild(req.params.id)); } catch (e) { next(e); }
+  try { ok(res, await sessionService.getCompletedForChild(req.params.id as string)); } catch (e) { next(e); }
 });
 
 router.post("/", requireAuth, requireRole("admin"), async (req, res, next) => {
@@ -38,7 +38,7 @@ router.post("/bulk", requireAuth, requireRole("admin"), async (req, res, next) =
 
 router.patch("/:id/status", requireAuth, async (req, res, next) => {
   try {
-    const result = await sessionService.updateStatus(req.params.id, req.body.status, req.body.cancelReason);
+    const result = await sessionService.updateStatus(req.params.id as string, req.body.status, req.body.cancelReason);
     if (!result) return notFound(res);
     ok(res, result);
   } catch (e) { next(e); }
@@ -46,7 +46,7 @@ router.patch("/:id/status", requireAuth, async (req, res, next) => {
 
 router.patch("/:id/notes", requireAuth, async (req, res, next) => {
   try {
-    const result = await sessionService.saveNotes(req.params.id, req.body.notes);
+    const result = await sessionService.saveNotes(req.params.id as string, req.body.notes);
     if (!result) return notFound(res);
     ok(res, result);
   } catch (e) { next(e); }
@@ -54,12 +54,12 @@ router.patch("/:id/notes", requireAuth, async (req, res, next) => {
 
 // ── Ratings ──
 router.get("/:id/rating", requireAuth, async (req, res, next) => {
-  try { ok(res, await sessionService.getRating(req.params.id)); } catch (e) { next(e); }
+  try { ok(res, await sessionService.getRating(req.params.id as string)); } catch (e) { next(e); }
 });
 
 router.post("/:id/rating", requireAuth, requireRole("parent"), async (req, res, next) => {
   try {
-    created(res, await sessionService.addRating({ sessionId: req.params.id, ...req.body }));
+    created(res, await sessionService.addRating({ sessionId: req.params.id as string, ...req.body }));
   } catch (e) { next(e); }
 });
 

@@ -35,9 +35,9 @@ export const parentService = {
         email: data.email,
         password: tempPassword,
         name: data.name,
-        role: "parent",
+        role: "parent" as any,
         phone: data.phone || "",
-      },
+      } as any,
     });
 
     // Create parent record
