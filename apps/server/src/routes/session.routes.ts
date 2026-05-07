@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { requireAuth, requireRole } from "../middleware/auth.middleware.js";
 import { sessionService } from "../services/session.service.js";
-import { ok, created, notFound, badRequest } from "../utils/response.js";
+import { ok, created, notFound, badRequest, conflict } from "../utils/response.js";
 
 const router = Router();
 
@@ -19,6 +19,14 @@ router.get("/child/:id/upcoming", requireAuth, async (req, res, next) => {
 
 router.get("/child/:id/completed", requireAuth, async (req, res, next) => {
   try { ok(res, await sessionService.getCompletedForChild(req.params.id as string)); } catch (e) { next(e); }
+});
+
+router.get("/:id", requireAuth, async (req, res, next) => {
+  try {
+    const session = await sessionService.getById(req.params.id as string);
+    if (!session) return notFound(res);
+    ok(res, session);
+  } catch (e) { next(e); }
 });
 
 router.post("/", requireAuth, requireRole("admin"), async (req, res, next) => {
@@ -48,6 +56,23 @@ router.patch("/:id/notes", requireAuth, async (req, res, next) => {
   try {
     const result = await sessionService.saveNotes(req.params.id as string, req.body.notes);
     if (!result) return notFound(res);
+    ok(res, result);
+  } catch (e) { next(e); }
+});
+
+router.patch("/:id", requireAuth, requireRole("admin"), async (req, res, next) => {
+  try {
+    const result = await sessionService.update(req.params.id as string, req.body);
+    if (!result) return notFound(res);
+    ok(res, result);
+  } catch (e) { next(e); }
+});
+
+router.delete("/:id", requireAuth, requireRole("admin"), async (req, res, next) => {
+  try {
+    const result = await sessionService.delete(req.params.id as string);
+    if (!result) return notFound(res);
+    if ("blocked" in result && result.blocked) return conflict(res, result.reason, result);
     ok(res, result);
   } catch (e) { next(e); }
 });

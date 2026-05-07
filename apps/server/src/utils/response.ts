@@ -12,6 +12,10 @@ export function badRequest(res: Response, message: string) {
   return res.status(400).json({ success: false, error: message });
 }
 
+export function conflict(res: Response, message: string, data?: any) {
+  return res.status(409).json({ success: false, error: message, data });
+}
+
 export function notFound(res: Response, message = "Data tidak ditemukan") {
   return res.status(404).json({ success: false, error: message });
 }

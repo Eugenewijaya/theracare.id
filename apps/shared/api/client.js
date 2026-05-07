@@ -63,8 +63,10 @@ export const parentsApi = {
   getMe: () => api.get('/parents/me/profile'),
   getLoginIdentity: (phone) => api.get(`/parents/login-identity/${encodeURIComponent(phone)}`),
   create: (data) => api.post('/parents', data),
+  update: (id, data) => api.patch(`/parents/${id}`, data),
   updateStatus: (id, status) => api.patch(`/parents/${id}/status`, { status }),
   resetPassword: (id) => api.post(`/parents/${id}/reset-password`),
+  delete: (id) => api.delete(`/parents/${id}`),
 };
 
 // ── Children API ─────────────────────────────────────────────────
@@ -74,6 +76,7 @@ export const childrenApi = {
   getByParent: (parentId) => api.get(`/children/by-parent/${parentId}`),
   create: (data) => api.post('/children', data),
   update: (id, data) => api.patch(`/children/${id}`, data),
+  delete: (id) => api.delete(`/children/${id}`),
 };
 
 // ── Therapists API ───────────────────────────────────────────────
@@ -86,11 +89,13 @@ export const therapistsApi = {
   updateProfile: (id, data) => api.patch(`/therapists/${id}`, data),
   updateStatus: (id, status) => api.patch(`/therapists/${id}/status`, { status }),
   resetPassword: (id) => api.post(`/therapists/${id}/reset-password`),
+  delete: (id) => api.delete(`/therapists/${id}`),
 };
 
 // ── Sessions API ─────────────────────────────────────────────────
 export const sessionsApi = {
   getAll: () => api.get('/sessions'),
+  getById: (id) => api.get(`/sessions/${id}`),
   getForTherapist: (id, date) => api.get(`/sessions/therapist/${id}${date ? `?date=${date}` : ''}`),
   getUpcomingForChild: (id) => api.get(`/sessions/child/${id}/upcoming`),
   getCompletedForChild: (id) => api.get(`/sessions/child/${id}/completed`),
@@ -106,11 +111,14 @@ export const sessionsApi = {
 
 // ── Reports API ──────────────────────────────────────────────────
 export const reportsApi = {
+  getById: (id) => api.get(`/reports/${id}`),
   getForTherapist: (id, type) => api.get(`/reports/therapist/${id}${type ? `?type=${type}` : ''}`),
   getForChild: (id, type) => api.get(`/reports/child/${id}${type ? `?type=${type}` : ''}`),
   getSessionReport: (sessionId) => api.get(`/reports/session/${sessionId}`),
   save: (data) => api.post('/reports', data),
+  update: (id, data) => api.patch(`/reports/${id}`, data),
   updateStatus: (id, status) => api.patch(`/reports/${id}/status`, { status }),
+  delete: (id) => api.delete(`/reports/${id}`),
 };
 
 // ── Reschedule API ───────────────────────────────────────────────
@@ -126,8 +134,10 @@ export const rescheduleApi = {
 export const notificationsApi = {
   getAll: () => api.get('/notifications'),
   getUnreadCount: () => api.get('/notifications/unread-count'),
+  create: (data) => api.post('/notifications', data),
   markRead: (id) => api.patch(`/notifications/${id}/read`),
   markAllRead: () => api.post('/notifications/read-all'),
+  delete: (id) => api.delete(`/notifications/${id}`),
 };
 
 // ── Admin API (rooms, programs, settings, stats, announcements) ──

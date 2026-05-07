@@ -1,5 +1,5 @@
 import { db } from "../db/index.js";
-import { therapists, user } from "../db/schema.js";
+import { account, authSession, notificationReads, reports, therapists, therapySessions, user } from "../db/schema.js";
 import { eq } from "drizzle-orm";
 import { auth } from "../auth.js";
 import { generateTempPassword, generateNIT } from "../utils/id-generators.js";
@@ -83,19 +83,22 @@ export const therapistService = {
     return { ...formatTherapist({ ...therapist, user: newUser.user }), therapist, tempPassword, user: newUser.user };
   },
 
-  async updateProfile(id: string, updates: { name?: string; phone?: string; specialty?: string }) {
+  async updateProfile(id: string, updates: { name?: string; email?: string; phone?: string; specialty?: string; specialization?: string; status?: string }) {
     const therapist = await db.query.therapists.findFirst({ where: eq(therapists.id, id) });
     if (!therapist) return null;
 
-    if (updates.specialty) {
-      await db.update(therapists).set({ specialty: updates.specialty }).where(eq(therapists.id, id));
+    const specialty = updates.specialty || updates.specialization;
+    if (specialty) {
+      await db.update(therapists).set({ specialty }).where(eq(therapists.id, id));
     }
-    if (updates.name || updates.phone) {
-      await db.update(user).set({
-        ...(updates.name ? { name: updates.name } : {}),
-        ...(updates.phone ? { phone: updates.phone } : {}),
-        updatedAt: new Date(),
-      }).where(eq(user.id, therapist.userId));
+
+    const userUpdates: any = {};
+    if (typeof updates.name === "string") userUpdates.name = updates.name.trim();
+    if (typeof updates.email === "string" && updates.email.trim()) userUpdates.email = updates.email.trim();
+    if (typeof updates.phone === "string") userUpdates.phone = updates.phone.trim();
+    if (typeof updates.status === "string") userUpdates.status = updates.status;
+    if (Object.keys(userUpdates).length > 0) {
+      await db.update(user).set({ ...userUpdates, updatedAt: new Date() }).where(eq(user.id, therapist.userId));
     }
     return this.getById(id);
   },
@@ -113,6 +116,28 @@ export const therapistService = {
     const tempPassword = generateTempPassword();
     await auth.api.setPassword({ body: { userId: therapist.userId, newPassword: tempPassword } } as any);
     return { id, tempPassword };
+  },
+
+  async delete(id: string) {
+    const therapist = await db.query.therapists.findFirst({ where: eq(therapists.id, id) });
+    if (!therapist) return null;
+
+    const session = await db.query.therapySessions.findFirst({ where: eq(therapySessions.therapistId, id) });
+    if (session) {
+      return { blocked: true, reason: "Terapis masih memiliki sesi terapi." };
+    }
+
+    const report = await db.query.reports.findFirst({ where: eq(reports.therapistId, id) });
+    if (report) {
+      return { blocked: true, reason: "Terapis masih memiliki laporan terapi." };
+    }
+
+    await db.delete(therapists).where(eq(therapists.id, id));
+    await db.delete(notificationReads).where(eq(notificationReads.userId, therapist.userId));
+    await db.delete(authSession).where(eq(authSession.userId, therapist.userId));
+    await db.delete(account).where(eq(account.userId, therapist.userId));
+    await db.delete(user).where(eq(user.id, therapist.userId));
+    return { deleted: true, id };
   },
 
   async getLastSequence() {

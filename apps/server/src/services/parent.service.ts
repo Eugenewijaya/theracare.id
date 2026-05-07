@@ -1,5 +1,5 @@
 import { db } from "../db/index.js";
-import { parents, user, children } from "../db/schema.js";
+import { account, authSession, children, notificationReads, parents, rescheduleRequests, sessionRatings, user } from "../db/schema.js";
 import { eq } from "drizzle-orm";
 import { auth } from "../auth.js";
 import { generateTempPassword, generateSeqId } from "../utils/id-generators.js";
@@ -99,12 +99,59 @@ export const parentService = {
     return { id, status };
   },
 
+  async update(id: string, updates: { name?: string; email?: string; phone?: string; address?: string; status?: string }) {
+    const parent = await db.query.parents.findFirst({ where: eq(parents.id, id) });
+    if (!parent) return null;
+
+    const userUpdates: any = {};
+    if (typeof updates.name === "string") userUpdates.name = updates.name.trim();
+    if (typeof updates.email === "string" && updates.email.trim()) userUpdates.email = updates.email.trim();
+    if (typeof updates.phone === "string") userUpdates.phone = updates.phone.trim();
+    if (typeof updates.status === "string") userUpdates.status = updates.status;
+    if (Object.keys(userUpdates).length > 0) {
+      await db.update(user).set({ ...userUpdates, updatedAt: new Date() }).where(eq(user.id, parent.userId));
+    }
+
+    if (typeof updates.address === "string") {
+      await db.update(parents).set({ address: updates.address }).where(eq(parents.id, id));
+    }
+
+    return this.getById(id);
+  },
+
   async resetPassword(id: string) {
     const parent = await db.query.parents.findFirst({ where: eq(parents.id, id) });
     if (!parent) return null;
     const tempPassword = generateTempPassword();
     await auth.api.setPassword({ body: { userId: parent.userId, newPassword: tempPassword } } as any);
     return { id, tempPassword };
+  },
+
+  async delete(id: string) {
+    const parent = await db.query.parents.findFirst({ where: eq(parents.id, id) });
+    if (!parent) return null;
+
+    const child = await db.query.children.findFirst({ where: eq(children.parentId, id) });
+    if (child) {
+      return { blocked: true, reason: "Orang tua masih memiliki data anak. Hapus atau pindahkan data anak terlebih dahulu." };
+    }
+
+    const reschedule = await db.query.rescheduleRequests.findFirst({ where: eq(rescheduleRequests.parentId, id) });
+    if (reschedule) {
+      return { blocked: true, reason: "Orang tua masih memiliki permintaan reschedule." };
+    }
+
+    const rating = await db.query.sessionRatings.findFirst({ where: eq(sessionRatings.parentId, id) });
+    if (rating) {
+      return { blocked: true, reason: "Orang tua masih memiliki rating sesi." };
+    }
+
+    await db.delete(parents).where(eq(parents.id, id));
+    await db.delete(notificationReads).where(eq(notificationReads.userId, parent.userId));
+    await db.delete(authSession).where(eq(authSession.userId, parent.userId));
+    await db.delete(account).where(eq(account.userId, parent.userId));
+    await db.delete(user).where(eq(user.id, parent.userId));
+    return { deleted: true, id };
   },
 
   async getLastId() {

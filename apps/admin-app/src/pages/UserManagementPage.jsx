@@ -61,6 +61,23 @@ export default function UserManagementPage() {
         }
     };
 
+    const handleDelete = async (user, type) => {
+        const label = type === 'parents' ? 'parent' : 'therapist';
+        const confirmed = window.confirm(`Hapus akun ${label} ${user.name}? Data yang sudah punya anak, sesi, atau laporan akan ditolak oleh server.`);
+        if (!confirmed) return;
+
+        const res = type === 'parents'
+            ? await parentsApi.delete(user.id)
+            : await therapistsApi.delete(user.id);
+
+        if (res.ok) {
+            load();
+            showToast(`${user.name} berhasil dihapus.`);
+        } else {
+            showToast(`Gagal menghapus: ${res.data?.error || res.data?.message || 'Error'}`, 'error');
+        }
+    };
+
     const currentData = activeTab === 'parents' ? parents : therapists;
 
     const filtered = currentData.filter(u => {
@@ -236,6 +253,12 @@ export default function UserManagementPage() {
                                                             title={isActive ? 'Suspend Account' : 'Activate Account'}>
                                                             <span className="material-symbols-outlined text-[14px]">{isActive ? 'block' : 'check_circle'}</span>
                                                             {isActive ? 'Suspend' : 'Activate'}
+                                                        </button>
+                                                        <button onClick={() => handleDelete(user, activeTab)}
+                                                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-red-700 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
+                                                            title="Delete Account">
+                                                            <span className="material-symbols-outlined text-[14px]">delete</span>
+                                                            Delete
                                                         </button>
                                                     </div>
                                                 </td>

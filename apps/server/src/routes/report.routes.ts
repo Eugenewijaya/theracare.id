@@ -17,6 +17,14 @@ router.get("/session/:id", requireAuth, async (req, res, next) => {
   try { ok(res, await reportService.getSessionReport(req.params.id as string)); } catch (e) { next(e); }
 });
 
+router.get("/:id", requireAuth, async (req, res, next) => {
+  try {
+    const report = await reportService.getById(req.params.id as string);
+    if (!report) return notFound(res);
+    ok(res, report);
+  } catch (e) { next(e); }
+});
+
 router.post("/", requireAuth, requireRole("therapist"), async (req, res, next) => {
   try { created(res, await reportService.save(req.body), "Laporan berhasil disimpan"); } catch (e) { next(e); }
 });
@@ -24,6 +32,22 @@ router.post("/", requireAuth, requireRole("therapist"), async (req, res, next) =
 router.patch("/:id/status", requireAuth, requireRole("admin"), async (req, res, next) => {
   try {
     const result = await reportService.updateStatus(req.params.id as string, req.body.status);
+    if (!result) return notFound(res);
+    ok(res, result);
+  } catch (e) { next(e); }
+});
+
+router.patch("/:id", requireAuth, requireRole("therapist", "admin"), async (req, res, next) => {
+  try {
+    const result = await reportService.update(req.params.id as string, req.body);
+    if (!result) return notFound(res);
+    ok(res, result);
+  } catch (e) { next(e); }
+});
+
+router.delete("/:id", requireAuth, requireRole("admin"), async (req, res, next) => {
+  try {
+    const result = await reportService.delete(req.params.id as string);
     if (!result) return notFound(res);
     ok(res, result);
   } catch (e) { next(e); }

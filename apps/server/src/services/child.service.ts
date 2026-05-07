@@ -1,5 +1,5 @@
 import { db } from "../db/index.js";
-import { children, therapyPrograms } from "../db/schema.js";
+import { children, reports, rescheduleRequests, sessionRatings, therapyPrograms, therapySessions } from "../db/schema.js";
 import { eq } from "drizzle-orm";
 import { generateNITA } from "../utils/id-generators.js";
 
@@ -77,6 +77,27 @@ export const childService = {
       .where(eq(children.id, id))
       .returning();
     return updated;
+  },
+
+  async delete(id: string) {
+    const child = await db.query.children.findFirst({ where: eq(children.id, id) });
+    if (!child) return null;
+
+    const session = await db.query.therapySessions.findFirst({ where: eq(therapySessions.childId, id) });
+    if (session) return { blocked: true, reason: "Anak masih memiliki sesi terapi." };
+
+    const report = await db.query.reports.findFirst({ where: eq(reports.childId, id) });
+    if (report) return { blocked: true, reason: "Anak masih memiliki laporan terapi." };
+
+    const reschedule = await db.query.rescheduleRequests.findFirst({ where: eq(rescheduleRequests.childId, id) });
+    if (reschedule) return { blocked: true, reason: "Anak masih memiliki permintaan reschedule." };
+
+    const rating = await db.query.sessionRatings.findFirst({ where: eq(sessionRatings.childId, id) });
+    if (rating) return { blocked: true, reason: "Anak masih memiliki rating sesi." };
+
+    await db.delete(therapyPrograms).where(eq(therapyPrograms.childId, id));
+    await db.delete(children).where(eq(children.id, id));
+    return { deleted: true, id };
   },
 
   async getLastSequence() {

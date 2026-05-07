@@ -38,4 +38,12 @@ export const notificationService = {
     const [notif] = await db.insert(notifications).values({ id, ...data }).returning();
     return notif;
   },
+
+  async delete(id: string) {
+    const notif = await db.query.notifications.findFirst({ where: eq(notifications.id, id) });
+    if (!notif) return null;
+    await db.delete(notificationReads).where(eq(notificationReads.notificationId, id));
+    await db.delete(notifications).where(eq(notifications.id, id));
+    return { deleted: true, id };
+  },
 };

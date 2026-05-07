@@ -142,22 +142,23 @@ function App() {
                 parentObj = { name: parentData.name };
             } else {
                 const res = await parentsApi.create(parentData);
+                if (!res.ok || !res.data?.data) {
+                    throw new Error(res.data?.error || res.data?.message || 'Gagal membuat akun orang tua.');
+                }
                 const parent = res.data?.data || {};
                 parentId = parent.id || parent.userId;
                 parentObj = parent;
                 isNew = true;
-                tempPassword = parent.tempPassword || 'generated123';
+                tempPassword = parent.tempPassword;
             }
 
             const registeredChildren = [];
             for (const child of childrenList) {
                 const childRes = await childrenApi.create({ ...child, parentId });
-                if (childRes.data?.data) {
-                    registeredChildren.push(childRes.data.data);
-                } else {
-                    // Mock child since create might not be fully featured
-                    registeredChildren.push({ ...child, nita: 'MOCK-NITA-' + Math.floor(Math.random() * 1000) });
+                if (!childRes.ok || !childRes.data?.data) {
+                    throw new Error(childRes.data?.error || childRes.data?.message || `Gagal mendaftarkan ${child.firstName}.`);
                 }
+                registeredChildren.push(childRes.data.data);
             }
 
             setResult({
@@ -171,6 +172,7 @@ function App() {
             setSubmitted(true);
         } catch (e) {
             console.error(e);
+            setErrors({ submit: e.message || 'Registrasi gagal. Periksa koneksi backend dan coba lagi.' });
         }
     };
 
@@ -289,6 +291,11 @@ function App() {
                     {step === 2 && <ChildForm  data={currentChild} onChange={setCurrentChild} errors={errors} />}
                     {step === 3 && <ProgramForm data={currentChild} onChange={setCurrentChild} errors={errors} />}
                     {step === 4 && <ReviewStep parentData={parentData} childrenList={childrenList} onAddAnother={handleAddAnother} isExistingParent={isExistingParent} />}
+                    {errors.submit && (
+                        <div className="mt-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+                            {errors.submit}
+                        </div>
+                    )}
                 </div>
 
                 {step !== 0 && (

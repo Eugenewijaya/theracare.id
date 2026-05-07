@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { requireAuth, requireRole } from "../middleware/auth.middleware.js";
 import { childService } from "../services/child.service.js";
-import { ok, created, notFound, badRequest } from "../utils/response.js";
+import { ok, created, notFound, badRequest, conflict } from "../utils/response.js";
 
 const router = Router();
 
@@ -35,6 +35,15 @@ router.patch("/:id", requireAuth, requireRole("admin"), async (req, res, next) =
     const updated = await childService.update(req.params.id as string, req.body);
     if (!updated) return notFound(res);
     ok(res, updated);
+  } catch (e) { next(e); }
+});
+
+router.delete("/:id", requireAuth, requireRole("admin"), async (req, res, next) => {
+  try {
+    const result = await childService.delete(req.params.id as string);
+    if (!result) return notFound(res);
+    if ("blocked" in result && result.blocked) return conflict(res, result.reason, result);
+    ok(res, result);
   } catch (e) { next(e); }
 });
 

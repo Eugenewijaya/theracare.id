@@ -516,16 +516,20 @@ function App() {
                 tempPassword: formData.tempPassword,
             });
 
+            if (!res.ok || !res.data?.data) {
+                throw new Error(res.data?.error || res.data?.message || 'Gagal membuat akun terapis.');
+            }
+
             const therapist = res.data?.data || {};
 
             setPopup({
                 type: 'success',
                 title: 'Terapis Berhasil Didaftarkan!',
-                message: `${fullName} telah berhasil didaftarkan dengan NIT: ${therapist.nit || 'Generated'}. Password sementara: ${formData.tempPassword}`,
+                message: `${fullName} telah berhasil didaftarkan dengan NIT: ${therapist.nit}. Password sementara: ${therapist.tempPassword || formData.tempPassword}`,
                 onClose: () => navigate('/therapists'),
             });
         } catch (err) {
-            showPopup('error', 'Gagal Mendaftarkan', 'Terjadi kesalahan. Silakan coba lagi.');
+            showPopup('error', 'Gagal Mendaftarkan', err.message || 'Terjadi kesalahan. Silakan coba lagi.');
         } finally {
             setSubmitting(false);
         }

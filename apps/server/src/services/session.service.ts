@@ -1,5 +1,5 @@
 import { db } from "../db/index.js";
-import { therapySessions, sessionRatings } from "../db/schema.js";
+import { reports, rescheduleRequests, sessionRatings, therapySessions } from "../db/schema.js";
 import { eq, and, gte, sql } from "drizzle-orm";
 import { generateId } from "../utils/id-generators.js";
 
@@ -8,6 +8,13 @@ export const sessionService = {
     return db.query.therapySessions.findMany({
       with: { therapist: { with: { user: true } }, child: { with: { parent: true } }, room: true },
       orderBy: (s, { desc }) => [desc(s.date), desc(s.startTime)],
+    });
+  },
+
+  async getById(id: string) {
+    return db.query.therapySessions.findFirst({
+      where: eq(therapySessions.id, id),
+      with: { therapist: { with: { user: true } }, child: { with: { parent: true } }, room: true },
     });
   },
 
@@ -83,6 +90,38 @@ export const sessionService = {
   },
 
   // ── Session Ratings ──
+  async update(id: string, updates: Partial<{
+    therapistId: string; childId: string; roomId: string | null; date: string; startTime: string;
+    duration: string; focus: string; status: string; notes: string; cancelReason: string;
+  }>) {
+    const values: any = {};
+    for (const [key, value] of Object.entries(updates)) {
+      if (value !== undefined) values[key] = value;
+    }
+    if (Object.keys(values).length === 0) return this.getById(id);
+
+    const [updated] = await db.update(therapySessions)
+      .set(values)
+      .where(eq(therapySessions.id, id))
+      .returning();
+    return updated;
+  },
+
+  async delete(id: string) {
+    const session = await db.query.therapySessions.findFirst({ where: eq(therapySessions.id, id) });
+    if (!session) return null;
+
+    const report = await db.query.reports.findFirst({ where: eq(reports.sessionId, id) });
+    if (report) return { blocked: true, reason: "Sesi masih memiliki laporan terapi." };
+
+    const reschedule = await db.query.rescheduleRequests.findFirst({ where: eq(rescheduleRequests.sessionId, id) });
+    if (reschedule) return { blocked: true, reason: "Sesi masih memiliki permintaan reschedule." };
+
+    await db.delete(sessionRatings).where(eq(sessionRatings.sessionId, id));
+    await db.delete(therapySessions).where(eq(therapySessions.id, id));
+    return { deleted: true, id };
+  },
+
   async addRating(data: {
     sessionId: string; childId: string; parentId: string; rating: number; comment?: string;
   }) {

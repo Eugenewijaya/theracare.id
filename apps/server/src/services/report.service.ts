@@ -5,6 +5,13 @@ import { generateSeqId } from "../utils/id-generators.js";
 import { notificationService } from "./notification.service.js";
 
 export const reportService = {
+  async getById(id: string) {
+    return db.query.reports.findFirst({
+      where: eq(reports.id, id),
+      with: { child: true, therapist: { with: { user: true } }, session: true },
+    });
+  },
+
   async getForTherapist(therapistId: string, type?: string) {
     const conditions = [eq(reports.therapistId, therapistId)];
     if (type) conditions.push(eq(reports.type, type));
@@ -95,6 +102,27 @@ export const reportService = {
       }
     }
     return updated;
+  },
+
+  async update(id: string, updates: any) {
+    const values: any = {};
+    for (const [key, value] of Object.entries(updates)) {
+      if (key !== "id" && key !== "createdAt" && value !== undefined) values[key] = value;
+    }
+    if (Object.keys(values).length === 0) return this.getById(id);
+
+    const [updated] = await db.update(reports)
+      .set({ ...values, updatedAt: new Date() })
+      .where(eq(reports.id, id))
+      .returning();
+    return updated;
+  },
+
+  async delete(id: string) {
+    const report = await db.query.reports.findFirst({ where: eq(reports.id, id) });
+    if (!report) return null;
+    await db.delete(reports).where(eq(reports.id, id));
+    return { deleted: true, id };
   },
 
   async getLastId() {

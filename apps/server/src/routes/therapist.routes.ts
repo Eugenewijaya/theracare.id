@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { requireAuth, requireRole } from "../middleware/auth.middleware.js";
 import { therapistService } from "../services/therapist.service.js";
-import { ok, created, notFound, badRequest } from "../utils/response.js";
+import { ok, created, notFound, badRequest, conflict } from "../utils/response.js";
 
 const router = Router();
 
@@ -35,9 +35,9 @@ router.get("/:id", requireAuth, async (req, res, next) => {
 
 router.post("/", requireAuth, requireRole("admin"), async (req, res, next) => {
   try {
-    const { name, email, phone, specialty } = req.body;
+    const { name, email, phone, specialty, specialization, tempPassword } = req.body;
     if (!name || !email) return badRequest(res, "Nama dan email wajib diisi");
-    const result = await therapistService.create({ name, email, phone, specialty });
+    const result = await therapistService.create({ name, email, phone, specialty: specialty || specialization, tempPassword });
     created(res, result, "Akun terapis berhasil dibuat");
   } catch (e) { next(e); }
 });
@@ -63,6 +63,15 @@ router.post("/:id/reset-password", requireAuth, requireRole("admin"), async (req
     const result = await therapistService.resetPassword(req.params.id as string);
     if (!result) return notFound(res);
     ok(res, result, "Password berhasil direset");
+  } catch (e) { next(e); }
+});
+
+router.delete("/:id", requireAuth, requireRole("admin"), async (req, res, next) => {
+  try {
+    const result = await therapistService.delete(req.params.id as string);
+    if (!result) return notFound(res);
+    if ("blocked" in result && result.blocked) return conflict(res, result.reason, result);
+    ok(res, result);
   } catch (e) { next(e); }
 });
 

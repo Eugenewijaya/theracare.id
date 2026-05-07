@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { requireAuth, requireRole } from "../middleware/auth.middleware.js";
 import { parentService } from "../services/parent.service.js";
-import { ok, created, notFound, badRequest } from "../utils/response.js";
+import { ok, created, notFound, badRequest, conflict } from "../utils/response.js";
 
 const router = Router();
 
@@ -51,11 +51,28 @@ router.patch("/:id/status", requireAuth, requireRole("admin"), async (req, res, 
   } catch (e) { next(e); }
 });
 
+router.patch("/:id", requireAuth, requireRole("admin"), async (req, res, next) => {
+  try {
+    const result = await parentService.update(req.params.id as string, req.body);
+    if (!result) return notFound(res);
+    ok(res, result);
+  } catch (e) { next(e); }
+});
+
 router.post("/:id/reset-password", requireAuth, requireRole("admin"), async (req, res, next) => {
   try {
     const result = await parentService.resetPassword(req.params.id as string);
     if (!result) return notFound(res);
     ok(res, result, "Password berhasil direset");
+  } catch (e) { next(e); }
+});
+
+router.delete("/:id", requireAuth, requireRole("admin"), async (req, res, next) => {
+  try {
+    const result = await parentService.delete(req.params.id as string);
+    if (!result) return notFound(res);
+    if ("blocked" in result && result.blocked) return conflict(res, result.reason, result);
+    ok(res, result);
   } catch (e) { next(e); }
 });
 
