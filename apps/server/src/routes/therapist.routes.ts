@@ -9,6 +9,22 @@ router.get("/", requireAuth, requireRole("admin"), async (req, res, next) => {
   try { ok(res, await therapistService.getAll()); } catch (e) { next(e); }
 });
 
+router.get("/login-identity/:nit", async (req, res, next) => {
+  try {
+    const identity = await therapistService.getLoginIdentity(req.params.nit as string);
+    if (!identity) return notFound(res, "NIT belum terdaftar atau akun ditangguhkan");
+    ok(res, identity);
+  } catch (e) { next(e); }
+});
+
+router.get("/me/profile", requireAuth, requireRole("therapist"), async (req, res, next) => {
+  try {
+    const therapist = await therapistService.getByUserId(req.user!.id);
+    if (!therapist) return notFound(res);
+    ok(res, therapist);
+  } catch (e) { next(e); }
+});
+
 router.get("/:id", requireAuth, async (req, res, next) => {
   try {
     const t = await therapistService.getById(req.params.id as string);

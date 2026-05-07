@@ -2,6 +2,7 @@ import { db } from "../db/index.js";
 import { announcements, announcementTargetRoles } from "../db/schema.js";
 import { eq } from "drizzle-orm";
 import { generateId } from "../utils/id-generators.js";
+import { notificationService } from "./notification.service.js";
 
 export const announcementService = {
   async getAll() {
@@ -25,6 +26,16 @@ export const announcementService = {
     const [ann] = await db.insert(announcements).values({ id, title: data.title, content: data.content, createdBy: data.createdBy }).returning();
     if (data.targetRoles.length > 0) {
       await db.insert(announcementTargetRoles).values(data.targetRoles.map((role) => ({ announcementId: id, role })));
+      for (const role of data.targetRoles) {
+        await notificationService.create({
+          type: "announcement",
+          icon: "campaign",
+          title: data.title,
+          message: data.content || "",
+          targetRole: role,
+          relatedId: id,
+        });
+      }
     }
     return { ...ann, targetRoles: data.targetRoles };
   },

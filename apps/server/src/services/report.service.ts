@@ -1,7 +1,8 @@
 import { db } from "../db/index.js";
-import { reports, therapySessions } from "../db/schema.js";
+import { children, parents, reports, therapySessions } from "../db/schema.js";
 import { eq, and, sql } from "drizzle-orm";
 import { generateSeqId } from "../utils/id-generators.js";
+import { notificationService } from "./notification.service.js";
 
 export const reportService = {
   async getForTherapist(therapistId: string, type?: string) {
@@ -78,6 +79,21 @@ export const reportService = {
       .set({ status, updatedAt: new Date() })
       .where(eq(reports.id, id))
       .returning();
+    if (updated && ["approved", "published", "ready_for_parent"].includes(status)) {
+      const child = await db.query.children.findFirst({ where: eq(children.id, updated.childId) });
+      const parent = child ? await db.query.parents.findFirst({ where: eq(parents.id, child.parentId) }) : null;
+      if (parent?.userId) {
+        await notificationService.create({
+          type: "report_published",
+          icon: "description",
+          title: "Laporan terapi tersedia",
+          message: "Laporan perkembangan anak sudah dapat dilihat di portal orang tua.",
+          targetRole: "parent",
+          targetUserId: parent.userId,
+          relatedId: id,
+        });
+      }
+    }
     return updated;
   },
 

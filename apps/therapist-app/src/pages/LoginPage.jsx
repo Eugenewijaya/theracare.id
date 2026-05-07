@@ -8,7 +8,7 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(false);
   const [error, setError] = useState('');
-  const { login } = useAuth();
+  const { login, error: authError } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
@@ -23,7 +23,7 @@ export default function LoginPage() {
     if (success) {
       navigate('/');
     } else {
-      setError('ID Terapis atau password tidak valid. Hubungi Admin jika Anda lupa kredensial.');
+      setError(authError || 'ID Terapis atau password tidak valid. Hubungi Admin jika Anda lupa kredensial.');
     }
   };
 

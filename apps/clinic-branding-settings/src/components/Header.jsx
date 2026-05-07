@@ -1,13 +1,15 @@
 import React from 'react';
+import { useClinicSettings } from '../../../shared/clinicSettings';
 
 const Header = () => {
+    const { clinicName, primaryColor, logoUrl } = useClinicSettings();
     return (
         <header className="hidden lg:flex flex-col md:flex-row items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-10 py-3 sticky top-0 z-50">
             <div className="flex items-center gap-4">
-                <div className="size-6 text-primary">
-                    <span className="material-symbols-outlined text-[24px]">local_hospital</span>
+                <div className="size-8 rounded-lg flex items-center justify-center text-white overflow-hidden" style={{ backgroundColor: primaryColor }}>
+                    {logoUrl ? <img src={logoUrl} alt={`${clinicName} logo`} className="w-full h-full object-contain p-1" /> : <span className="material-symbols-outlined text-[22px]">local_hospital</span>}
                 </div>
-                <h2 className="text-lg font-bold leading-tight tracking-[-0.015em]">Therapy Clinic Admin</h2>
+                <h2 className="text-lg font-bold leading-tight tracking-[-0.015em]">{clinicName} Admin</h2>
             </div>
             <div className="flex flex-1 justify-end gap-8">
                 <div

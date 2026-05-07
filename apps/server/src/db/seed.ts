@@ -61,9 +61,19 @@ async function seed() {
 
   // ── 4. Seed Settings ──
   console.log("4️⃣  Seeding clinic settings...");
-  await db.insert(schema.clinicSettings)
-    .values({ key: "adminWhatsApp", value: "6281234567890", updatedAt: new Date() })
-    .onConflictDoNothing();
+  const defaultSettings = [
+    ["clinicName", "TheraCare"],
+    ["primaryColor", "#137fec"],
+    ["secondaryColor", "#4e7f97"],
+    ["logoUrl", ""],
+    ["faviconUrl", ""],
+    ["adminWhatsApp", "6281234567890"],
+  ];
+  for (const [key, value] of defaultSettings) {
+    await db.insert(schema.clinicSettings)
+      .values({ key, value, updatedAt: new Date() })
+      .onConflictDoNothing();
+  }
   console.log("   ✅ Settings seeded");
 
   console.log("\n🎉 Seed completed!\n");

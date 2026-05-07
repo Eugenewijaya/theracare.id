@@ -47,7 +47,7 @@ export const api = {
 // ── Auth API ─────────────────────────────────────────────────────
 export const authApi = {
   /** Login with email + password */
-  signIn: (email, password) => request('POST', '/auth/sign-in/email', { email, password }),
+  signIn: (email, password, rememberMe = true) => request('POST', '/auth/sign-in/email', { email, password, rememberMe }),
   
   /** Get current session (check if logged in) */
   getSession: () => request('GET', '/auth/get-session'),
@@ -60,6 +60,8 @@ export const authApi = {
 export const parentsApi = {
   getAll: () => api.get('/parents'),
   getById: (id) => api.get(`/parents/${id}`),
+  getMe: () => api.get('/parents/me/profile'),
+  getLoginIdentity: (phone) => api.get(`/parents/login-identity/${encodeURIComponent(phone)}`),
   create: (data) => api.post('/parents', data),
   updateStatus: (id, status) => api.patch(`/parents/${id}/status`, { status }),
   resetPassword: (id) => api.post(`/parents/${id}/reset-password`),
@@ -78,6 +80,8 @@ export const childrenApi = {
 export const therapistsApi = {
   getAll: () => api.get('/therapists'),
   getById: (id) => api.get(`/therapists/${id}`),
+  getMe: () => api.get('/therapists/me/profile'),
+  getLoginIdentity: (nit) => api.get(`/therapists/login-identity/${encodeURIComponent(nit)}`),
   create: (data) => api.post('/therapists', data),
   updateProfile: (id, data) => api.patch(`/therapists/${id}`, data),
   updateStatus: (id, status) => api.patch(`/therapists/${id}/status`, { status }),
@@ -132,6 +136,7 @@ export const adminApi = {
   getStats: () => api.get('/admin/stats'),
   // Settings
   getSettings: () => api.get('/admin/settings'),
+  getPublicSettings: () => api.get('/admin/public-settings'),
   updateSettings: (data) => api.patch('/admin/settings', data),
   // Rooms
   getRooms: () => api.get('/admin/rooms'),

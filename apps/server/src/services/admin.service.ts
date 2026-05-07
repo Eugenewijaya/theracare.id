@@ -35,6 +35,11 @@ export const adminService = {
     const rows = await db.select().from(clinicSettings);
     return Object.fromEntries(rows.map((r) => [r.key, r.value]));
   },
+  async getPublicSettings() {
+    const safeKeys = ["clinicName", "primaryColor", "secondaryColor", "logoUrl", "faviconUrl"];
+    const settings = await this.getSettings();
+    return Object.fromEntries(safeKeys.map((key) => [key, settings[key]]).filter(([, value]) => value));
+  },
   async updateSettings(updates: Record<string, string>) {
     for (const [key, value] of Object.entries(updates)) {
       await db.insert(clinicSettings).values({ key, value, updatedAt: new Date() })

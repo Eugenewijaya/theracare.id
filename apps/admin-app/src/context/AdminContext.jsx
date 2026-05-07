@@ -1,12 +1,11 @@
 import React, { createContext, useContext, useState } from 'react';
+import { useClinicSettings } from '../../../shared/clinicSettings';
 
 const AdminContext = createContext();
 
 export const AdminProvider = ({ children }) => {
-    const [clinicName, setClinicName] = useState('TheraCare');
-    const [brandColor, setBrandColor] = useState('#137fec'); // Default to primary blue
-    const [logoUrl, setLogoUrl] = useState('');
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+    const clinicSettings = useClinicSettings();
     
     // In a real app, adminProfile would likely be fetched from an API
     const [adminProfile, setAdminProfile] = useState({
@@ -16,12 +15,18 @@ export const AdminProvider = ({ children }) => {
     });
 
     const value = {
-        clinicName,
-        setClinicName,
-        brandColor,
-        setBrandColor,
-        logoUrl,
-        setLogoUrl,
+        clinicName: clinicSettings.clinicName,
+        brandColor: clinicSettings.primaryColor,
+        primaryColor: clinicSettings.primaryColor,
+        secondaryColor: clinicSettings.secondaryColor,
+        logoUrl: clinicSettings.logoUrl,
+        faviconUrl: clinicSettings.faviconUrl,
+        setClinicName: (clinicName) => clinicSettings.save({ clinicName }),
+        setBrandColor: (primaryColor) => clinicSettings.save({ primaryColor }),
+        setLogoUrl: (logoUrl) => clinicSettings.save({ logoUrl }),
+        clinicSettings,
+        saveClinicSettings: clinicSettings.save,
+        refreshClinicSettings: clinicSettings.refresh,
         adminProfile,
         setAdminProfile,
         sidebarCollapsed,

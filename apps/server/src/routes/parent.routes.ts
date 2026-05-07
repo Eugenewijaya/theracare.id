@@ -9,6 +9,22 @@ router.get("/", requireAuth, requireRole("admin"), async (req, res, next) => {
   try { ok(res, await parentService.getAll()); } catch (e) { next(e); }
 });
 
+router.get("/login-identity/:phone", async (req, res, next) => {
+  try {
+    const identity = await parentService.getLoginIdentity(req.params.phone as string);
+    if (!identity) return notFound(res, "Nomor HP belum terdaftar atau akun ditangguhkan");
+    ok(res, identity);
+  } catch (e) { next(e); }
+});
+
+router.get("/me/profile", requireAuth, requireRole("parent"), async (req, res, next) => {
+  try {
+    const parent = await parentService.getByUserId(req.user!.id);
+    if (!parent) return notFound(res);
+    ok(res, parent);
+  } catch (e) { next(e); }
+});
+
 router.get("/:id", requireAuth, async (req, res, next) => {
   try {
     const parent = await parentService.getById(req.params.id as string);
@@ -20,7 +36,7 @@ router.get("/:id", requireAuth, async (req, res, next) => {
 router.post("/", requireAuth, requireRole("admin"), async (req, res, next) => {
   try {
     const { name, email, phone, address } = req.body;
-    if (!name || !email) return badRequest(res, "Nama dan email wajib diisi");
+    if (!name || (!email && !phone)) return badRequest(res, "Nama dan email atau nomor HP wajib diisi");
     const lastId = await parentService.getLastId();
     const result = await parentService.create({ name, email, phone, address }, lastId);
     created(res, result, "Akun orang tua berhasil dibuat");

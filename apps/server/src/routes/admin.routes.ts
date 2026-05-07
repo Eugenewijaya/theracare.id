@@ -52,6 +52,9 @@ router.delete("/programs/:id", requireAuth, requireRole("admin"), async (req, re
 });
 
 // ── Settings & Stats ──
+router.get("/public-settings", async (_req, res, next) => {
+  try { ok(res, await adminService.getPublicSettings()); } catch (e) { next(e); }
+});
 router.get("/settings", requireAuth, requireRole("admin"), async (req, res, next) => {
   try { ok(res, await adminService.getSettings()); } catch (e) { next(e); }
 });

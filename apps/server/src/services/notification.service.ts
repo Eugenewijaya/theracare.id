@@ -10,15 +10,16 @@ export const notificationService = {
       orderBy: (n, { desc }) => [desc(n.createdAt)],
       limit: 100,
     });
-    return all.filter((n) => !n.targetUserId || n.targetUserId === userId);
+    const visible = all.filter((n) => !n.targetUserId || n.targetUserId === userId);
+    const reads = await db.select({ notificationId: notificationReads.notificationId })
+      .from(notificationReads).where(eq(notificationReads.userId, userId));
+    const readIds = new Set(reads.map((r) => r.notificationId));
+    return visible.map((n) => ({ ...n, isRead: readIds.has(n.id) }));
   },
 
   async getUnreadCount(role: string, userId: string) {
     const notifs = await this.getForUser(role, userId);
-    const reads = await db.select({ notificationId: notificationReads.notificationId })
-      .from(notificationReads).where(eq(notificationReads.userId, userId));
-    const readIds = new Set(reads.map((r) => r.notificationId));
-    return notifs.filter((n) => !readIds.has(n.id)).length;
+    return notifs.filter((n) => !n.isRead).length;
   },
 
   async markRead(notifId: string, userId: string) {

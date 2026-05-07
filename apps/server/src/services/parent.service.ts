@@ -4,35 +4,77 @@ import { eq } from "drizzle-orm";
 import { auth } from "../auth.js";
 import { generateTempPassword, generateSeqId } from "../utils/id-generators.js";
 
+function normalizePhone(phone?: string) {
+  return (phone || "").replace(/\D/g, "");
+}
+
+function parentLoginEmail(phone?: string, email?: string) {
+  return email?.trim() || `${normalizePhone(phone)}@parent.theracare.id`;
+}
+
+function formatParent(parent: any) {
+  if (!parent) return null;
+  return {
+    ...parent,
+    id: parent.id,
+    parentId: parent.id,
+    userId: parent.userId,
+    name: parent.user?.name || parent.name || "",
+    email: parent.user?.email || parent.email || "",
+    phone: parent.user?.phone || parent.phone || "",
+    status: parent.user?.status || parent.status || "active",
+    children: parent.children || [],
+  };
+}
+
 export const parentService = {
   async getAll() {
-    return db.query.parents.findMany({
+    const rows = await db.query.parents.findMany({
       with: { user: true, children: true },
     });
+    return rows.map(formatParent);
   },
 
   async getById(id: string) {
-    return db.query.parents.findFirst({
+    const parent = await db.query.parents.findFirst({
       where: eq(parents.id, id),
       with: { user: true, children: true },
     });
+    return formatParent(parent);
   },
 
   async getByUserId(userId: string) {
-    return db.query.parents.findFirst({
+    const parent = await db.query.parents.findFirst({
       where: eq(parents.userId, userId),
       with: { user: true, children: true },
     });
+    return formatParent(parent);
+  },
+
+  async getLoginIdentity(phone: string) {
+    const wanted = normalizePhone(phone);
+    if (!wanted) return null;
+    const all = await db.query.parents.findMany({ with: { user: true, children: true } });
+    const parent = all.find((p) => normalizePhone(p.user?.phone || "") === wanted);
+    if (!parent || parent.user?.status === "suspended") return null;
+    return {
+      parentId: parent.id,
+      email: parent.user?.email,
+      name: parent.user?.name,
+      phone: parent.user?.phone,
+      children: parent.children || [],
+    };
   },
 
   async create(data: { name: string; email: string; phone?: string; address?: string }, lastId: number) {
     const tempPassword = generateTempPassword();
     const parentId = generateSeqId("P", lastId + 1);
+    const email = parentLoginEmail(data.phone, data.email);
 
     // Create Better Auth user
     const newUser = await auth.api.createUser({
       body: {
-        email: data.email,
+        email,
         password: tempPassword,
         name: data.name,
         role: "parent" as any,
@@ -47,7 +89,7 @@ export const parentService = {
       address: data.address || "",
     }).returning();
 
-    return { parent, tempPassword, user: newUser.user };
+    return { ...formatParent({ ...parent, user: newUser.user, children: [] }), parent, tempPassword, user: newUser.user };
   },
 
   async updateStatus(id: string, status: string) {

@@ -41,9 +41,9 @@ export default function UserManagementPage() {
         
         if (res.ok) {
             load();
-            showToast(`Password for ${user.name} reset to: ${res.data?.data?.newPassword || '(saved)'}`);
+            showToast(`Password sementara ${user.name}: ${res.data?.data?.tempPassword || res.data?.data?.newPassword || '(tersimpan)'}`);
         } else {
-            showToast(`Gagal mereset password: ${res.data?.message || 'Error'}`, 'error');
+            showToast(`Gagal mereset password: ${res.data?.error || res.data?.message || 'Error'}`, 'error');
         }
     };
 
@@ -57,7 +57,7 @@ export default function UserManagementPage() {
             load();
             showToast(`${user.name} account ${next}.`, next === 'active' ? 'success' : 'warning');
         } else {
-            showToast(`Gagal mengubah status: ${res.data?.message || 'Error'}`, 'error');
+            showToast(`Gagal mengubah status: ${res.data?.error || res.data?.message || 'Error'}`, 'error');
         }
     };
 
@@ -210,7 +210,7 @@ export default function UserManagementPage() {
                                                 <td className="px-6 py-4">
                                                     <div className="flex items-center gap-2">
                                                         <code className="text-sm font-mono bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-slate-700 dark:text-slate-300">
-                                                            {passVisible ? (user.tempPassword || '—') : '••••••••••'}
+                                                            {passVisible ? (user.tempPassword || 'Reset untuk membuat password baru') : '••••••••••'}
                                                         </code>
                                                         <button onClick={() => setShowPass(prev => ({ ...prev, [user.id]: !passVisible }))}
                                                             className="text-slate-400 hover:text-slate-600 p-1" title={passVisible ? 'Hide' : 'Show'}>

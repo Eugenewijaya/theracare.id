@@ -2,12 +2,16 @@ import React, { useState, useEffect } from 'react';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import { adminApi } from '../../shared/api/client';
+import { useClinicSettings } from '../../shared/clinicSettings';
 
 function App() {
     const [activeSection, setActiveSection] = useState('branding');
-    const [clinicName, setClinicName] = useState('TheraCare');
-    const [primaryColor, setPrimaryColor] = useState('#30abe8');
-    const [secondaryColor, setSecondaryColor] = useState('#4e7f97');
+    const { settings, save, refresh } = useClinicSettings();
+    const [clinicName, setClinicName] = useState(settings.clinicName);
+    const [primaryColor, setPrimaryColor] = useState(settings.primaryColor);
+    const [secondaryColor, setSecondaryColor] = useState(settings.secondaryColor);
+    const [logoUrl, setLogoUrl] = useState(settings.logoUrl);
+    const [faviconUrl, setFaviconUrl] = useState(settings.faviconUrl);
     const [adminWhatsApp, setAdminWhatsApp] = useState('');
     const [toast, setToast] = useState(null);
 
@@ -24,6 +28,14 @@ function App() {
         loadSettings();
     }, []);
 
+    useEffect(() => {
+        setClinicName(settings.clinicName);
+        setPrimaryColor(settings.primaryColor);
+        setSecondaryColor(settings.secondaryColor);
+        setLogoUrl(settings.logoUrl);
+        setFaviconUrl(settings.faviconUrl);
+    }, [settings.clinicName, settings.primaryColor, settings.secondaryColor, settings.logoUrl, settings.faviconUrl]);
+
     const showToast = (msg, type = 'success') => {
         setToast({ msg, type });
         setTimeout(() => setToast(null), 3500);
@@ -35,20 +47,21 @@ function App() {
             return;
         }
         try {
-            const existing = JSON.parse(localStorage.getItem('adminSettings') || '{}');
-            localStorage.setItem('adminSettings', JSON.stringify({ ...existing, clinicName, primaryColor, secondaryColor }));
+            await save({ clinicName, primaryColor, secondaryColor, logoUrl, faviconUrl });
             await adminApi.updateSettings({ adminWhatsApp });
-            window.dispatchEvent(new CustomEvent('adminSettingsUpdated'));
             showToast(`Pengaturan berhasil disimpan!`);
         } catch (e) {
-            showToast('Gagal menyimpan pengaturan', 'error');
+            showToast(e.message || 'Gagal menyimpan pengaturan', 'error');
         }
     };
 
     const handleCancel = async () => {
-        setClinicName('TheraCare');
-        setPrimaryColor('#30abe8');
-        setSecondaryColor('#4e7f97');
+        const latest = await refresh();
+        setClinicName(latest.clinicName);
+        setPrimaryColor(latest.primaryColor);
+        setSecondaryColor(latest.secondaryColor);
+        setLogoUrl(latest.logoUrl);
+        setFaviconUrl(latest.faviconUrl);
         try {
             const res = await adminApi.getSettings();
             const settings = res.data?.data || {};
@@ -121,14 +134,21 @@ function App() {
                                             <div>
                                                 <p className="text-base font-bold leading-tight mb-1">Clinic Logo</p>
                                                 <p className="text-slate-500 dark:text-slate-400 text-xs">Used on main navigation and patient portal.</p>
-                                                <p className="text-slate-500 dark:text-slate-400 text-xs mt-1">Recommended: PNG or SVG, min 400x100px.</p>
+                                                <p className="text-slate-500 dark:text-slate-400 text-xs mt-1">Use a hosted PNG/SVG URL from your CDN or storage bucket.</p>
                                             </div>
-                                            <button onClick={() => showToast('Fitur upload logo akan segera tersedia.', 'info')} className="flex items-center justify-center rounded-lg px-4 py-1.5 bg-slate-100 dark:bg-slate-800 text-sm font-medium hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors border border-slate-200 dark:border-slate-700">
-                                                Upload
-                                            </button>
                                         </div>
+                                        <input
+                                            value={logoUrl}
+                                            onChange={(e) => setLogoUrl(e.target.value)}
+                                            placeholder="https://cdn.example.com/logo.svg"
+                                            className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm px-3 py-2 outline-none text-slate-900 dark:text-white"
+                                        />
                                         <div className="w-full bg-slate-50 dark:bg-slate-800/50 aspect-[3/1] rounded-lg flex items-center justify-center border-2 border-dashed border-slate-200 dark:border-slate-700 overflow-hidden relative">
-                                            <span className="text-xl font-bold text-slate-400 dark:text-slate-600">{clinicName || 'Your Logo Here'}</span>
+                                            {logoUrl ? (
+                                                <img src={logoUrl} alt={`${clinicName} logo`} className="max-h-20 max-w-[80%] object-contain" />
+                                            ) : (
+                                                <span className="text-xl font-bold text-slate-400 dark:text-slate-600">{clinicName || 'Your Logo Here'}</span>
+                                            )}
                                         </div>
                                     </div>
 
@@ -137,15 +157,22 @@ function App() {
                                             <div>
                                                 <p className="text-base font-bold leading-tight mb-1">Favicon</p>
                                                 <p className="text-slate-500 dark:text-slate-400 text-xs">Shown in browser tabs.</p>
-                                                <p className="text-slate-500 dark:text-slate-400 text-xs mt-1">Recommended: PNG or ICO, 32x32px or 64x64px.</p>
+                                                <p className="text-slate-500 dark:text-slate-400 text-xs mt-1">Use a hosted PNG/ICO URL, 32x32px or 64x64px.</p>
                                             </div>
-                                            <button onClick={() => showToast('Fitur upload favicon akan segera tersedia.', 'info')} className="flex items-center justify-center rounded-lg px-4 py-1.5 bg-slate-100 dark:bg-slate-800 text-sm font-medium hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors border border-slate-200 dark:border-slate-700">
-                                                Upload
-                                            </button>
                                         </div>
+                                        <input
+                                            value={faviconUrl}
+                                            onChange={(e) => setFaviconUrl(e.target.value)}
+                                            placeholder="https://cdn.example.com/favicon.png"
+                                            className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm px-3 py-2 outline-none text-slate-900 dark:text-white"
+                                        />
                                         <div className="w-full bg-slate-50 dark:bg-slate-800/50 aspect-[3/1] rounded-lg flex items-center justify-center border-2 border-dashed border-slate-200 dark:border-slate-700">
                                             <div className="size-16 bg-white dark:bg-slate-900 shadow-sm rounded-lg flex items-center justify-center p-2 text-primary">
-                                                <span className="material-symbols-outlined text-[32px]">local_hospital</span>
+                                                {faviconUrl ? (
+                                                    <img src={faviconUrl} alt={`${clinicName} favicon`} className="max-h-10 max-w-10 object-contain" />
+                                                ) : (
+                                                    <span className="material-symbols-outlined text-[32px]">local_hospital</span>
+                                                )}
                                             </div>
                                         </div>
                                     </div>

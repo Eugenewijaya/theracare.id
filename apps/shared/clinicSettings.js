@@ -1,0 +1,137 @@
+import { useCallback, useEffect, useState } from 'react';
+import { adminApi } from './api/client.js';
+
+export const CLINIC_SETTINGS_EVENT = 'clinicSettingsUpdated';
+export const CLINIC_SETTINGS_KEY = 'clinicSettings';
+export const LEGACY_ADMIN_SETTINGS_KEY = 'adminSettings';
+
+export const DEFAULT_CLINIC_SETTINGS = {
+  clinicName: 'TheraCare',
+  primaryColor: '#137fec',
+  secondaryColor: '#4e7f97',
+  logoUrl: '',
+  faviconUrl: '',
+};
+
+const PUBLIC_KEYS = Object.keys(DEFAULT_CLINIC_SETTINGS);
+
+function readJson(key) {
+  try {
+    return JSON.parse(localStorage.getItem(key) || '{}');
+  } catch {
+    return {};
+  }
+}
+
+export function normalizeClinicSettings(raw = {}) {
+  const settings = { ...DEFAULT_CLINIC_SETTINGS };
+  for (const key of PUBLIC_KEYS) {
+    if (typeof raw[key] === 'string' && raw[key].trim()) {
+      settings[key] = raw[key].trim();
+    }
+  }
+  if (raw.brandColor && !raw.primaryColor) {
+    settings.primaryColor = raw.brandColor;
+  }
+  return settings;
+}
+
+export function getCachedClinicSettings() {
+  const current = readJson(CLINIC_SETTINGS_KEY);
+  const legacy = readJson(LEGACY_ADMIN_SETTINGS_KEY);
+  return normalizeClinicSettings({ ...legacy, ...current });
+}
+
+export function cacheClinicSettings(settings) {
+  const normalized = normalizeClinicSettings(settings);
+  localStorage.setItem(CLINIC_SETTINGS_KEY, JSON.stringify(normalized));
+  window.dispatchEvent(new CustomEvent(CLINIC_SETTINGS_EVENT, { detail: normalized }));
+  return normalized;
+}
+
+export async function fetchClinicSettings() {
+  const cached = getCachedClinicSettings();
+  try {
+    const res = await adminApi.getPublicSettings();
+    if (res.ok && res.data?.data) {
+      return cacheClinicSettings({ ...cached, ...res.data.data });
+    }
+  } catch {}
+  return cached;
+}
+
+export async function saveClinicSettings(updates) {
+  const next = cacheClinicSettings({ ...getCachedClinicSettings(), ...updates });
+  const res = await adminApi.updateSettings(next);
+  if (!res.ok) {
+    throw new Error(res.data?.error || res.data?.message || 'Gagal menyimpan pengaturan klinik');
+  }
+  return next;
+}
+
+export function applyClinicTheme(settings) {
+  if (typeof document === 'undefined') return;
+  const normalized = normalizeClinicSettings(settings);
+  document.documentElement.style.setProperty('--clinic-primary', normalized.primaryColor);
+  document.documentElement.style.setProperty('--clinic-secondary', normalized.secondaryColor);
+  document.title = `${normalized.clinicName} Admin`;
+}
+
+export function useClinicSettings() {
+  const [settings, setSettings] = useState(() => getCachedClinicSettings());
+  const [loading, setLoading] = useState(true);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    const next = await fetchClinicSettings();
+    setSettings(next);
+    applyClinicTheme(next);
+    setLoading(false);
+    return next;
+  }, []);
+
+  const save = useCallback(async (updates) => {
+    const next = await saveClinicSettings(updates);
+    setSettings(next);
+    applyClinicTheme(next);
+    return next;
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    fetchClinicSettings().then((next) => {
+      if (!mounted) return;
+      setSettings(next);
+      applyClinicTheme(next);
+      setLoading(false);
+    });
+
+    const onSettings = (event) => {
+      const next = normalizeClinicSettings(event.detail || getCachedClinicSettings());
+      setSettings(next);
+      applyClinicTheme(next);
+    };
+    const onStorage = (event) => {
+      if ([CLINIC_SETTINGS_KEY, LEGACY_ADMIN_SETTINGS_KEY].includes(event.key)) {
+        onSettings({});
+      }
+    };
+
+    window.addEventListener(CLINIC_SETTINGS_EVENT, onSettings);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      mounted = false;
+      window.removeEventListener(CLINIC_SETTINGS_EVENT, onSettings);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, []);
+
+  return {
+    ...settings,
+    brandColor: settings.primaryColor,
+    settings,
+    loading,
+    refresh,
+    save,
+  };
+}

@@ -9,7 +9,7 @@ export default function LoginPage() {
   const [remember, setRemember] = useState(false);
   const [error, setError]       = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { login } = useAuth();
+  const { login, error: authError } = useAuth();
   const navigate  = useNavigate();
 
   const handleSubmit = async (e) => {
@@ -35,7 +35,7 @@ export default function LoginPage() {
     if (success) {
       navigate('/');
     } else {
-      setError('Nomor HP atau password tidak valid. Pastikan sesuai dengan data registrasi.');
+      setError(authError || 'Nomor HP atau password tidak valid. Pastikan sesuai dengan data registrasi.');
     }
   };
 

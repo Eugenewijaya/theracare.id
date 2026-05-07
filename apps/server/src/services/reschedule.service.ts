@@ -1,7 +1,8 @@
 import { db } from "../db/index.js";
-import { rescheduleRequests, therapySessions } from "../db/schema.js";
+import { parents, rescheduleRequests, therapists, therapySessions } from "../db/schema.js";
 import { eq, and } from "drizzle-orm";
 import { generateId } from "../utils/id-generators.js";
+import { notificationService } from "./notification.service.js";
 
 export const rescheduleService = {
   async getAll() {
@@ -41,6 +42,31 @@ export const rescheduleService = {
     const [req] = await db.insert(rescheduleRequests).values({
       id, ...data, status: "pending",
     }).returning();
+    const session = await db.query.therapySessions.findFirst({
+      where: eq(therapySessions.id, data.sessionId),
+    });
+    await notificationService.create({
+      type: "reschedule_request",
+      icon: "event_repeat",
+      title: "Permintaan reschedule baru",
+      message: `Orang tua mengajukan perubahan jadwal untuk sesi ${data.sessionId}.`,
+      targetRole: "admin",
+      relatedId: id,
+    });
+    if (session) {
+      const therapist = await db.query.therapists.findFirst({ where: eq(therapists.id, session.therapistId) });
+      if (therapist?.userId) {
+        await notificationService.create({
+          type: "reschedule_request",
+          icon: "event_repeat",
+          title: "Permintaan reschedule menunggu review",
+          message: `Permintaan perubahan jadwal masuk untuk sesi ${data.sessionId}.`,
+          targetRole: "therapist",
+          targetUserId: therapist.userId,
+          relatedId: id,
+        });
+      }
+    }
     return req;
   },
 
@@ -49,6 +75,7 @@ export const rescheduleService = {
   } = {}) {
     const req = await db.query.rescheduleRequests.findFirst({ where: eq(rescheduleRequests.id, id) });
     if (!req) return null;
+    const parent = await db.query.parents.findFirst({ where: eq(parents.id, req.parentId) });
 
     await db.update(rescheduleRequests).set({
       status,
@@ -80,6 +107,18 @@ export const rescheduleService = {
           status: "upcoming",
         });
       }
+    }
+
+    if (parent?.userId) {
+      await notificationService.create({
+        type: "reschedule_result",
+        icon: status === "approved" ? "event_available" : "event_busy",
+        title: status === "approved" ? "Reschedule disetujui" : "Reschedule diperbarui",
+        message: updates.reviewNote || `Permintaan reschedule ${req.sessionId} berstatus ${status}.`,
+        targetRole: "parent",
+        targetUserId: parent.userId,
+        relatedId: id,
+      });
     }
 
     return this.getAll().then((all) => all.find((r) => r.id === id));

@@ -26,7 +26,7 @@ export default function LoginPage() {
     }
     setLocalError('');
     setIsLoading(true);
-    const success = await login(email, password);
+    const success = await login(email, password, remember);
     setIsLoading(false);
     if (success) {
       navigate('/');

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { notificationsApi } from '../../../shared/api/client';
+import { useClinicSettings } from '../../../shared/clinicSettings';
 
 const navItems = [
   { path: '/', icon: 'dashboard', label: 'Dasbor', end: true },
@@ -18,6 +19,7 @@ export default function Sidebar({ isOpen, onClose }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const { clinicName, primaryColor } = useClinicSettings();
   const [badgeCounts, setBadgeCounts] = useState({ reschedule: 0, announcement: 0 });
 
   // Compute notification badges
@@ -47,11 +49,11 @@ export default function Sidebar({ isOpen, onClose }) {
     <aside className="w-60 flex-shrink-0 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col h-full">
       <div className="p-4 flex flex-col gap-5 flex-1 overflow-y-auto">
         <div className="flex items-center gap-3 px-2 pb-4 border-b border-slate-100 dark:border-slate-800">
-          <div className="bg-gradient-to-br from-sky-500 to-cyan-500 p-2 rounded-xl text-white flex items-center justify-center shadow-sm">
+          <div className="p-2 rounded-xl text-white flex items-center justify-center shadow-sm" style={{ backgroundColor: primaryColor }}>
             <span className="material-symbols-outlined text-[20px]" style={{ fontVariationSettings: "'FILL' 1" }}>health_and_safety</span>
           </div>
           <div className="flex-1">
-            <h1 className="text-sm font-bold text-slate-900 dark:text-slate-100 leading-tight">TheraCare</h1>
+            <h1 className="text-sm font-bold text-slate-900 dark:text-slate-100 leading-tight truncate">{clinicName}</h1>
             <p className="text-xs text-slate-500 dark:text-slate-400">Parent Portal</p>
           </div>
           {/* Close btn on mobile */}

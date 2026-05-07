@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAdmin } from '../../../admin-app/src/context/AdminContext';
 import { useNavigate } from 'react-router-dom';
-import { adminApi, notificationsApi } from '../../../shared/api/client';
+import { notificationsApi } from '../../../shared/api/client';
 
 const Header = () => {
     const { clinicName, brandColor } = useAdmin();
@@ -12,17 +12,16 @@ const Header = () => {
     
     const refreshNotifications = async () => {
         try {
-            // Fetch both announcements and unread counts or use announcements as notifications
-            const res = await adminApi.getAnnouncementsForRole('admin');
+            const res = await notificationsApi.getAll();
             const raw = res.data?.data || [];
-            const mapped = raw.map(a => {
-                const isUnread = (Date.now() - new Date(a.createdAt).getTime()) < 1000 * 60 * 60 * 24; // 24h
+            const mapped = raw.map(n => {
                 return {
-                    id: a.id,
-                    title: a.title || 'Pengumuman Tanpa Judul',
-                    desc: a.content || '',
-                    time: new Date(a.createdAt).toLocaleDateString('id-ID', { hour:'2-digit', minute:'2-digit', day:'numeric', month:'short' }),
-                    read: !isUnread,
+                    id: n.id,
+                    title: n.title || 'Notifikasi',
+                    desc: n.message || '',
+                    icon: n.icon || 'notifications',
+                    time: new Date(n.createdAt).toLocaleDateString('id-ID', { hour:'2-digit', minute:'2-digit', day:'numeric', month:'short' }),
+                    read: !!n.isRead,
                 };
             });
             setNotifications(mapped);
@@ -39,7 +38,15 @@ const Header = () => {
 
     const unreadCount = notifications.filter(n => !n.read).length;
 
-    const markAllRead = () => setNotifications(notifications.map(n => ({ ...n, read: true })));
+    const markAllRead = async () => {
+        await notificationsApi.markAllRead();
+        setNotifications(notifications.map(n => ({ ...n, read: true })));
+    };
+
+    const markRead = async (id) => {
+        await notificationsApi.markRead(id);
+        setNotifications(notifications.map(n => n.id === id ? { ...n, read: true } : n));
+    };
 
     useEffect(() => {
         const handler = (e) => { if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setNotifOpen(false); };
@@ -90,14 +97,14 @@ const Header = () => {
                                     {notifications.length === 0 ? (
                                         <div className="px-4 py-6 text-center text-slate-500 text-sm">Tidak ada notifikasi</div>
                                     ) : notifications.map(n => (
-                                        <div key={n.id} className={`flex gap-3 px-4 py-3 border-b border-slate-50 last:border-0 ${!n.read ? 'bg-primary/5' : ''}`}>
+                                        <button key={n.id} onClick={() => markRead(n.id)} className={`text-left flex gap-3 px-4 py-3 border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors ${!n.read ? 'bg-primary/5' : ''}`}>
                                             <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${!n.read ? 'bg-primary' : 'bg-transparent'}`} />
                                             <div>
                                                 <p className="text-sm font-semibold text-slate-800">{n.title}</p>
                                                 <p className="text-xs text-slate-500 mt-0.5">{n.desc}</p>
                                                 <p className="text-[10px] text-slate-400 mt-1">{n.time}</p>
                                             </div>
-                                        </div>
+                                        </button>
                                     ))}
                                 </div>
                                 <div className="px-4 py-2 bg-slate-50 border-t border-slate-100">
@@ -113,9 +120,9 @@ const Header = () => {
                     </div>
                     {/* User Profile Action */}
                     <button
-                        onClick={() => navigate('/settings/branding')}
+                        onClick={() => navigate('/users')}
                         className="flex items-center justify-center w-9 h-9 rounded-full bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors shrink-0"
-                        title="Profile Settings"
+                        title="Profil admin dan manajemen pengguna"
                         style={{ backgroundColor: `${brandColor}10`, color: brandColor, borderColor: `${brandColor}30` }}
                     >
                         <span className="material-symbols-outlined text-[20px]">person</span>

@@ -4,27 +4,62 @@ import { eq } from "drizzle-orm";
 import { auth } from "../auth.js";
 import { generateTempPassword, generateNIT } from "../utils/id-generators.js";
 
+function formatTherapist(therapist: any) {
+  if (!therapist) return null;
+  return {
+    ...therapist,
+    id: therapist.id,
+    nit: therapist.nit,
+    userId: therapist.userId,
+    name: therapist.user?.name || therapist.name || "",
+    email: therapist.user?.email || therapist.email || "",
+    phone: therapist.user?.phone || therapist.phone || "",
+    status: therapist.user?.status || therapist.status || "active",
+    specialization: therapist.specialty || therapist.specialization || "Therapist",
+  };
+}
+
 export const therapistService = {
   async getAll() {
-    return db.query.therapists.findMany({ with: { user: true } });
+    const rows = await db.query.therapists.findMany({ with: { user: true } });
+    return rows.map(formatTherapist);
   },
 
   async getById(id: string) {
-    return db.query.therapists.findFirst({
+    const therapist = await db.query.therapists.findFirst({
       where: eq(therapists.id, id),
       with: { user: true, sessions: true },
     });
+    return formatTherapist(therapist);
   },
 
   async getByUserId(userId: string) {
-    return db.query.therapists.findFirst({
+    const therapist = await db.query.therapists.findFirst({
       where: eq(therapists.userId, userId),
       with: { user: true },
     });
+    return formatTherapist(therapist);
   },
 
-  async create(data: { name: string; email: string; phone?: string; specialty?: string }) {
-    const tempPassword = generateTempPassword();
+  async getLoginIdentity(nit: string) {
+    const id = nit.trim().toUpperCase();
+    if (!id) return null;
+    const therapist = await db.query.therapists.findFirst({
+      where: eq(therapists.nit, id),
+      with: { user: true },
+    });
+    if (!therapist || therapist.user?.status === "suspended") return null;
+    return {
+      therapistId: therapist.id,
+      nit: therapist.nit,
+      email: therapist.user?.email,
+      name: therapist.user?.name,
+      specialty: therapist.specialty,
+    };
+  },
+
+  async create(data: { name: string; email: string; phone?: string; specialty?: string; tempPassword?: string }) {
+    const tempPassword = data.tempPassword?.trim() || generateTempPassword();
     const lastSeq = await this.getLastSequence();
     const nit = generateNIT(data.name, lastSeq + 1);
 
@@ -45,7 +80,7 @@ export const therapistService = {
       specialty: data.specialty || "Therapist",
     }).returning();
 
-    return { therapist, tempPassword, user: newUser.user };
+    return { ...formatTherapist({ ...therapist, user: newUser.user }), therapist, tempPassword, user: newUser.user };
   },
 
   async updateProfile(id: string, updates: { name?: string; phone?: string; specialty?: string }) {

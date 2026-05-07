@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Header from './components/Header';
 import SettingsSidebar from './components/SettingsSidebar';
-import { adminApi } from '../../shared/api/client';
+import { adminApi, notificationsApi } from '../../shared/api/client';
 
 const tabs = ['Semua', 'Notifikasi Baru', 'Parent / Orang Tua', 'Terapis', 'Umum / Global'];
 
@@ -17,23 +17,35 @@ function App() {
 
     const refreshData = async () => {
         try {
-            const res = await adminApi.getAnnouncements();
-            const raw = res.data?.data || [];
-            const mapped = raw.map(a => {
-                const isUnread = (Date.now() - new Date(a.createdAt).getTime()) < 1000 * 60 * 60 * 24; // 24h
-                return {
-                    id: a.id,
-                    title: a.title || 'Pengumuman Tanpa Judul',
-                    desc: a.content || '',
-                    action: a.action || '',
-                    audience: a.targetRoles && a.targetRoles.length === 2 ? 'all' : (a.targetRoles ? a.targetRoles[0] : 'admin'),
-                    icon: a.icon || (a.targetRoles?.includes('parent') ? 'family_restroom' : 'campaign'),
-                    time: new Date(a.createdAt).toLocaleDateString('id-ID', { hour:'2-digit', minute:'2-digit', day:'numeric', month:'short' }),
-                    unread: isUnread,
-                    rawRoles: a.targetRoles
-                };
-            });
-            setNotifications(mapped);
+            const [notifsRes, annsRes] = await Promise.all([
+                notificationsApi.getAll(),
+                adminApi.getAnnouncements(),
+            ]);
+            const inbox = (notifsRes.data?.data || []).map(n => ({
+                id: n.id,
+                source: 'inbox',
+                title: n.title || 'Notifikasi',
+                desc: n.message || '',
+                audience: n.targetRole || 'admin',
+                icon: n.icon || 'notifications',
+                createdAt: n.createdAt,
+                time: new Date(n.createdAt).toLocaleDateString('id-ID', { hour:'2-digit', minute:'2-digit', day:'numeric', month:'short' }),
+                unread: !n.isRead,
+                relatedId: n.relatedId,
+            }));
+            const outbox = (annsRes.data?.data || []).map(a => ({
+                id: a.id,
+                source: 'announcement',
+                title: a.title || 'Pengumuman Tanpa Judul',
+                desc: a.content || '',
+                audience: a.targetRoles && a.targetRoles.length === 2 ? 'all' : (a.targetRoles ? a.targetRoles[0] : 'admin'),
+                icon: a.targetRoles?.includes('parent') ? 'family_restroom' : 'campaign',
+                createdAt: a.createdAt,
+                time: new Date(a.createdAt).toLocaleDateString('id-ID', { hour:'2-digit', minute:'2-digit', day:'numeric', month:'short' }),
+                unread: false,
+                rawRoles: a.targetRoles,
+            }));
+            setNotifications([...inbox, ...outbox].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
         } catch (e) {
             console.error(e);
         }
@@ -43,19 +55,22 @@ function App() {
         refreshData();
     }, []);
 
-    const markAllRead = () => {
-        // Technically just a local UI state trick since store doesn't track admin read state
+    const markAllRead = async () => {
+        await notificationsApi.markAllRead();
         setNotifications(notifications.map(n => ({ ...n, unread: false })));
     };
 
-    const toggleRead = (id) => {
-        setNotifications(notifications.map(n => n.id === id ? { ...n, unread: !n.unread } : n));
+    const toggleRead = async (item) => {
+        if (item.source !== 'inbox' || !item.unread) return;
+        await notificationsApi.markRead(item.id);
+        setNotifications(notifications.map(n => n.id === item.id ? { ...n, unread: false } : n));
     };
 
-    const handleDelete = async (id, e) => {
+    const handleDelete = async (item, e) => {
         e.stopPropagation();
+        if (item.source !== 'announcement') return;
         try {
-            await adminApi.deleteAnnouncement(id);
+            await adminApi.deleteAnnouncement(item.id);
             refreshData();
         } catch (e) {
             console.error(e);
@@ -205,7 +220,7 @@ function App() {
                                 ) : filteredNotifications.map(n => (
                                     <div
                                         key={n.id}
-                                        onClick={() => toggleRead(n.id)}
+                                        onClick={() => toggleRead(n)}
                                         className={`flex gap-4 rounded-xl p-4 cursor-pointer transition-colors relative border group ${n.unread
                                             ? 'bg-primary/5 dark:bg-primary/10 hover:bg-primary/10 dark:hover:bg-primary/20 border-primary/20'
                                             : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'
@@ -223,7 +238,7 @@ function App() {
                                                 <div className="flex items-center gap-2 mb-0.5">
                                                     <p className="text-base font-bold leading-normal text-slate-900 dark:text-white">{n.title}</p>
                                                     <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
-                                                        {n.audience === 'all' ? 'Global' : n.audience}
+                                                        {n.source === 'inbox' ? 'Inbox' : n.audience === 'all' ? 'Global' : n.audience}
                                                     </span>
                                                 </div>
                                                 <p className={`text-sm leading-normal ${n.unread ? 'font-medium text-slate-700 dark:text-slate-200' : 'font-normal text-slate-600 dark:text-slate-400'} mb-1`}>{n.desc}</p>
@@ -231,13 +246,15 @@ function App() {
                                             
                                             <div className="shrink-0 text-right flex flex-col items-end justify-between h-full">
                                                 <p className={`text-sm leading-normal ${n.unread ? 'text-primary font-bold' : 'text-slate-500 dark:text-slate-400 font-medium'}`}>{n.time}</p>
-                                                <button 
-                                                    onClick={(e) => handleDelete(n.id, e)}
-                                                    className="opacity-0 group-hover:opacity-100 p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all absolute right-0 bottom-0 top-0 m-auto h-fit"
-                                                    title="Hapus"
-                                                >
-                                                    <span className="material-symbols-outlined text-[20px]">delete</span>
-                                                </button>
+                                                {n.source === 'announcement' && (
+                                                    <button
+                                                        onClick={(e) => handleDelete(n, e)}
+                                                        className="opacity-0 group-hover:opacity-100 p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all absolute right-0 bottom-0 top-0 m-auto h-fit"
+                                                        title="Hapus"
+                                                    >
+                                                        <span className="material-symbols-outlined text-[20px]">delete</span>
+                                                    </button>
+                                                )}
                                             </div>
                                         </div>
                                     </div>

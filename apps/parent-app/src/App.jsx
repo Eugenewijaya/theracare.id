@@ -8,6 +8,7 @@ import AttendanceLog from './pages/AttendanceLog';
 import ProgressSummary from './pages/ProgressSummary';
 import Announcements from './pages/Announcements';
 import Settings from './pages/Settings';
+import { useClinicSettings } from '../../shared/clinicSettings';
 
 const ParentWebDashboard = lazy(() => import('../../parent-web-dashboard/src/App'));
 const ParentReportsArchive = lazy(() => import('../../parent-reports-archive/src/App'));
@@ -25,11 +26,22 @@ function Loading() {
 }
 
 function ProtectedRoute({ children }) {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, loading } = useAuth();
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-slate-50 dark:bg-slate-900">
+        <div className="flex flex-col items-center gap-3">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-500"></div>
+          <p className="text-sm text-slate-500 font-medium">Memverifikasi sesi...</p>
+        </div>
+      </div>
+    );
+  }
   return isAuthenticated ? children : <Navigate to="/login" replace />;
 }
 
 function MobileTopBar({ onMenuOpen }) {
+  const { clinicName, primaryColor } = useClinicSettings();
   return (
     <header className="lg:hidden flex items-center gap-3 px-4 py-3 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 sticky top-0 z-40">
       <button
@@ -40,10 +52,10 @@ function MobileTopBar({ onMenuOpen }) {
         <span className="material-symbols-outlined text-[22px]">menu</span>
       </button>
       <div className="flex items-center gap-2.5">
-        <div className="bg-gradient-to-br from-sky-500 to-cyan-500 p-1.5 rounded-lg text-white flex items-center justify-center shadow-sm">
+        <div className="p-1.5 rounded-lg text-white flex items-center justify-center shadow-sm" style={{ backgroundColor: primaryColor }}>
           <span className="material-symbols-outlined text-[16px]" style={{ fontVariationSettings: "'FILL' 1" }}>health_and_safety</span>
         </div>
-        <span className="text-sm font-bold text-slate-900 dark:text-white">TheraCare</span>
+        <span className="text-sm font-bold text-slate-900 dark:text-white">{clinicName}</span>
         <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">Parent Portal</span>
       </div>
     </header>
