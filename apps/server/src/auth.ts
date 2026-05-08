@@ -4,7 +4,16 @@ import { admin } from "better-auth/plugins";
 import { db } from "./db/index.js";
 import * as schema from "./db/schema.js";
 
+const authBaseUrl = process.env.BETTER_AUTH_URL || "http://localhost:3000";
+const trustedOrigins = (process.env.CORS_ORIGIN || "http://localhost:5173")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+const isHttpsAuth = authBaseUrl.startsWith("https://");
+
 export const auth = betterAuth({
+  baseURL: authBaseUrl,
+  secret: process.env.BETTER_AUTH_SECRET,
   database: drizzleAdapter(db, {
     provider: "pg",
     schema: {
@@ -25,7 +34,17 @@ export const auth = betterAuth({
     },
   },
   plugins: [admin()],
-  trustedOrigins: (process.env.CORS_ORIGIN || "http://localhost:5173")
-    .split(",")
-    .map((s) => s.trim()),
+  trustedOrigins,
+  advanced: {
+    useSecureCookies: isHttpsAuth,
+    ...(isHttpsAuth
+      ? {
+          defaultCookieAttributes: {
+            sameSite: "none",
+            secure: true,
+            httpOnly: true,
+          },
+        }
+      : {}),
+  },
 });
