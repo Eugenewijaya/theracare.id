@@ -2,20 +2,41 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { authApi, parentsApi } from '../../../shared/api/client';
 
 const AuthContext = createContext(null);
+const STORAGE_KEY = 'parent_user';
+
+function readStoredUser() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY) || sessionStorage.getItem(STORAGE_KEY);
+    return saved ? JSON.parse(saved) : null;
+  } catch {
+    return null;
+  }
+}
+
+function storeUser(userData, remember = true) {
+  try {
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(userData));
+    if (remember) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(userData));
+    } else {
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  } catch {}
+}
+
+function clearStoredUser() {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+    sessionStorage.removeItem(STORAGE_KEY);
+  } catch {}
+}
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(() => {
-    try {
-      const saved = sessionStorage.getItem('parent_user');
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
-  });
+  const [user, setUser] = useState(readStoredUser);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const applyParent = (parent) => {
+  const applyParent = (parent, remember = true) => {
     const userData = {
       id: parent.id,
       parentId: parent.parentId || parent.id,
@@ -28,7 +49,7 @@ export function AuthProvider({ children }) {
       children: parent.children || [],
     };
     setUser(userData);
-    sessionStorage.setItem('parent_user', JSON.stringify(userData));
+    storeUser(userData, remember);
     return userData;
   };
 
@@ -45,7 +66,7 @@ export function AuthProvider({ children }) {
           }
         } else {
           setUser(null);
-          sessionStorage.removeItem('parent_user');
+          clearStoredUser();
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -56,11 +77,11 @@ export function AuthProvider({ children }) {
 
   /**
    * Login using Parent's Phone Number as username and parent's tempPassword as password.
-   * @param {string} phone - Nomor Telepon Orang Tua (e.g. "08111000001")
-   * @param {string} password - Parent's temporary password (e.g. "TheraCare@2024")
+   * @param {string} phone - Nomor telepon orang tua yang terdaftar
+   * @param {string} password - Password sementara atau password aktif parent
    * @returns {boolean} true if login successful
    */
-  const login = async (phone, password) => {
+  const login = async (phone, password, rememberMe = true) => {
     const normalizedPhone = (phone || '').replace(/\D/g, '');
     setError('');
 
@@ -71,11 +92,11 @@ export function AuthProvider({ children }) {
         return false;
       }
 
-      const res = await authApi.signIn(identityRes.data.data.email, password);
+      const res = await authApi.signIn(identityRes.data.data.email, password, rememberMe);
       if (res.ok) {
         const profileRes = await parentsApi.getMe();
         if (profileRes.ok && profileRes.data?.data) {
-          applyParent(profileRes.data.data);
+          applyParent(profileRes.data.data, rememberMe);
           return true;
         }
       }
@@ -93,7 +114,7 @@ export function AuthProvider({ children }) {
       await authApi.signOut();
     } catch(e) {}
     setUser(null);
-    sessionStorage.removeItem('parent_user');
+    clearStoredUser();
   };
 
   return (

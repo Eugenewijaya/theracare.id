@@ -15,6 +15,7 @@ const ChildProgress = lazy(() => import('../../child-progress/src/App'));
 import Announcements from './pages/Announcements';
 import ScheduleUpdates from './pages/ScheduleUpdates';
 import { useClinicSettings } from '../../shared/clinicSettings';
+import LegalPage from '../../shared/ui/LegalPage';
 
 function Loading() {
   return (
@@ -98,6 +99,9 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/privacy" element={<LegalPage type="privacy" portalName="Therapist Portal" />} />
+        <Route path="/terms" element={<LegalPage type="terms" portalName="Therapist Portal" />} />
+        <Route path="/copyright" element={<LegalPage type="copyright" portalName="Therapist Portal" />} />
         <Route path="/*" element={<ProtectedRoute><DashboardLayout /></ProtectedRoute>} />
       </Routes>
     </BrowserRouter>

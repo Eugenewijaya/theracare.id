@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" role="img" aria-labelledby="title desc">
+  <title id="title">Temporary Special Need Center Logo</title>
+  <desc id="desc">A temporary centered clinic logo placeholder.</desc>
+  <defs>
+    <linearGradient id="g" x1="20" y1="18" x2="142" y2="145" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0EA5E9"/>
+      <stop offset="0.52" stop-color="#14B8A6"/>
+      <stop offset="1" stop-color="#2563EB"/>
+    </linearGradient>
+  </defs>
+  <rect x="10" y="10" width="140" height="140" rx="34" fill="url(#g)"/>
+  <path d="M80 39c17 0 31 14 31 31 0 23-31 51-31 51S49 93 49 70c0-17 14-31 31-31Z" fill="white" opacity=".95"/>
+  <path d="M80 55v31M64.5 70.5h31" stroke="#0F766E" stroke-width="12" stroke-linecap="round"/>
+  <circle cx="80" cy="70" r="17" fill="#E0F2FE" opacity=".42"/>
+</svg>

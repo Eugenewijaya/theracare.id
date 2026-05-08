@@ -9,6 +9,7 @@ import ProgressSummary from './pages/ProgressSummary';
 import Announcements from './pages/Announcements';
 import Settings from './pages/Settings';
 import { useClinicSettings } from '../../shared/clinicSettings';
+import LegalPage from '../../shared/ui/LegalPage';
 
 const ParentWebDashboard = lazy(() => import('../../parent-web-dashboard/src/App'));
 const ParentReportsArchive = lazy(() => import('../../parent-reports-archive/src/App'));
@@ -94,6 +95,9 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/privacy" element={<LegalPage type="privacy" portalName="Parent Portal" />} />
+        <Route path="/terms" element={<LegalPage type="terms" portalName="Parent Portal" />} />
+        <Route path="/copyright" element={<LegalPage type="copyright" portalName="Parent Portal" />} />
         <Route path="/*" element={<ProtectedRoute><DashboardLayout /></ProtectedRoute>} />
       </Routes>
     </BrowserRouter>

@@ -1,6 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 export default {
-  content: ["./index.html", "./src/**/*.{js,jsx}", "../therapist-dashboard/src/**/*.{js,jsx}", "../therapist-schedule/src/**/*.{js,jsx}", "../therapist-availability-calendar/src/**/*.{js,jsx}", "../therapist-report/src/**/*.{js,jsx}", "../therapist-web-report/src/**/*.{js,jsx}", "../therapist-performance/src/**/*.{js,jsx}", "../parents-meeting/src/**/*.{js,jsx}", "../child-progress/src/**/*.{js,jsx}"],
+  content: ["./index.html", "./src/**/*.{js,jsx}", "../shared/**/*.{js,jsx}", "../therapist-dashboard/src/**/*.{js,jsx}", "../therapist-schedule/src/**/*.{js,jsx}", "../therapist-availability-calendar/src/**/*.{js,jsx}", "../therapist-report/src/**/*.{js,jsx}", "../therapist-web-report/src/**/*.{js,jsx}", "../therapist-performance/src/**/*.{js,jsx}", "../parents-meeting/src/**/*.{js,jsx}", "../child-progress/src/**/*.{js,jsx}"],
   darkMode: "class",
   theme: {
     extend: {

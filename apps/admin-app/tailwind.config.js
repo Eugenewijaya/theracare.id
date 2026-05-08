@@ -3,6 +3,7 @@ export default {
   content: [
     "./index.html",
     "./src/**/*.{js,jsx}",
+    "../shared/**/*.{js,jsx}",
     "../clinic-admin/src/**/*.{js,jsx}",
     "../admin-scheduling/src/**/*.{js,jsx}",
     "../bulk-schedule/src/**/*.{js,jsx}",

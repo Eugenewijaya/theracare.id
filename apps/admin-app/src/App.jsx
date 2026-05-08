@@ -4,6 +4,7 @@ import { useAuth } from './context/AuthContext';
 import { useAdmin } from './context/AdminContext';
 import Sidebar from './components/Sidebar';
 import LoginPage from './pages/LoginPage';
+import LegalPage from '../../shared/ui/LegalPage';
 
 const ClinicAdmin = lazy(() => import('../../clinic-admin/src/App'));
 const AdminScheduling = lazy(() => import('../../admin-scheduling/src/App'));
@@ -116,6 +117,9 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/privacy" element={<LegalPage type="privacy" portalName="Admin Portal" />} />
+        <Route path="/terms" element={<LegalPage type="terms" portalName="Admin Portal" />} />
+        <Route path="/copyright" element={<LegalPage type="copyright" portalName="Admin Portal" />} />
         <Route path="/*" element={<ProtectedRoute><DashboardLayout /></ProtectedRoute>} />
       </Routes>
     </BrowserRouter>

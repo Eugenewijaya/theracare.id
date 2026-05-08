@@ -4,11 +4,47 @@
 import { useState, useEffect, useCallback } from 'react';
 import { authApi } from './client.js';
 
+function getStorageKey(role) {
+  return `theracare_auth_${role || 'user'}`;
+}
+
+function readStoredUser(role) {
+  const key = getStorageKey(role);
+  try {
+    const saved = localStorage.getItem(key) || sessionStorage.getItem(key);
+    return saved ? JSON.parse(saved) : null;
+  } catch {
+    return null;
+  }
+}
+
+function storeUser(role, user, remember = true) {
+  const key = getStorageKey(role);
+  const payload = JSON.stringify(user);
+  try {
+    if (remember) {
+      localStorage.setItem(key, payload);
+      sessionStorage.removeItem(key);
+    } else {
+      sessionStorage.setItem(key, payload);
+      localStorage.removeItem(key);
+    }
+  } catch {}
+}
+
+function clearStoredUser(role) {
+  const key = getStorageKey(role);
+  try {
+    localStorage.removeItem(key);
+    sessionStorage.removeItem(key);
+  } catch {}
+}
+
 /**
  * @param {string | null} requiredRole - 'admin' | 'parent' | 'therapist'
  */
 export function useAuthSession(requiredRole = null) {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(() => readStoredUser(requiredRole));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -21,10 +57,15 @@ export function useAuthSession(requiredRole = null) {
           const nextUser = res.data.user;
           if (requiredRole && nextUser.role !== requiredRole) {
             setUser(null);
+            clearStoredUser(requiredRole);
             setError('Akses ditolak - role tidak sesuai');
           } else {
             setUser(nextUser);
+            storeUser(requiredRole, nextUser, true);
           }
+        } else if (!cancelled) {
+          setUser(null);
+          clearStoredUser(requiredRole);
         }
       } catch {
         // No active session.
@@ -48,6 +89,7 @@ export function useAuthSession(requiredRole = null) {
           return false;
         }
         setUser(nextUser);
+        storeUser(requiredRole, nextUser, rememberMe);
         setLoading(false);
         return true;
       }
@@ -64,7 +106,8 @@ export function useAuthSession(requiredRole = null) {
   const logout = useCallback(async () => {
     try { await authApi.signOut(); } catch {}
     setUser(null);
-  }, []);
+    clearStoredUser(requiredRole);
+  }, [requiredRole]);
 
   return {
     user,

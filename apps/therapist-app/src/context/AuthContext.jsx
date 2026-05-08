@@ -2,20 +2,41 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { authApi, therapistsApi } from '../../../shared/api/client';
 
 const AuthContext = createContext(null);
+const STORAGE_KEY = 'therapist_user';
+
+function readStoredUser() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY) || sessionStorage.getItem(STORAGE_KEY);
+    return saved ? JSON.parse(saved) : null;
+  } catch {
+    return null;
+  }
+}
+
+function storeUser(userData, remember = true) {
+  try {
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(userData));
+    if (remember) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(userData));
+    } else {
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  } catch {}
+}
+
+function clearStoredUser() {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+    sessionStorage.removeItem(STORAGE_KEY);
+  } catch {}
+}
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(() => {
-    try {
-      const saved = sessionStorage.getItem('therapist_user');
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
-  });
+  const [user, setUser] = useState(readStoredUser);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const applyTherapist = (therapist) => {
+  const applyTherapist = (therapist, remember = true) => {
     const userData = {
       id: therapist.id,
       nit: therapist.nit || therapist.id,
@@ -29,7 +50,7 @@ export function AuthProvider({ children }) {
       phone: therapist.phone,
     };
     setUser(userData);
-    sessionStorage.setItem('therapist_user', JSON.stringify(userData));
+    storeUser(userData, remember);
     return userData;
   };
 
@@ -46,7 +67,7 @@ export function AuthProvider({ children }) {
           }
         } else {
           setUser(null);
-          sessionStorage.removeItem('therapist_user');
+          clearStoredUser();
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -55,7 +76,7 @@ export function AuthProvider({ children }) {
     return () => { cancelled = true; };
   }, []);
 
-  const login = async (nit, password) => {
+  const login = async (nit, password, rememberMe = true) => {
     setError('');
     try {
       const identityRes = await therapistsApi.getLoginIdentity(nit);
@@ -64,11 +85,11 @@ export function AuthProvider({ children }) {
         return false;
       }
 
-      const res = await authApi.signIn(identityRes.data.data.email, password);
+      const res = await authApi.signIn(identityRes.data.data.email, password, rememberMe);
       if (res.ok) {
         const profileRes = await therapistsApi.getMe();
         if (profileRes.ok && profileRes.data?.data) {
-          applyTherapist(profileRes.data.data);
+          applyTherapist(profileRes.data.data, rememberMe);
           return true;
         }
       }
@@ -86,7 +107,7 @@ export function AuthProvider({ children }) {
       await authApi.signOut();
     } catch {}
     setUser(null);
-    sessionStorage.removeItem('therapist_user');
+    clearStoredUser();
   };
 
   return (

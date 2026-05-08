@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 1120" role="img" aria-labelledby="title desc">
+  <title id="title">Temporary Clinic Welcome Photo</title>
+  <desc id="desc">A temporary illustrated photo placeholder for the login welcome screen.</desc>
+  <defs>
+    <linearGradient id="bg" x1="83" y1="72" x2="806" y2="1052" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E0F2FE"/>
+      <stop offset=".45" stop-color="#CCFBF1"/>
+      <stop offset="1" stop-color="#DBEAFE"/>
+    </linearGradient>
+    <linearGradient id="card" x1="202" y1="180" x2="739" y2="896" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF" stop-opacity=".95"/>
+      <stop offset="1" stop-color="#F8FAFC" stop-opacity=".88"/>
+    </linearGradient>
+    <filter id="shadow" x="80" y="80" width="760" height="960" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="34" stdDeviation="42" flood-color="#0F172A" flood-opacity=".16"/>
+    </filter>
+  </defs>
+  <rect width="900" height="1120" fill="url(#bg)"/>
+  <path d="M0 870c147-64 290-77 429-39 177 49 325 28 471-75v364H0V870Z" fill="#F8FAFC" opacity=".86"/>
+  <g filter="url(#shadow)">
+    <rect x="151" y="128" width="598" height="826" rx="56" fill="url(#card)"/>
+  </g>
+  <circle cx="450" cy="348" r="122" fill="#38BDF8" opacity=".16"/>
+  <circle cx="450" cy="331" r="83" fill="#FFFFFF"/>
+  <path d="M393 337c9-43 31-65 66-65 35 0 56 22 64 65-20 18-42 27-65 27-24 0-45-9-65-27Z" fill="#0F766E"/>
+  <circle cx="421" cy="314" r="12" fill="#F8FAFC"/>
+  <circle cx="489" cy="314" r="12" fill="#F8FAFC"/>
+  <path d="M428 346c16 13 37 13 53 0" stroke="#F8FAFC" stroke-width="10" stroke-linecap="round"/>
+  <rect x="272" y="502" width="356" height="34" rx="17" fill="#CBD5E1"/>
+  <rect x="232" y="572" width="436" height="24" rx="12" fill="#E2E8F0"/>
+  <rect x="282" y="620" width="336" height="24" rx="12" fill="#E2E8F0"/>
+  <g transform="translate(242 706)">
+    <rect width="416" height="120" rx="32" fill="#FFFFFF"/>
+    <circle cx="74" cy="60" r="34" fill="#DBEAFE"/>
+    <path d="M64 61h20M74 51v20" stroke="#2563EB" stroke-width="9" stroke-linecap="round"/>
+    <rect x="128" y="35" width="184" height="19" rx="9.5" fill="#94A3B8"/>
+    <rect x="128" y="68" width="236" height="16" rx="8" fill="#CBD5E1"/>
+  </g>
+  <g transform="translate(278 858)">
+    <circle cx="0" cy="0" r="12" fill="#14B8A6"/>
+    <circle cx="58" cy="0" r="12" fill="#38BDF8"/>
+    <circle cx="116" cy="0" r="12" fill="#2563EB"/>
+    <rect x="160" y="-10" width="176" height="20" rx="10" fill="#CBD5E1"/>
+  </g>
+</svg>
