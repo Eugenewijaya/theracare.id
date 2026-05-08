@@ -3,12 +3,22 @@ import Header from './components/Header';
 import SettingsSidebar from './components/SettingsSidebar';
 import { adminApi, notificationsApi } from '../../shared/api/client';
 
-const tabs = ['Semua', 'Notifikasi Baru', 'Parent / Orang Tua', 'Terapis', 'Umum / Global'];
+const tabs = ['Semua', 'Notifikasi Baru', 'Admin', 'Parent / Orang Tua', 'Terapis', 'Umum / Global'];
+
+function readStoredAdmin() {
+    try {
+        const saved = localStorage.getItem('theracare_auth_admin') || sessionStorage.getItem('theracare_auth_admin');
+        return saved ? JSON.parse(saved) : null;
+    } catch {
+        return null;
+    }
+}
 
 function App() {
     const [activeTab, setActiveTab] = useState('Semua');
     const [audienceFilter, setAudienceFilter] = useState('all');
     const [notifications, setNotifications] = useState([]);
+    const [currentUser, setCurrentUser] = useState(readStoredAdmin);
     
     // For creating new notes
     const [isCreating, setIsCreating] = useState(false);
@@ -38,8 +48,8 @@ function App() {
                 source: 'announcement',
                 title: a.title || 'Pengumuman Tanpa Judul',
                 desc: a.content || '',
-                audience: a.targetRoles && a.targetRoles.length === 2 ? 'all' : (a.targetRoles ? a.targetRoles[0] : 'admin'),
-                icon: a.targetRoles?.includes('parent') ? 'family_restroom' : 'campaign',
+                audience: a.targetRoles && a.targetRoles.length > 1 ? 'all' : (a.targetRoles ? a.targetRoles[0] : 'admin'),
+                icon: a.targetRoles?.includes('admin') ? 'admin_panel_settings' : a.targetRoles?.includes('parent') ? 'family_restroom' : 'campaign',
                 createdAt: a.createdAt,
                 time: new Date(a.createdAt).toLocaleDateString('id-ID', { hour:'2-digit', minute:'2-digit', day:'numeric', month:'short' }),
                 unread: false,
@@ -52,18 +62,21 @@ function App() {
     };
 
     useEffect(() => {
+        setCurrentUser(readStoredAdmin());
         refreshData();
     }, []);
 
     const markAllRead = async () => {
         await notificationsApi.markAllRead();
         setNotifications(notifications.map(n => ({ ...n, unread: false })));
+        window.dispatchEvent(new Event('notificationsUpdated'));
     };
 
     const toggleRead = async (item) => {
         if (item.source !== 'inbox' || !item.unread) return;
         await notificationsApi.markRead(item.id);
         setNotifications(notifications.map(n => n.id === item.id ? { ...n, unread: false } : n));
+        window.dispatchEvent(new Event('notificationsUpdated'));
     };
 
     const handleDelete = async (item, e) => {
@@ -72,6 +85,7 @@ function App() {
         try {
             await adminApi.deleteAnnouncement(item.id);
             refreshData();
+            window.dispatchEvent(new Event('notificationsUpdated'));
         } catch (e) {
             console.error(e);
         }
@@ -81,9 +95,10 @@ function App() {
         if (!newTitle.trim() || !newDesc.trim()) return;
         
         let roles = ['admin'];
-        if (audienceFilter === 'all') roles = ['parent', 'therapist'];
+        if (audienceFilter === 'all') roles = ['admin', 'parent', 'therapist'];
         else if (audienceFilter === 'parent') roles = ['parent'];
         else if (audienceFilter === 'therapist') roles = ['therapist'];
+        else if (audienceFilter === 'admin') roles = ['admin'];
 
         try {
             await adminApi.createAnnouncement({
@@ -98,6 +113,7 @@ function App() {
             setNewDesc('');
             setIsCreating(false);
             refreshData();
+            window.dispatchEvent(new Event('notificationsUpdated'));
         } catch (e) {
             console.error(e);
         }
@@ -105,6 +121,7 @@ function App() {
 
     const filteredNotifications = notifications.filter(n => {
         if (activeTab === 'Notifikasi Baru' && !n.unread) return false;
+        if (activeTab === 'Admin' && n.audience !== 'admin') return false;
         if (activeTab === 'Parent / Orang Tua' && n.audience !== 'parent') return false;
         if (activeTab === 'Terapis' && n.audience !== 'therapist') return false;
         if (activeTab === 'Umum / Global' && n.audience !== 'all') return false;
@@ -115,7 +132,7 @@ function App() {
 
     return (
         <>
-            <Header />
+            <Header user={currentUser} />
             <main className="flex-1 flex justify-center py-8 px-4 sm:px-8 lg:px-12 bg-background-light dark:bg-background-dark">
                 <div className="w-full max-w-7xl flex flex-col lg:flex-row gap-8">
 
@@ -136,6 +153,7 @@ function App() {
                                         className="h-9 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-primary"
                                     >
                                         <option value="all">Audiens: Semua</option>
+                                        <option value="admin">Hanya Admin</option>
                                         <option value="therapist">Hanya Terapis</option>
                                         <option value="parent">Hanya Orang Tua</option>
                                     </select>

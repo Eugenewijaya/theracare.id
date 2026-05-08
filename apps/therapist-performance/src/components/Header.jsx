@@ -1,8 +1,31 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { notificationsApi } from '../../../shared/api/client';
 
-const Header = ({ searchValue, onSearchChange }) => {
+const Header = ({ searchValue, onSearchChange, user, onSettingsClick }) => {
     const navigate = useNavigate();
+    const [unreadCount, setUnreadCount] = useState(0);
+    const initials = (user?.name || 'Therapist')
+        .split(' ')
+        .filter(Boolean)
+        .slice(0, 2)
+        .map(part => part[0])
+        .join('')
+        .toUpperCase() || 'T';
+
+    useEffect(() => {
+        const loadUnread = async () => {
+            try {
+                const res = await notificationsApi.getUnreadCount();
+                setUnreadCount(res.data?.data?.count || 0);
+            } catch (e) {
+                console.error('Failed to load notification count', e);
+            }
+        };
+        loadUnread();
+        window.addEventListener('notificationsUpdated', loadUnread);
+        return () => window.removeEventListener('notificationsUpdated', loadUnread);
+    }, []);
 
     return (
         <header className="hidden lg:flex flex-wrap sm:flex-nowrap items-center justify-between border-b border-solid border-b-slate-200 dark:border-b-primary/20 px-4 sm:px-10 py-3 gap-4">
@@ -27,19 +50,35 @@ const Header = ({ searchValue, onSearchChange }) => {
             </div>
             <div className="hidden sm:flex flex-1 justify-end gap-8 shrink-0">
                 <div className="flex gap-2">
-                    <button className="flex items-center justify-center rounded-lg h-10 bg-slate-100 dark:bg-primary/10 text-slate-900 dark:text-slate-100 px-2.5">
+                    <button
+                        onClick={() => navigate('/announcements')}
+                        className="relative flex items-center justify-center rounded-lg h-10 bg-slate-100 dark:bg-primary/10 text-slate-900 dark:text-slate-100 px-2.5 hover:text-primary transition-colors"
+                        title="Notifikasi & Pengumuman"
+                    >
                         <span className="material-symbols-outlined text-xl">notifications</span>
+                        {unreadCount > 0 && (
+                            <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-black flex items-center justify-center">
+                                {unreadCount > 9 ? '9+' : unreadCount}
+                            </span>
+                        )}
                     </button>
-                    <button className="flex items-center justify-center rounded-lg h-10 bg-slate-100 dark:bg-primary/10 text-slate-900 dark:text-slate-100 px-2.5">
+                    <button
+                        onClick={onSettingsClick}
+                        className="flex items-center justify-center rounded-lg h-10 bg-slate-100 dark:bg-primary/10 text-slate-900 dark:text-slate-100 px-2.5 hover:text-primary transition-colors"
+                        title="Edit profile"
+                    >
                         <span className="material-symbols-outlined text-xl">settings</span>
                     </button>
                 </div>
-                <div
+                <button
+                    type="button"
                     onClick={() => navigate('/performance')}
-                    className="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10 cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all shrink-0"
-                    title="User avatar"
-                    style={{ backgroundImage: "url('https://lh3.googleusercontent.com/aida-public/AB6AXuBTzvaHtWKXAN3WuwjUrQ632QaywZF5CJhiuqMNZix2c2ByAJg5zZkiB6F_X4nyX3tRdj9S2STfT8fF0eGbWaXdDyQ_Aka-deymlQMkhR0lHZkCG9eLXLXj4-IlGYqjw7JcU4jFgEEvuIuodvlLiz6UBVyaxhyJZwH06S1PQ6QpVaCM7gZqJQ37zr6a35ZzoVY0DSYrOkn65w6shqLUW6heUE7ev4VB_D_v7gjWFdngux4DVsnz-LEocu9Ulfi465vUuiiwAvjuBw')" }}
-                ></div>
+                    className="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10 cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all shrink-0 bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 font-black flex items-center justify-center overflow-hidden"
+                    title={user?.name || 'Therapist profile'}
+                    style={user?.avatar ? { backgroundImage: `url("${user.avatar}")` } : {}}
+                >
+                    {!user?.avatar && initials}
+                </button>
             </div>
         </header>
     );

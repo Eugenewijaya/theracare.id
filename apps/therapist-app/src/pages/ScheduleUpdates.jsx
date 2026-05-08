@@ -19,7 +19,7 @@ export default function ScheduleUpdates() {
 
     useEffect(() => {
         const load = async () => {
-            const saved = sessionStorage.getItem('therapist_user');
+            const saved = sessionStorage.getItem('therapist_user') || localStorage.getItem('therapist_user');
             if (!saved) return;
             const user = JSON.parse(saved);
 
@@ -37,6 +37,9 @@ export default function ScheduleUpdates() {
                 const unreadNotifs = notifs.filter(n => (n.type === 'schedule_change' || n.type === 'new_session') && !n.isRead && !(n.readBy || []).includes(user.id));
                 for (const n of unreadNotifs) {
                     await notificationsApi.markRead(n.id);
+                }
+                if (unreadNotifs.length > 0) {
+                    window.dispatchEvent(new Event('notificationsUpdated'));
                 }
 
                 const mapped = requests

@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ProfileModal from './ProfileModal';
+import { notificationsApi } from '../../../shared/api/client';
 
 // Dashboard header search: navigates to /child-progress with a ?q= param
 // so the child-progress page can pre-filter on mount.
@@ -8,6 +9,31 @@ const Header = ({ searchValue = '', onSearchChange }) => {
     const navigate = useNavigate();
     const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
     const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+    const [currentUser, setCurrentUser] = useState(null);
+    const [unreadCount, setUnreadCount] = useState(0);
+
+    useEffect(() => {
+        try {
+            const saved = sessionStorage.getItem('therapist_user') || localStorage.getItem('therapist_user');
+            setCurrentUser(saved ? JSON.parse(saved) : null);
+        } catch {
+            setCurrentUser(null);
+        }
+    }, []);
+
+    useEffect(() => {
+        const loadUnread = async () => {
+            try {
+                const res = await notificationsApi.getUnreadCount();
+                setUnreadCount(res.data?.data?.count || 0);
+            } catch (e) {
+                console.error('Failed to load notification count', e);
+            }
+        };
+        loadUnread();
+        window.addEventListener('notificationsUpdated', loadUnread);
+        return () => window.removeEventListener('notificationsUpdated', loadUnread);
+    }, []);
 
     const handleKeyDown = (e) => {
         if (e.key === 'Enter' && searchValue.trim()) {
@@ -78,19 +104,38 @@ const Header = ({ searchValue = '', onSearchChange }) => {
                             title="Notifikasi & Pengumuman"
                         >
                             <span className="material-symbols-outlined text-[22px] sm:text-[24px]">notifications</span>
-                            <span className="absolute top-1.5 right-1.5 size-2.5 bg-red-500 rounded-full border-2 border-white dark:border-neutral-900"></span>
+                            {unreadCount > 0 && (
+                                <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-black flex items-center justify-center border-2 border-white dark:border-neutral-900">
+                                    {unreadCount > 9 ? '9+' : unreadCount}
+                                </span>
+                            )}
                         </button>
-                        <div
+                        <button
+                            type="button"
                             onClick={() => setIsProfileModalOpen(true)}
-                            className="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-8 sm:size-10 border-2 border-primary/20 cursor-pointer hover:border-primary transition-colors shadow-sm"
-                            title="Therapist Profile"
-                            style={{ backgroundImage: "url('https://lh3.googleusercontent.com/aida-public/AB6AXuA0TyDqs2p45WCrtgHdllMwSc4Miwe1S7ifzokt3CzkOeKee8m6AnTahslRwDTHXJWiNnIzYisQ3sJQ1Pfo7D1ORYGZswyJbBoA9z0q9jhaozlehbZmgpuKmYO5EQjOlI9TSc5Bjm9kKecrZosUhKEENn7xNYQs1oTVVrrdInIswDno8fzHSYQL03bcBwdIw5DuYbYrkBmR6PolVq2c5ho50HTYU0UhyVhcSa-9yOCdBUQ51Vipia1UDNe5EkL2FBXpE9HVqSU0Jg')" }}
-                        ></div>
+                            className="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-8 sm:size-10 border-2 border-primary/20 cursor-pointer hover:border-primary transition-colors shadow-sm bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 font-black flex items-center justify-center overflow-hidden"
+                            title={currentUser?.name || 'Therapist Profile'}
+                            style={currentUser?.avatar ? { backgroundImage: `url("${currentUser.avatar}")` } : {}}
+                        >
+                            {!currentUser?.avatar && (currentUser?.name?.charAt(0)?.toUpperCase() || 'T')}
+                        </button>
                     </div>
                 </div>
             </div>
 
-            <ProfileModal isOpen={isProfileModalOpen} onClose={() => setIsProfileModalOpen(false)} />
+            <ProfileModal
+                isOpen={isProfileModalOpen}
+                user={currentUser}
+                onClose={() => setIsProfileModalOpen(false)}
+                onEditProfile={() => {
+                    setIsProfileModalOpen(false);
+                    navigate('/performance');
+                }}
+                onOpenNotifications={() => {
+                    setIsProfileModalOpen(false);
+                    navigate('/announcements');
+                }}
+            />
 
             {/* Mobile Search Bar (expandable) */}
             {mobileSearchOpen && (

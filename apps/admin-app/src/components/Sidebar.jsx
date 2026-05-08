@@ -64,8 +64,12 @@ export default function Sidebar({ isOpen, onClose }) {
       } catch {}
     };
     computeBadges();
+    window.addEventListener('notificationsUpdated', computeBadges);
     const interval = setInterval(computeBadges, 30000); // Poll every 30s
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('notificationsUpdated', computeBadges);
+    };
   }, []);
 
   // Close sidebar on route change (mobile)
@@ -86,6 +90,7 @@ export default function Sidebar({ isOpen, onClose }) {
 
   const sidebarContent = (isMobile) => {
     const isCollapsed = !isMobile && sidebarCollapsed;
+    const profileImage = user?.image || user?.avatar || (adminProfile?.avatar?.startsWith?.('data:') || adminProfile?.avatar?.startsWith?.('http') ? adminProfile.avatar : '');
     return (
       <aside 
         className={`flex-shrink-0 flex flex-col h-full text-slate-300 transition-all duration-300 border-r border-slate-800/50`}
@@ -125,10 +130,15 @@ export default function Sidebar({ isOpen, onClose }) {
           {/* User */}
           <div className={`flex items-center gap-3 ${isCollapsed ? 'justify-center px-0' : 'px-2'}`}>
             <div 
-              className="size-9 rounded-full flex items-center justify-center font-bold text-sm border flex-shrink-0"
-              style={{ backgroundColor: `${brandColor}20`, color: brandColor, borderColor: `${brandColor}30` }}
+              className="size-9 rounded-full flex items-center justify-center font-bold text-sm border flex-shrink-0 overflow-hidden bg-center bg-cover"
+              style={{
+                backgroundColor: `${brandColor}20`,
+                color: brandColor,
+                borderColor: `${brandColor}30`,
+                ...(profileImage ? { backgroundImage: `url("${profileImage}")` } : {})
+              }}
             >
-              {(user?.name || adminProfile?.name || 'A').charAt(0).toUpperCase()}
+              {!profileImage && (user?.name || adminProfile?.name || 'A').charAt(0).toUpperCase()}
             </div>
             {!isCollapsed && (
               <div className="flex-1 min-w-0">

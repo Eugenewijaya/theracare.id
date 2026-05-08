@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { adminApi } from '../../../shared/api/client';
+import { adminApi, notificationsApi } from '../../../shared/api/client';
 
 const formatDate = (dateStr) => {
     if (!dateStr) return '';
@@ -9,17 +9,66 @@ const formatDate = (dateStr) => {
 
 export default function Announcements() {
     const [announcements, setAnnouncements] = useState([]);
+    const [notificationMap, setNotificationMap] = useState({});
+    const [unreadTotal, setUnreadTotal] = useState(0);
     const [expanded, setExpanded] = useState(null);
 
     useEffect(() => {
         const load = async () => {
             try {
-                const res = await adminApi.getAnnouncementsForRole('parent');
+                const [res, notifRes] = await Promise.all([
+                    adminApi.getAnnouncementsForRole('parent'),
+                    notificationsApi.getAll(),
+                ]);
                 setAnnouncements(res.data?.data || []);
+                const notifs = notifRes.data?.data || [];
+                const byRelated = {};
+                notifs.forEach(n => {
+                    if (n.relatedId) byRelated[n.relatedId] = n;
+                });
+                setNotificationMap(byRelated);
+                setUnreadTotal(notifs.filter(n => !n.isRead).length);
             } catch(e) { console.error(e); }
         };
         load();
     }, []);
+
+    const markNotificationRead = async (notificationId) => {
+        if (!notificationId) return;
+        try {
+            await notificationsApi.markRead(notificationId);
+            setNotificationMap(prev => {
+                const next = {};
+                Object.entries(prev).forEach(([key, value]) => {
+                    next[key] = value.id === notificationId ? { ...value, isRead: true } : value;
+                });
+                return next;
+            });
+            setUnreadTotal(prev => Math.max(0, prev - 1));
+            window.dispatchEvent(new Event('notificationsUpdated'));
+        } catch (e) {
+            console.error('Failed to mark notification read', e);
+        }
+    };
+
+    const toggleAnnouncement = (ann) => {
+        setExpanded(expanded === ann.id ? null : ann.id);
+        const notification = notificationMap[ann.id];
+        if (notification && !notification.isRead) {
+            markNotificationRead(notification.id);
+        }
+    };
+
+    const markAllRead = async () => {
+        try {
+            await notificationsApi.markAllRead();
+            setNotificationMap(prev => Object.fromEntries(Object.entries(prev).map(([key, value]) => [key, { ...value, isRead: true }])));
+            setUnreadTotal(0);
+            window.dispatchEvent(new Event('notificationsUpdated'));
+        } catch (e) {
+            console.error('Failed to mark all notifications read', e);
+        }
+    };
 
     return (
         <div className="flex flex-col h-full bg-slate-50/50 dark:bg-slate-900">
@@ -28,10 +77,19 @@ export default function Announcements() {
                 <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-sky-500 to-cyan-500 flex items-center justify-center text-white shadow-md shadow-sky-500/20">
                     <span className="material-symbols-outlined text-[24px]" style={{ fontVariationSettings: "'FILL' 1" }}>campaign</span>
                 </div>
-                <div>
+                <div className="min-w-0">
                     <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white leading-tight">Pengumuman Klinik</h1>
                     <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Informasi terbaru dari TheraCare untuk Anda.</p>
                 </div>
+                {unreadTotal > 0 && (
+                    <button
+                        onClick={markAllRead}
+                        className="ml-auto shrink-0 hidden sm:flex items-center gap-2 rounded-xl border border-sky-100 bg-sky-50 px-4 py-2 text-xs font-black text-sky-700 hover:bg-sky-100 dark:border-sky-800/50 dark:bg-sky-900/20 dark:text-sky-300 dark:hover:bg-sky-900/30"
+                    >
+                        <span className="material-symbols-outlined text-[16px]">done_all</span>
+                        Tandai dibaca
+                    </button>
+                )}
             </header>
 
             <main className="flex-1 overflow-y-auto p-4 md:p-8">
@@ -48,7 +106,7 @@ export default function Announcements() {
                         announcements.map((ann) => (
                             <div
                                 key={ann.id}
-                                className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden shadow-sm hover:shadow-md transition-shadow"
+                                className={`bg-white dark:bg-slate-800 rounded-2xl border overflow-hidden shadow-sm hover:shadow-md transition-shadow ${notificationMap[ann.id]?.isRead === false ? 'border-sky-200 dark:border-sky-800/60' : 'border-slate-200 dark:border-slate-700'}`}
                             >
                                 <div className="p-5">
                                     <div className="flex items-start justify-between gap-4">
@@ -57,7 +115,10 @@ export default function Announcements() {
                                                 <span className="material-symbols-outlined text-sky-600 dark:text-sky-400 text-[20px]" style={{ fontVariationSettings: "'FILL' 1" }}>campaign</span>
                                             </div>
                                             <div className="flex-1">
-                                                <h2 className="text-base font-bold text-slate-900 dark:text-white leading-tight mb-1">{ann.title}</h2>
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    {notificationMap[ann.id]?.isRead === false && <span className="size-2.5 rounded-full bg-red-500 shrink-0" title="Belum dibaca" />}
+                                                    <h2 className="text-base font-bold text-slate-900 dark:text-white leading-tight">{ann.title}</h2>
+                                                </div>
                                                 <div className="flex items-center gap-3 text-xs text-slate-400 dark:text-slate-500 flex-wrap">
                                                     <span className="flex items-center gap-1">
                                                         <span className="material-symbols-outlined text-[13px]">schedule</span>
@@ -71,7 +132,7 @@ export default function Announcements() {
                                             </div>
                                         </div>
                                         <button
-                                            onClick={() => setExpanded(expanded === ann.id ? null : ann.id)}
+                                            onClick={() => toggleAnnouncement(ann)}
                                             className="shrink-0 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
                                         >
                                             <span className="material-symbols-outlined text-slate-400 text-[20px]">

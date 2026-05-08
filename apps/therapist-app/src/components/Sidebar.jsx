@@ -38,10 +38,12 @@ export default function Sidebar({ isOpen, onClose }) {
         const notifCount = unread.filter(n => n.type === 'announcement' || n.type === 'reschedule_request').length;
         setBadgeCounts({ schedule: scheduleCount, notification: notifCount });
       } catch (err) {
-        console.error('Failed to load notifications', err);
+      console.error('Failed to load notifications', err);
       }
     };
     computeBadges();
+    window.addEventListener('notificationsUpdated', computeBadges);
+    return () => window.removeEventListener('notificationsUpdated', computeBadges);
   }, [user, location.pathname]);
 
   // Close sidebar on route change (mobile)

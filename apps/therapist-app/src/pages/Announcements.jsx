@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { adminApi, rescheduleApi } from '../../../shared/api/client';
+import { adminApi, notificationsApi, rescheduleApi } from '../../../shared/api/client';
 
 const formatDate = (dateStr) => {
     if (!dateStr) return '';
@@ -16,16 +16,28 @@ const formatDateSimple = (dateStr) => {
 export default function Announcements() {
     const [announcements, setAnnouncements] = useState([]);
     const [reschedules, setReschedules] = useState([]);
+    const [notificationMap, setNotificationMap] = useState({});
+    const [unreadTotal, setUnreadTotal] = useState(0);
     const [expanded, setExpanded] = useState(null);
     const [activeTab, setActiveTab] = useState('announcements'); // 'announcements' | 'reschedules'
 
     useEffect(() => {
         const load = async () => {
             try {
-                const annRes = await adminApi.getAnnouncementsForRole('therapist');
+                const [annRes, notifRes] = await Promise.all([
+                    adminApi.getAnnouncementsForRole('therapist'),
+                    notificationsApi.getAll(),
+                ]);
                 setAnnouncements(annRes.data?.data || []);
+                const notifs = notifRes.data?.data || [];
+                const byRelated = {};
+                notifs.forEach(n => {
+                    if (n.relatedId) byRelated[n.relatedId] = n;
+                });
+                setNotificationMap(byRelated);
+                setUnreadTotal(notifs.filter(n => !n.isRead).length);
                 
-                const saved = sessionStorage.getItem('therapist_user');
+                const saved = sessionStorage.getItem('therapist_user') || localStorage.getItem('therapist_user');
                 if (saved) {
                     const user = JSON.parse(saved);
                     const resRes = await rescheduleApi.getForTherapist(user.id);
@@ -40,6 +52,43 @@ export default function Announcements() {
 
     const pendingReschedules = reschedules.filter(r => r.status === 'pending').length;
 
+    const markNotificationRead = async (notificationId) => {
+        if (!notificationId) return;
+        try {
+            await notificationsApi.markRead(notificationId);
+            setNotificationMap(prev => {
+                const next = {};
+                Object.entries(prev).forEach(([key, value]) => {
+                    next[key] = value.id === notificationId ? { ...value, isRead: true } : value;
+                });
+                return next;
+            });
+            setUnreadTotal(prev => Math.max(0, prev - 1));
+            window.dispatchEvent(new Event('notificationsUpdated'));
+        } catch (e) {
+            console.error('Failed to mark notification read', e);
+        }
+    };
+
+    const toggleAnnouncement = (ann) => {
+        setExpanded(expanded === ann.id ? null : ann.id);
+        const notification = notificationMap[ann.id];
+        if (notification && !notification.isRead) {
+            markNotificationRead(notification.id);
+        }
+    };
+
+    const markAllRead = async () => {
+        try {
+            await notificationsApi.markAllRead();
+            setNotificationMap(prev => Object.fromEntries(Object.entries(prev).map(([key, value]) => [key, { ...value, isRead: true }])));
+            setUnreadTotal(0);
+            window.dispatchEvent(new Event('notificationsUpdated'));
+        } catch (e) {
+            console.error('Failed to mark all notifications read', e);
+        }
+    };
+
     return (
         <div className="flex flex-col h-full bg-slate-50/50 dark:bg-slate-900">
             {/* Page Header */}
@@ -47,10 +96,19 @@ export default function Announcements() {
                 <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-br from-teal-500 to-cyan-500 flex items-center justify-center text-white shadow-md shadow-teal-500/20 shrink-0">
                     <span className="material-symbols-outlined text-[20px] sm:text-[24px]" style={{ fontVariationSettings: "'FILL' 1" }}>notifications</span>
                 </div>
-                <div>
+                <div className="min-w-0">
                     <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white leading-tight">Notifikasi &amp; Pengumuman</h1>
                     <p className="text-xs sm:text-sm font-medium text-slate-500 dark:text-slate-400">Pengumuman klinik dan request reschedule dari orang tua.</p>
                 </div>
+                {unreadTotal > 0 && (
+                    <button
+                        onClick={markAllRead}
+                        className="ml-auto shrink-0 hidden sm:flex items-center gap-2 rounded-xl border border-teal-100 bg-teal-50 px-4 py-2 text-xs font-black text-teal-700 hover:bg-teal-100 dark:border-teal-800/50 dark:bg-teal-900/20 dark:text-teal-300 dark:hover:bg-teal-900/30"
+                    >
+                        <span className="material-symbols-outlined text-[16px]">done_all</span>
+                        Tandai dibaca
+                    </button>
+                )}
             </header>
 
             {/* Tabs */}
@@ -98,7 +156,7 @@ export default function Announcements() {
                             announcements.map((ann) => (
                                 <div
                                     key={ann.id}
-                                    className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden shadow-sm hover:shadow-md transition-shadow"
+                                    className={`bg-white dark:bg-slate-800 rounded-2xl border overflow-hidden shadow-sm hover:shadow-md transition-shadow ${notificationMap[ann.id]?.isRead === false ? 'border-teal-200 dark:border-teal-800/60' : 'border-slate-200 dark:border-slate-700'}`}
                                 >
                                     <div className="p-5">
                                         <div className="flex items-start justify-between gap-4">
@@ -107,7 +165,10 @@ export default function Announcements() {
                                                     <span className="material-symbols-outlined text-teal-600 dark:text-teal-400 text-[20px]" style={{ fontVariationSettings: "'FILL' 1" }}>campaign</span>
                                                 </div>
                                                 <div className="flex-1">
-                                                    <h2 className="text-base font-bold text-slate-900 dark:text-white leading-tight mb-1">{ann.title}</h2>
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        {notificationMap[ann.id]?.isRead === false && <span className="size-2.5 rounded-full bg-red-500 shrink-0" title="Belum dibaca" />}
+                                                        <h2 className="text-base font-bold text-slate-900 dark:text-white leading-tight">{ann.title}</h2>
+                                                    </div>
                                                     <div className="flex items-center gap-3 text-xs text-slate-400 dark:text-slate-500 flex-wrap">
                                                         <span className="flex items-center gap-1">
                                                             <span className="material-symbols-outlined text-[13px]">schedule</span>
@@ -117,7 +178,7 @@ export default function Announcements() {
                                                 </div>
                                             </div>
                                             <button
-                                                onClick={() => setExpanded(expanded === ann.id ? null : ann.id)}
+                                                onClick={() => toggleAnnouncement(ann)}
                                                 className="shrink-0 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
                                             >
                                                 <span className="material-symbols-outlined text-slate-400 text-[20px]">

@@ -284,7 +284,7 @@ function App() {
         <div className="layout-container flex h-full grow flex-col">
             <div className="px-4 md:px-10 overflow-x-hidden flex flex-1 justify-center py-5">
                 <div className="layout-content-container flex flex-col max-w-[1200px] w-full">
-                    <Header searchValue={searchQuery} onSearchChange={setSearchQuery} />
+                    <Header searchValue={searchQuery} onSearchChange={setSearchQuery} user={currentUser} onSettingsClick={openProfileModal} />
 
                     {/* Profile Header with Edit button */}
                     <div className="relative">

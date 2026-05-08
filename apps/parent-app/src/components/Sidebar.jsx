@@ -36,6 +36,8 @@ export default function Sidebar({ isOpen, onClose }) {
       } catch(e) {}
     };
     computeBadges();
+    window.addEventListener('notificationsUpdated', computeBadges);
+    return () => window.removeEventListener('notificationsUpdated', computeBadges);
   }, [user]);
 
   // Close sidebar on route change (mobile)
@@ -67,8 +69,11 @@ export default function Sidebar({ isOpen, onClose }) {
         </div>
 
         <NavLink to="/settings" className="flex items-center gap-3 px-2 py-1.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors group">
-          <div className="size-9 rounded-full bg-gradient-to-br from-sky-400 to-cyan-500 text-white flex items-center justify-center font-extrabold text-sm shrink-0 shadow-sm">
-            {(user?.name || 'P').charAt(0).toUpperCase()}
+          <div
+            className="size-9 rounded-full bg-gradient-to-br from-sky-400 to-cyan-500 text-white flex items-center justify-center font-extrabold text-sm shrink-0 shadow-sm overflow-hidden bg-center bg-cover"
+            style={user?.avatar && user.avatar.length > 1 ? { backgroundImage: `url("${user.avatar}")` } : {}}
+          >
+            {!(user?.avatar && user.avatar.length > 1) && (user?.name || 'P').charAt(0).toUpperCase()}
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">{user?.name || 'Parent'}</p>

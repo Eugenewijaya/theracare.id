@@ -43,7 +43,7 @@ export function AuthProvider({ children }) {
       userId: parent.userId,
       name: parent.name,
       role: 'parent',
-      avatar: (parent.name || 'P').charAt(0).toUpperCase(),
+      avatar: parent.avatar || parent.user?.image || '',
       phone: parent.phone,
       email: parent.email,
       children: parent.children || [],

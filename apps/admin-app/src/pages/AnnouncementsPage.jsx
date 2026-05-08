@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { adminApi } from '../../../shared/api/client';
 
 const ROLES = [
+    { id: 'admin', label: 'Admin', icon: 'admin_panel_settings', color: 'indigo' },
     { id: 'parent', label: 'Orang Tua', icon: 'family_restroom', color: 'sky' },
     { id: 'therapist', label: 'Terapis', icon: 'psychology', color: 'teal' },
 ];
@@ -15,7 +16,7 @@ const formatDate = (dateStr) => {
 function AnnouncementModal({ ann, onSave, onClose }) {
     const [title, setTitle] = useState(ann?.title || '');
     const [content, setContent] = useState(ann?.content || '');
-    const [targetRoles, setTargetRoles] = useState(ann?.targetRoles || ['parent', 'therapist']);
+    const [targetRoles, setTargetRoles] = useState(ann?.targetRoles || ['admin', 'parent', 'therapist']);
     const [isActive, setIsActive] = useState(ann?.isActive !== false);
 
     const toggleRole = (role) => {
@@ -70,7 +71,7 @@ function AnnouncementModal({ ann, onSave, onClose }) {
 
                     <div>
                         <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-3">Target Penerima *</label>
-                        <div className="flex gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                             {ROLES.map(role => (
                                 <button
                                     key={role.id}
@@ -155,6 +156,7 @@ export default function AnnouncementsPage() {
         }
         setModal(null);
         load();
+        window.dispatchEvent(new Event('notificationsUpdated'));
     };
 
     const handleDelete = async (id) => {
@@ -162,6 +164,7 @@ export default function AnnouncementsPage() {
         setDeleteConfirm(null);
         showToast('Pengumuman berhasil dihapus.');
         load();
+        window.dispatchEvent(new Event('notificationsUpdated'));
     };
 
     const activeCount = announcements.filter(a => a.isActive).length;
@@ -178,7 +181,7 @@ export default function AnnouncementsPage() {
                         <div>
                             <h1 className="text-2xl font-extrabold text-text-light-primary dark:text-text-dark-primary">Pengumuman Klinik</h1>
                             <p className="text-sm text-text-light-secondary dark:text-text-dark-secondary">
-                                {activeCount} pengumuman aktif · Dikirim ke orang tua & terapis
+                                {activeCount} pengumuman aktif · Dikirim sesuai role admin, orang tua, dan terapis
                             </p>
                         </div>
                     </div>
@@ -224,7 +227,7 @@ export default function AnnouncementsPage() {
                                         <div className="flex items-center gap-2 shrink-0">
                                             {ann.targetRoles?.map(r => (
                                                 <span key={r} className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-primary/10 text-primary">
-                                                    {r === 'parent' ? 'Orang Tua' : r === 'therapist' ? 'Terapis' : r}
+                                                    {r === 'parent' ? 'Orang Tua' : r === 'therapist' ? 'Terapis' : r === 'admin' ? 'Admin' : r}
                                                 </span>
                                             ))}
                                         </div>
