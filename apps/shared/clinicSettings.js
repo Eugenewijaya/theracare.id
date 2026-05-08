@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { adminApi } from './api/client.js';
+import { applyPlatformFavicon } from './platformBrand.js';
 
 export const CLINIC_SETTINGS_EVENT = 'clinicSettingsUpdated';
 export const CLINIC_SETTINGS_KEY = 'clinicSettings';
@@ -82,6 +83,7 @@ export function applyClinicTheme(settings) {
   document.documentElement.style.setProperty('--clinic-primary', normalized.primaryColor);
   document.documentElement.style.setProperty('--clinic-secondary', normalized.secondaryColor);
   document.title = `${normalized.clinicName} Admin`;
+  applyPlatformFavicon();
 }
 
 export function useClinicSettings() {

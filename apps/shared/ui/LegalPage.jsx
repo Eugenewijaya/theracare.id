@@ -1,5 +1,5 @@
-import React from 'react';
-import logoSrc from '../assets/login-logo.svg';
+import React, { useEffect } from 'react';
+import { applyPlatformFavicon, platformLogoUrl } from '../platformBrand';
 
 const UPDATED_AT = '8 Mei 2026';
 
@@ -118,12 +118,16 @@ const NAV_ITEMS = [
 export default function LegalPage({ type = 'privacy', portalName = 'TheraCare' }) {
   const content = CONTENT[type] || CONTENT.privacy;
 
+  useEffect(() => {
+    applyPlatformFavicon();
+  }, []);
+
   return (
     <main className="min-h-screen bg-slate-50 px-5 py-8 text-slate-950 sm:py-12">
       <div className="mx-auto flex max-w-5xl flex-col gap-6">
         <header className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xl shadow-slate-200/60 sm:p-8">
           <div className="flex flex-col items-center text-center">
-            <img src={logoSrc} alt="Temporary special needs center logo" className="h-16 w-16" />
+            <img src={platformLogoUrl} alt="TheraCare platform logo" className="h-24 w-auto max-w-[260px] object-contain" />
             <p className="mt-4 text-xs font-black uppercase tracking-[0.24em] text-slate-500">{portalName}</p>
             <h1 className="mt-3 text-3xl font-black tracking-tight sm:text-4xl">{content.title}</h1>
             <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-600">{content.intro}</p>
