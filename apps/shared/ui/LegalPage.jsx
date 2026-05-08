@@ -13,7 +13,7 @@ const CONTENT = {
         title: 'Data yang diproses',
         items: [
           'Data akun: nama, email, nomor HP, role, dan status akun.',
-          'Data klinik: jadwal sesi, anak terdaftar, program terapi, laporan, request reschedule, dan notifikasi.',
+          'Data pusat terapi: jadwal sesi, anak terdaftar, program terapi, laporan, request reschedule, dan notifikasi.',
           'Data aktivitas: status login, status baca notifikasi, dan perubahan data yang dilakukan melalui dashboard.',
         ],
       },
@@ -28,7 +28,7 @@ const CONTENT = {
       {
         title: 'Pembatasan akses',
         items: [
-          'Admin dapat mengelola data operasional klinik.',
+          'Admin dapat mengelola data operasional pusat terapi.',
           'Therapist hanya menggunakan data yang relevan dengan sesi dan laporan terapi.',
           'Parent hanya melihat data anak yang terhubung dengan akun parent tersebut.',
         ],
@@ -36,8 +36,8 @@ const CONTENT = {
       {
         title: 'Permintaan data',
         items: [
-          'Permintaan koreksi data harus diajukan kepada admin klinik.',
-          'Permintaan penghapusan data klinis dapat dibatasi bila data masih dibutuhkan untuk audit, laporan, atau kewajiban operasional.',
+          'Permintaan koreksi data harus diajukan kepada admin pusat terapi.',
+          'Permintaan penghapusan data terapi dapat dibatasi bila data masih dibutuhkan untuk audit, laporan, atau kewajiban operasional.',
         ],
       },
     ],
@@ -45,7 +45,7 @@ const CONTENT = {
   terms: {
     eyebrow: 'Ketentuan Layanan',
     title: 'Terms of Service',
-    intro: 'Dengan menggunakan portal TheraCare, pengguna menyetujui bahwa akses hanya dipakai untuk kebutuhan layanan klinik dan sesuai role yang diberikan oleh admin.',
+    intro: 'Dengan menggunakan portal TheraCare, pengguna menyetujui bahwa akses hanya dipakai untuk kebutuhan layanan terapi anak dan sesuai role yang diberikan oleh admin.',
     sections: [
       {
         title: 'Akses akun',
@@ -60,7 +60,7 @@ const CONTENT = {
         items: [
           'Portal digunakan untuk melihat dan mengelola informasi terapi sesuai hak akses.',
           'Pengguna tidak boleh mencoba membuka data yang bukan miliknya atau bukan bagian dari tanggung jawabnya.',
-          'Data yang tampil di portal harus diverifikasi kembali oleh pihak klinik bila digunakan untuk keputusan klinis penting.',
+          'Data yang tampil di portal harus diverifikasi kembali oleh pihak pusat terapi bila digunakan untuk keputusan layanan penting.',
         ],
       },
       {
@@ -74,7 +74,7 @@ const CONTENT = {
         title: 'Keamanan',
         items: [
           'Logout dari perangkat bersama setelah selesai menggunakan portal.',
-          'Laporkan akses mencurigakan kepada admin klinik atau support.',
+          'Laporkan akses mencurigakan kepada admin pusat terapi atau support.',
         ],
       },
     ],
@@ -102,7 +102,7 @@ const CONTENT = {
         title: 'Penggunaan ulang',
         items: [
           'Aset dan kode tidak boleh disalin, dijual, atau dipakai ulang tanpa izin pemilik.',
-          'Materi klinik resmi harus menggunakan logo dan foto yang sudah disetujui pihak klinik.',
+          'Materi resmi pusat terapi harus menggunakan logo dan foto yang sudah disetujui pengelola.',
         ],
       },
     ],
@@ -123,7 +123,7 @@ export default function LegalPage({ type = 'privacy', portalName = 'TheraCare' }
       <div className="mx-auto flex max-w-5xl flex-col gap-6">
         <header className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xl shadow-slate-200/60 sm:p-8">
           <div className="flex flex-col items-center text-center">
-            <img src={logoSrc} alt="Temporary clinic logo" className="h-16 w-16" />
+            <img src={logoSrc} alt="Temporary special needs center logo" className="h-16 w-16" />
             <p className="mt-4 text-xs font-black uppercase tracking-[0.24em] text-slate-500">{portalName}</p>
             <h1 className="mt-3 text-3xl font-black tracking-tight sm:text-4xl">{content.title}</h1>
             <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-600">{content.intro}</p>

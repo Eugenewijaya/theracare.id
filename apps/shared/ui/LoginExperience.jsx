@@ -36,7 +36,7 @@ const LEGAL_LINKS = [
 const MOTION_CARDS = [
   { icon: 'verified_user', title: 'Secure session', detail: 'Role-based access' },
   { icon: 'clinical_notes', title: 'Reports ready', detail: 'Synced to portal' },
-  { icon: 'event_available', title: 'Schedule active', detail: 'Live clinic workflow' },
+  { icon: 'event_available', title: 'Schedule active', detail: 'Live therapy workflow' },
 ];
 
 export default function LoginExperience({
@@ -77,7 +77,7 @@ export default function LoginExperience({
         <section className="relative flex min-h-[420px] flex-col justify-between overflow-hidden bg-slate-900 px-6 py-7 text-white sm:px-10 lg:min-h-screen">
           <img
             src={photoSrc}
-            alt="Temporary clinic welcome visual"
+            alt="Temporary special needs center welcome visual"
             className="login-photo-motion absolute inset-0 h-full w-full object-cover opacity-95"
           />
           <div className="absolute inset-0 bg-slate-950/20" />
@@ -86,7 +86,7 @@ export default function LoginExperience({
           <div className="relative z-10 flex items-center justify-center">
             <div className="flex flex-col items-center text-center">
               <div className="login-logo-orbit relative">
-                <img src={logoSrc} alt="Temporary clinic logo" className="relative z-10 h-20 w-20 login-float" />
+                <img src={logoSrc} alt="Temporary special needs center logo" className="relative z-10 h-20 w-20 login-float" />
               </div>
               <p className="login-fade-up mt-4 text-xs font-bold uppercase tracking-[0.28em] text-white/80">Special Need Center</p>
             </div>
@@ -138,7 +138,7 @@ export default function LoginExperience({
           </div>
 
           <div className="relative z-10 flex items-center justify-center gap-2 text-[11px] font-semibold text-white/70 login-fade-up login-delay-2">
-            <span>TheraCare Clinical Platform</span>
+            <span>TheraCare Therapy Platform</span>
             <span className="h-1 w-1 rounded-full bg-white/40" />
             <span>Secure Access</span>
           </div>
@@ -165,7 +165,7 @@ export default function LoginExperience({
             ) : (
               <div className="login-panel-enter rounded-2xl border border-slate-200 bg-white p-7 shadow-xl shadow-slate-200/60">
                 <div className="mb-6 flex flex-col items-center text-center">
-                  <img src={logoSrc} alt="Temporary clinic logo" className="h-16 w-16" />
+                  <img src={logoSrc} alt="Temporary special needs center logo" className="h-16 w-16" />
                   <p className={`mt-4 text-xs font-black uppercase tracking-[0.22em] ${tone.accent}`}>{portalName}</p>
                   <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950">{formTitle}</h2>
                   <p className="mt-1 max-w-xs text-sm leading-6 text-slate-500">{formDescription}</p>

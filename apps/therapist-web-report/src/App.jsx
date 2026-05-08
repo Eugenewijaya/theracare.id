@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import Header from './components/Header';
 import { sessionsApi, reportsApi } from '../../shared/api/client';
+import { useClinicSettings } from '../../shared/clinicSettings';
+import { openReportPdf } from '../../shared/reportPdf';
 
 // ── Shared data store helpers ──────────
 
@@ -343,7 +345,7 @@ function DailyReportForm({ childId, sessionId, onBack, onSaved, currentUser, chi
             internalNotes
         };
         try {
-            await reportsApi.create(report);
+            await reportsApi.save(report);
             onReportSaved && onReportSaved();
             setSubmitted(true);
         } catch (e) {
@@ -503,7 +505,7 @@ function PeriodicReportForm({ childId, onBack, currentUser, childrenData, onRepo
             parentNotes
         };
         try {
-            await reportsApi.create(report);
+            await reportsApi.save(report);
             onReportSaved && onReportSaved();
             setSubmitted(true);
         } catch (e) {
@@ -700,11 +702,25 @@ function ReportHistory({ onSelectReport, reports }) {
 // ── Main App ─────────────────────────────────────────────────────────
 
 function ReportDetail({ report, onBack }) {
+    const centerSettings = useClinicSettings();
+    const handleDownload = () => {
+        openReportPdf(report, centerSettings.settings || centerSettings);
+    };
+
     return (
         <div className="max-w-2xl mx-auto p-6 bg-white dark:bg-slate-800 rounded-xl shadow-lg mt-6">
-            <button onClick={onBack} className="mb-4 text-sm text-primary hover:underline font-bold flex items-center gap-1">
-                <span className="material-symbols-outlined text-[18px]">arrow_back</span> Kembali
-            </button>
+            <div className="flex items-start justify-between gap-4 mb-4">
+                <button onClick={onBack} className="text-sm text-primary hover:underline font-bold flex items-center gap-1">
+                    <span className="material-symbols-outlined text-[18px]">arrow_back</span> Kembali
+                </button>
+                <button
+                    onClick={handleDownload}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-white text-xs font-bold shadow-md hover:bg-primary/90 transition-colors"
+                >
+                    <span className="material-symbols-outlined text-[16px]">picture_as_pdf</span>
+                    Download PDF
+                </button>
+            </div>
             <h2 className="text-2xl font-bold mb-4">Detail {report.type === 'periodik' ? 'Laporan Periodik' : 'Laporan Harian'}</h2>
             <div className="space-y-3">
                 <p><strong>Nama Anak:</strong> {report.childName || report.childId}</p>

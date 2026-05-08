@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import ReportCard from './components/ReportCard';
+import { useClinicSettings } from '../../shared/clinicSettings';
+import { openReportPdf } from '../../shared/reportPdf';
 
 const getStore = () => {
     try { return JSON.parse(localStorage.getItem('clinicData') || '{}'); }
@@ -10,6 +12,7 @@ function App() {
     const [timeframe, setTimeframe] = useState('7H'); // 7 Hari
     const [toast, setToast] = useState(null);
     const [data, setData] = useState(getStore());
+    const centerSettings = useClinicSettings();
 
     useEffect(() => {
         const handleUpdate = () => setData(getStore());
@@ -79,6 +82,30 @@ function App() {
     }, [data]);
 
     const colors = ['bg-blue-500', 'bg-emerald-500', 'bg-purple-500', 'bg-amber-500', 'bg-pink-500'];
+    const handleExportPdf = () => {
+        const today = new Date().toISOString().split('T')[0];
+        openReportPdf({
+            type: 'periodik',
+            title: `Ringkasan Operasional Pusat Terapi (${timeframe})`,
+            childName: 'Seluruh Anak',
+            therapistName: 'Admin',
+            program: 'Monitoring operasional pusat terapi',
+            dateFrom: today,
+            dateTo: today,
+            summary: 'Ringkasan ini dibuat dari data dashboard admin untuk memantau aktivitas, sesi terapi, dan pemanfaatan terapis.',
+            progressPoints: [
+                `Total anak aktif: ${kpis.activeChildren}`,
+                `Sesi selesai: ${kpis.totalCompleted}`,
+                `Tingkat pembatalan: ${kpis.cancellationRate}%`,
+                `Pemanfaatan terapis: ${kpis.utilization}%`,
+            ],
+            improvementPoints: kpis.dist.length
+                ? kpis.dist.map((item) => `${item.label}: ${item.pct}% dari total sesi`)
+                : ['Belum ada distribusi sesi yang dapat dihitung.'],
+            status: 'approved',
+        }, centerSettings.settings || centerSettings);
+        showToast('Template PDF ringkasan operasional dibuka. Pilih Save as PDF untuk menyimpan.', 'info');
+    };
 
     return (
         <>
@@ -98,7 +125,7 @@ function App() {
                         <span className="material-symbols-outlined text-2xl">analytics</span>
                     </div>
                     <div>
-                        <h1 className="text-2xl font-bold leading-tight tracking-[-0.015em]">Laporan Klinik</h1>
+                        <h1 className="text-2xl font-bold leading-tight tracking-[-0.015em]">Laporan Pusat Terapi</h1>
                         <p className="text-sm text-slate-500 dark:text-slate-400 font-normal">Wawasan waktu nyata dan metrik kinerja.</p>
                     </div>
                 </div>
@@ -111,7 +138,7 @@ function App() {
                         ))}
                     </div>
                     <button 
-                        onClick={() => showToast('Ekspor PDF sedang diproses, fitur ini akan segera tersedia.', 'info')}
+                        onClick={handleExportPdf}
                         className="flex items-center gap-2 px-4 py-2 bg-primary text-background-dark rounded-lg font-bold text-sm hover:bg-primary/90 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 dark:focus:ring-offset-slate-900"
                     >
                         <span className="material-symbols-outlined text-[18px]">download</span>

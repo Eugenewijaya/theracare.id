@@ -6,7 +6,14 @@ export const CLINIC_SETTINGS_KEY = 'clinicSettings';
 export const LEGACY_ADMIN_SETTINGS_KEY = 'adminSettings';
 
 export const DEFAULT_CLINIC_SETTINGS = {
-  clinicName: 'TheraCare',
+  clinicName: 'Special Needs Center',
+  centerSubtitle: 'Pusat Terapi Anak dan Keluarga',
+  centerAddress: 'Jl. Sudirman No. 1, Jakarta Selatan, DKI Jakarta',
+  centerPhone: '6281234567890',
+  centerEmail: 'admin@specialneedscenter.id',
+  centerWebsite: 'specialneedscenter.id',
+  operatingHoursWeekday: '08:00 - 17:00',
+  operatingHoursWeekend: 'Tutup',
   primaryColor: '#137fec',
   secondaryColor: '#4e7f97',
   logoUrl: '',
@@ -64,7 +71,7 @@ export async function saveClinicSettings(updates) {
   const next = cacheClinicSettings({ ...getCachedClinicSettings(), ...updates });
   const res = await adminApi.updateSettings(next);
   if (!res.ok) {
-    throw new Error(res.data?.error || res.data?.message || 'Gagal menyimpan pengaturan klinik');
+    throw new Error(res.data?.error || res.data?.message || 'Gagal menyimpan pengaturan pusat terapi');
   }
   return next;
 }

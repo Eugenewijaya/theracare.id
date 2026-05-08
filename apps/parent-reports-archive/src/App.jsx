@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import Header from './components/Header';
 import { sessionsApi, reportsApi, adminApi } from '../../shared/api/client';
+import { useClinicSettings } from '../../shared/clinicSettings';
+import { openReportPdf } from '../../shared/reportPdf';
 
 // ── Constants ─────────────────────────────────────────────────────────
 const SCALE_MAP = { 1: 'Sangat Kurang', 2: 'Kurang', 3: 'Cukup', 4: 'Baik', 5: 'Sangat Baik' };
@@ -190,7 +192,7 @@ function DailyReportCard({ report, onRate, onDownload, typeColors = {} }) {
 }
 
 // ── PeriodicReportCard ─────────────────────────────────────────────────
-function PeriodicReportCard({ report }) {
+function PeriodicReportCard({ report, onDownload }) {
     return (
         <div className="border border-amber-200 dark:border-amber-800/50 rounded-2xl overflow-hidden bg-white dark:bg-slate-800 shadow-sm">
             {/* Header */}
@@ -273,6 +275,16 @@ function PeriodicReportCard({ report }) {
                         <p className="text-sm text-green-800/80 dark:text-green-200/80 leading-relaxed">{report.parentNotes}</p>
                     </div>
                 )}
+
+                <div className="flex gap-3 pt-1">
+                    <button
+                        onClick={() => onDownload(report)}
+                        className="flex items-center gap-2 h-9 px-4 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:opacity-90 transition-opacity text-xs font-bold shadow-md"
+                    >
+                        <span className="material-symbols-outlined text-[16px]">picture_as_pdf</span>
+                        Unduh PDF
+                    </button>
+                </div>
             </div>
         </div>
     );
@@ -306,12 +318,14 @@ function App() {
     const [ratingModal, setRatingModal] = useState(null);
     const [hoverRating, setHoverRating] = useState(0);
     const [ratingComment, setRatingComment] = useState('');
+    const centerSettings = useClinicSettings();
 
     const typeColors = React.useMemo(() => buildTypeColors(programsList), [programsList]);
 
     const loadReports = async () => {
         const saved = sessionStorage.getItem('parent_user');
         let childId = selectedChild;
+        let availableChildren = childrenList;
 
         if (saved && !childId) {
             try {
@@ -319,6 +333,7 @@ function App() {
                 const store = JSON.parse(localStorage.getItem('clinicData') || '{}');
                 const actualChildren = (store.children || []).filter(c => c.parentId === user.parentId || c.id === user.childId || c.nita === user.childId);
                 const children = actualChildren.length > 0 ? actualChildren : [];
+                availableChildren = children;
                 
                 setChildrenList(children);
                 const pRes = await adminApi.getPrograms();
@@ -355,6 +370,9 @@ function App() {
             
             const pRes = await adminApi.getPrograms();
             const allProg = pRes.data?.data || [];
+            const childProfile =
+                availableChildren.find(c => c.id === childId || c.nita === childId) ||
+                (savedUser.children || []).find(c => c.id === childId || c.nita === childId);
 
             const mapped = await Promise.all(sessions.map(async s => {
                 let rating = null;
@@ -368,6 +386,7 @@ function App() {
                     id:           s.id,
                     sessionId:    s.id,
                     childId,
+                    childName:    s.child?.name || childProfile?.name || 'Anak',
                     parentId:     savedUser.parentId || 'p1',
                     date:         s.date,
                     type:         guessTherapyType(savedReport?.sessionFocus || savedReport?.program || s.focus, allProg),
@@ -409,30 +428,12 @@ function App() {
     const paginated  = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
 
     const handleDownload = (report) => {
-        let evalText = 'INDIKATOR CAPAIAN:\n';
-        if (report.evaluations) {
-            Object.entries(report.evaluations).forEach(([key, val]) => {
-                evalText += `- ${key}: ${SCALE_MAP[val] || val} (${val}/5)\n`;
-            });
+        const result = openReportPdf(report, centerSettings.settings || centerSettings);
+        if (result.ok) {
+            setToast('Template PDF laporan dibuka. Pilih Save as PDF untuk menyimpan.');
+        } else {
+            setToast('Browser tidak dapat membuka template PDF saat ini.');
         }
-        const content =
-            `LAPORAN KEMAJUAN ANAK\n=======================\n\n` +
-            `Tanggal    : ${formatDate(report.date)}\n` +
-            `Tipe Terapi: ${report.type}\n` +
-            `Terapis    : ${report.therapist}\n\n` +
-            `${evalText}\n` +
-            `CATATAN DESKRIPTIF:\n${report.description}\n\n` +
-            `=======================\nMASUKAN UNTUK ORANG TUA:\n${report.parentNotes || '—'}\n\n` +
-            `Rating Anda: ${report.parentRating ? `${report.parentRating}/5` : 'Belum dinilai'}\n`;
-
-        const blob = new Blob([content], { type: 'text/plain' });
-        const url  = URL.createObjectURL(blob);
-        const a    = document.createElement('a');
-        a.href = url;
-        a.download = `Laporan_${report.date}.txt`;
-        a.click();
-        URL.revokeObjectURL(url);
-        setToast(`Laporan tanggal ${formatDate(report.date)} berhasil diunduh.`);
     };
 
     const handleSubmitRating = async () => {
@@ -589,7 +590,7 @@ function App() {
                                     {periodicReports.length > 0 ? (
                                         <div className="flex flex-col gap-5">
                                             {periodicReports.map((r, idx) => (
-                                                <PeriodicReportCard key={idx} report={r} />
+                                                <PeriodicReportCard key={idx} report={r} onDownload={handleDownload} />
                                             ))}
                                         </div>
                                     ) : (

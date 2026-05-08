@@ -66,7 +66,7 @@ function MobileTopBar({ onMenuOpen }) {
             className="p-1.5 rounded-lg flex items-center justify-center shadow-sm"
             style={{ backgroundColor: brandColor || '#3b82f6', color: '#fff' }}
         >
-          <span className="material-symbols-outlined text-[16px]" style={{ fontVariationSettings: "'FILL' 1" }}>local_hospital</span>
+          <span className="material-symbols-outlined text-[16px]" style={{ fontVariationSettings: "'FILL' 1" }}>health_and_safety</span>
         </div>
         <span className="text-sm font-extrabold text-slate-900 dark:text-white tracking-tight">{clinicName || 'TheraCare'}</span>
         <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider hidden sm:inline">Admin</span>

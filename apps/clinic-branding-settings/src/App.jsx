@@ -8,6 +8,13 @@ function App() {
     const [activeSection, setActiveSection] = useState('branding');
     const { settings, save, refresh } = useClinicSettings();
     const [clinicName, setClinicName] = useState(settings.clinicName);
+    const [centerSubtitle, setCenterSubtitle] = useState(settings.centerSubtitle);
+    const [centerAddress, setCenterAddress] = useState(settings.centerAddress);
+    const [centerPhone, setCenterPhone] = useState(settings.centerPhone);
+    const [centerEmail, setCenterEmail] = useState(settings.centerEmail);
+    const [centerWebsite, setCenterWebsite] = useState(settings.centerWebsite);
+    const [operatingHoursWeekday, setOperatingHoursWeekday] = useState(settings.operatingHoursWeekday);
+    const [operatingHoursWeekend, setOperatingHoursWeekend] = useState(settings.operatingHoursWeekend);
     const [primaryColor, setPrimaryColor] = useState(settings.primaryColor);
     const [secondaryColor, setSecondaryColor] = useState(settings.secondaryColor);
     const [logoUrl, setLogoUrl] = useState(settings.logoUrl);
@@ -30,11 +37,31 @@ function App() {
 
     useEffect(() => {
         setClinicName(settings.clinicName);
+        setCenterSubtitle(settings.centerSubtitle);
+        setCenterAddress(settings.centerAddress);
+        setCenterPhone(settings.centerPhone);
+        setCenterEmail(settings.centerEmail);
+        setCenterWebsite(settings.centerWebsite);
+        setOperatingHoursWeekday(settings.operatingHoursWeekday);
+        setOperatingHoursWeekend(settings.operatingHoursWeekend);
         setPrimaryColor(settings.primaryColor);
         setSecondaryColor(settings.secondaryColor);
         setLogoUrl(settings.logoUrl);
         setFaviconUrl(settings.faviconUrl);
-    }, [settings.clinicName, settings.primaryColor, settings.secondaryColor, settings.logoUrl, settings.faviconUrl]);
+    }, [
+        settings.clinicName,
+        settings.centerSubtitle,
+        settings.centerAddress,
+        settings.centerPhone,
+        settings.centerEmail,
+        settings.centerWebsite,
+        settings.operatingHoursWeekday,
+        settings.operatingHoursWeekend,
+        settings.primaryColor,
+        settings.secondaryColor,
+        settings.logoUrl,
+        settings.faviconUrl
+    ]);
 
     const showToast = (msg, type = 'success') => {
         setToast({ msg, type });
@@ -47,7 +74,20 @@ function App() {
             return;
         }
         try {
-            await save({ clinicName, primaryColor, secondaryColor, logoUrl, faviconUrl });
+            await save({
+                clinicName,
+                centerSubtitle,
+                centerAddress,
+                centerPhone,
+                centerEmail,
+                centerWebsite,
+                operatingHoursWeekday,
+                operatingHoursWeekend,
+                primaryColor,
+                secondaryColor,
+                logoUrl,
+                faviconUrl
+            });
             await adminApi.updateSettings({ adminWhatsApp });
             showToast(`Pengaturan berhasil disimpan!`);
         } catch (e) {
@@ -58,6 +98,13 @@ function App() {
     const handleCancel = async () => {
         const latest = await refresh();
         setClinicName(latest.clinicName);
+        setCenterSubtitle(latest.centerSubtitle);
+        setCenterAddress(latest.centerAddress);
+        setCenterPhone(latest.centerPhone);
+        setCenterEmail(latest.centerEmail);
+        setCenterWebsite(latest.centerWebsite);
+        setOperatingHoursWeekday(latest.operatingHoursWeekday);
+        setOperatingHoursWeekend(latest.operatingHoursWeekend);
         setPrimaryColor(latest.primaryColor);
         setSecondaryColor(latest.secondaryColor);
         setLogoUrl(latest.logoUrl);
@@ -97,9 +144,9 @@ function App() {
                     <div className="flex flex-col gap-2 mb-8">
                         <h2 className="text-[32px] font-bold leading-tight capitalize">{activeSection.replace('-', ' ')} Settings</h2>
                         <p className="text-slate-500 dark:text-slate-400 text-base font-normal leading-normal">
-                            {activeSection === 'branding' && "Manage your clinic's visual identity, including naming, logos, colors, and global appearance."}
-                            {activeSection === 'general' && "Manage general clinic settings such as operating hours, contact info, and system preferences."}
-                            {activeSection === 'notifications' && "Configure how and when automatic notifications are sent to staff and patients."}
+                            {activeSection === 'branding' && "Manage your center's visual identity, including naming, logos, colors, and global appearance."}
+                            {activeSection === 'general' && "Manage general center settings such as operating hours, contact info, and system preferences."}
+                            {activeSection === 'notifications' && "Configure how and when automatic notifications are sent to staff and families."}
                         </p>
                     </div>
 
@@ -110,17 +157,31 @@ function App() {
                             <section className="flex flex-col gap-4">
                                 <h3 className="text-lg font-bold border-b border-slate-200 dark:border-slate-700 pb-2">General Identity</h3>
                                 <div className="rounded-xl bg-white dark:bg-slate-900 p-6 shadow-sm border border-slate-100 dark:border-slate-800">
-                                    <div className="max-w-md">
-                                        <label htmlFor="clinic-name" className="block text-sm font-bold mb-2">Clinic Name</label>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                        <div>
+                                        <label htmlFor="clinic-name" className="block text-sm font-bold mb-2">Center Name</label>
                                         <input
                                             id="clinic-name"
                                             type="text"
                                             value={clinicName}
                                             onChange={(e) => setClinicName(e.target.value)}
                                             className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm shadow-sm focus:border-primary focus:ring-primary dark:focus:border-primary outline-none px-3 py-2.5 text-slate-900 dark:text-white"
-                                            placeholder="Enter full clinic name"
+                                            placeholder="Enter full center name"
                                         />
-                                        <p className="text-slate-500 dark:text-slate-400 text-xs mt-2">This name appears on the parent portal, headers, and official communications.</p>
+                                        <p className="text-slate-500 dark:text-slate-400 text-xs mt-2">This name appears on portals, headers, and official communications.</p>
+                                        </div>
+                                        <div>
+                                            <label htmlFor="center-subtitle" className="block text-sm font-bold mb-2">Center Description</label>
+                                            <input
+                                                id="center-subtitle"
+                                                type="text"
+                                                value={centerSubtitle}
+                                                onChange={(e) => setCenterSubtitle(e.target.value)}
+                                                className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm shadow-sm focus:border-primary focus:ring-primary dark:focus:border-primary outline-none px-3 py-2.5 text-slate-900 dark:text-white"
+                                                placeholder="Pusat Terapi Anak dan Keluarga"
+                                            />
+                                            <p className="text-slate-500 dark:text-slate-400 text-xs mt-2">Shown under the logo in PDF reports.</p>
+                                        </div>
                                     </div>
                                 </div>
                             </section>
@@ -132,8 +193,8 @@ function App() {
                                     <div className="flex flex-col gap-4 rounded-xl bg-white dark:bg-slate-900 p-6 shadow-sm border border-slate-100 dark:border-slate-800">
                                         <div className="flex justify-between items-start">
                                             <div>
-                                                <p className="text-base font-bold leading-tight mb-1">Clinic Logo</p>
-                                                <p className="text-slate-500 dark:text-slate-400 text-xs">Used on main navigation and patient portal.</p>
+                                                <p className="text-base font-bold leading-tight mb-1">Center Logo</p>
+                                                <p className="text-slate-500 dark:text-slate-400 text-xs">Used on main navigation, portals, and PDF reports.</p>
                                                 <p className="text-slate-500 dark:text-slate-400 text-xs mt-1">Use a hosted PNG/SVG URL from your CDN or storage bucket.</p>
                                             </div>
                                         </div>
@@ -171,7 +232,7 @@ function App() {
                                                 {faviconUrl ? (
                                                     <img src={faviconUrl} alt={`${clinicName} favicon`} className="max-h-10 max-w-10 object-contain" />
                                                 ) : (
-                                                    <span className="material-symbols-outlined text-[32px]">local_hospital</span>
+                                                    <span className="material-symbols-outlined text-[32px]">health_and_safety</span>
                                                 )}
                                             </div>
                                         </div>
@@ -210,7 +271,7 @@ function App() {
                                                 <span className="material-symbols-outlined text-[18px]">menu</span>
                                             </div>
                                             <div className="p-5 flex flex-col gap-4">
-                                                <p className="text-sm">Welcome back to the clinic. Your next appointment is ready.</p>
+                                                <p className="text-sm">Welcome back to the center. Your next appointment is ready.</p>
                                                 <div className="flex gap-2">
                                                     <button className="text-white text-xs font-medium px-4 py-2 rounded-lg transition-colors border-0" style={{ backgroundColor: primaryColor }}>Book Now</button>
                                                     <button className="text-xs font-medium px-4 py-2 rounded-lg border transition-colors bg-transparent" style={{ borderColor: primaryColor, color: primaryColor }}>Details</button>
@@ -228,28 +289,36 @@ function App() {
                     {activeSection === 'general' && (
                         <div className="flex flex-col gap-6">
                             <div className="rounded-xl bg-white dark:bg-slate-900 p-6 shadow-sm border border-slate-100 dark:border-slate-800 flex flex-col gap-5">
-                                <h3 className="text-base font-bold text-slate-900 dark:text-white">Clinic Information</h3>
+                                <h3 className="text-base font-bold text-slate-900 dark:text-white">Center Information</h3>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                                     <div className="flex flex-col gap-1.5">
                                         <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Operating Hours (Weekday)</label>
-                                        <input type="text" defaultValue="08:00 – 17:00" className="rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm px-3 py-2.5 outline-none text-slate-900 dark:text-white" />
+                                        <input type="text" value={operatingHoursWeekday} onChange={(e) => setOperatingHoursWeekday(e.target.value)} placeholder="08:00 - 17:00" className="rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm px-3 py-2.5 outline-none text-slate-900 dark:text-white" />
                                     </div>
                                     <div className="flex flex-col gap-1.5">
                                         <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Operating Hours (Weekend)</label>
-                                        <input type="text" defaultValue="Closed" className="rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm px-3 py-2.5 outline-none text-slate-900 dark:text-white" />
+                                        <input type="text" value={operatingHoursWeekend} onChange={(e) => setOperatingHoursWeekend(e.target.value)} placeholder="Tutup" className="rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm px-3 py-2.5 outline-none text-slate-900 dark:text-white" />
                                     </div>
                                     <div className="flex flex-col gap-1.5">
                                         <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Contact Email</label>
-                                        <input type="email" defaultValue="admin@therapyclinic.com" className="rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm px-3 py-2.5 outline-none text-slate-900 dark:text-white" />
+                                        <input type="email" value={centerEmail} onChange={(e) => setCenterEmail(e.target.value)} placeholder="admin@specialneedscenter.id" className="rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm px-3 py-2.5 outline-none text-slate-900 dark:text-white" />
+                                    </div>
+                                    <div className="flex flex-col gap-1.5">
+                                        <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Contact Phone</label>
+                                        <input type="tel" value={centerPhone} onChange={(e) => setCenterPhone(e.target.value)} placeholder="Contoh: 021123456 atau 6281234567890" className="rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm px-3 py-2.5 outline-none text-slate-900 dark:text-white" />
                                     </div>
                                     <div className="flex flex-col gap-1.5">
                                         <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">WhatsApp Admin</label>
                                         <input type="tel" value={adminWhatsApp} onChange={(e) => setAdminWhatsApp(e.target.value)} placeholder="Contoh: 6281234567890" className="rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm px-3 py-2.5 outline-none text-slate-900 dark:text-white" />
                                         <p className="text-xs text-slate-500">Gunakan kode negara tanpa +, contoh: 6281234567890</p>
                                     </div>
+                                    <div className="flex flex-col gap-1.5">
+                                        <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Website</label>
+                                        <input type="text" value={centerWebsite} onChange={(e) => setCenterWebsite(e.target.value)} placeholder="specialneedscenter.id" className="rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm px-3 py-2.5 outline-none text-slate-900 dark:text-white" />
+                                    </div>
                                     <div className="flex flex-col gap-1.5 md:col-span-2">
-                                        <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Clinic Address</label>
-                                        <input type="text" defaultValue="Jl. Sudirman No. 1, Jakarta Selatan, DKI Jakarta" className="rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm px-3 py-2.5 outline-none text-slate-900 dark:text-white" />
+                                        <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Center Address</label>
+                                        <input type="text" value={centerAddress} onChange={(e) => setCenterAddress(e.target.value)} placeholder="Jl. Sudirman No. 1, Jakarta Selatan, DKI Jakarta" className="rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm px-3 py-2.5 outline-none text-slate-900 dark:text-white" />
                                     </div>
                                 </div>
                             </div>
@@ -262,7 +331,7 @@ function App() {
                             <div className="rounded-xl bg-white dark:bg-slate-900 p-6 shadow-sm border border-slate-100 dark:border-slate-800 flex flex-col gap-5">
                                 <h3 className="text-base font-bold text-slate-900 dark:text-white">Notification Channels</h3>
                                 {[
-                                    { label: 'New Registration Alert', desc: 'Notify admin when a new patient registers.' },
+                                    { label: 'New Registration Alert', desc: 'Notify admin when a new child registration is submitted.' },
                                     { label: 'Session Reminder (24h)', desc: 'Remind parent and therapist 24 hours before a session.' },
                                     { label: 'Reschedule Request', desc: 'Alert admin when a parent submits a reschedule request.' },
                                     { label: 'Report Uploaded', desc: 'Notify parent when a therapist uploads a progress report.' },

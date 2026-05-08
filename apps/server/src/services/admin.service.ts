@@ -36,7 +36,20 @@ export const adminService = {
     return Object.fromEntries(rows.map((r) => [r.key, r.value]));
   },
   async getPublicSettings() {
-    const safeKeys = ["clinicName", "primaryColor", "secondaryColor", "logoUrl", "faviconUrl"];
+    const safeKeys = [
+      "clinicName",
+      "centerSubtitle",
+      "centerAddress",
+      "centerPhone",
+      "centerEmail",
+      "centerWebsite",
+      "operatingHoursWeekday",
+      "operatingHoursWeekend",
+      "primaryColor",
+      "secondaryColor",
+      "logoUrl",
+      "faviconUrl",
+    ];
     const settings = await this.getSettings();
     return Object.fromEntries(safeKeys.map((key) => [key, settings[key]]).filter(([, value]) => value));
   },
