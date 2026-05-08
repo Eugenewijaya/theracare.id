@@ -100,6 +100,20 @@ export const therapists = pgTable("therapists", {
     .unique(),
   nit: varchar("nit", { length: 30 }).notNull().unique(),
   specialty: text("specialty"),
+  bio: text("bio"),
+  avatar: text("avatar"),
+  educationLevel: text("education_level"),
+  educationField: text("education_field"),
+  educationInstitution: text("education_institution"),
+  graduationYear: varchar("graduation_year", { length: 4 }),
+  strNumber: text("str_number"),
+  strExpiry: date("str_expiry"),
+  yearsExperience: text("years_experience"),
+  languages: text("languages"),
+  certifications: jsonb("certifications").$type<Array<Record<string, unknown>>>(),
+  schedule: jsonb("schedule").$type<Record<string, { start?: string; end?: string }>>(),
+  primaryRoom: text("primary_room"),
+  maxClients: integer("max_clients"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -181,6 +195,8 @@ export const therapySessions = pgTable("therapy_sessions", {
   status: text("status").notNull().default("upcoming"), // upcoming | active | done | cancelled
   notes: text("notes"),
   cancelReason: text("cancel_reason"),
+  startedAt: timestamp("started_at"),
+  endedAt: timestamp("ended_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

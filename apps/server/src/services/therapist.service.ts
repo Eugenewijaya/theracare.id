@@ -4,8 +4,70 @@ import { eq } from "drizzle-orm";
 import { auth } from "../auth.js";
 import { generateTempPassword, generateNIT } from "../utils/id-generators.js";
 
+type TherapistProfileInput = {
+  name?: string;
+  email?: string;
+  phone?: string;
+  specialty?: string;
+  specialization?: string;
+  status?: string;
+  bio?: string;
+  avatar?: string;
+  educationLevel?: string;
+  educationField?: string;
+  educationInstitution?: string;
+  graduationYear?: string | number;
+  strNumber?: string;
+  strExpiry?: string | null;
+  yearsExperience?: string;
+  languages?: string;
+  certifications?: Array<Record<string, unknown>>;
+  schedule?: Record<string, { start?: string; end?: string }>;
+  primaryRoom?: string;
+  maxClients?: string | number | null;
+  tempPassword?: string;
+};
+
+function cleanText(value: unknown) {
+  return typeof value === "string" ? value.trim() : undefined;
+}
+
+function pickTherapistProfileValues(data: TherapistProfileInput) {
+  const specialty = cleanText(data.specialty) || cleanText(data.specialization);
+  const values: any = {};
+
+  if (specialty !== undefined) values.specialty = specialty || "Therapist";
+  if (typeof data.bio === "string") values.bio = data.bio.trim();
+  if (typeof data.avatar === "string") values.avatar = data.avatar.trim();
+  if (typeof data.educationLevel === "string") values.educationLevel = data.educationLevel.trim();
+  if (typeof data.educationField === "string") values.educationField = data.educationField.trim();
+  if (typeof data.educationInstitution === "string") values.educationInstitution = data.educationInstitution.trim();
+  if (data.graduationYear !== undefined) values.graduationYear = String(data.graduationYear || "").trim() || null;
+  if (typeof data.strNumber === "string") values.strNumber = data.strNumber.trim();
+  if (data.strExpiry !== undefined) values.strExpiry = data.strExpiry || null;
+  if (typeof data.yearsExperience === "string") values.yearsExperience = data.yearsExperience.trim();
+  if (typeof data.languages === "string") values.languages = data.languages.trim();
+  if (Array.isArray(data.certifications)) {
+    values.certifications = data.certifications.filter((cert) => {
+      const title = cleanText(cert?.title) || cleanText(cert?.name);
+      return Boolean(title);
+    });
+  }
+  if (data.schedule && typeof data.schedule === "object" && !Array.isArray(data.schedule)) {
+    values.schedule = data.schedule;
+  }
+  if (typeof data.primaryRoom === "string") values.primaryRoom = data.primaryRoom.trim();
+  if (data.maxClients !== undefined) {
+    const parsed = data.maxClients === null || data.maxClients === "" ? null : Number(data.maxClients);
+    values.maxClients = Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return values;
+}
+
 function formatTherapist(therapist: any) {
   if (!therapist) return null;
+  const specialty = therapist.specialty || therapist.specialization || "Therapist";
   return {
     ...therapist,
     id: therapist.id,
@@ -15,7 +77,22 @@ function formatTherapist(therapist: any) {
     email: therapist.user?.email || therapist.email || "",
     phone: therapist.user?.phone || therapist.phone || "",
     status: therapist.user?.status || therapist.status || "active",
-    specialization: therapist.specialty || therapist.specialization || "Therapist",
+    specialty,
+    specialization: specialty,
+    bio: therapist.bio || "",
+    avatar: therapist.avatar || therapist.user?.image || "",
+    educationLevel: therapist.educationLevel || "",
+    educationField: therapist.educationField || "",
+    educationInstitution: therapist.educationInstitution || "",
+    graduationYear: therapist.graduationYear || "",
+    strNumber: therapist.strNumber || "",
+    strExpiry: therapist.strExpiry || "",
+    yearsExperience: therapist.yearsExperience || "",
+    languages: therapist.languages || "",
+    certifications: Array.isArray(therapist.certifications) ? therapist.certifications : [],
+    schedule: therapist.schedule && typeof therapist.schedule === "object" ? therapist.schedule : {},
+    primaryRoom: therapist.primaryRoom || "",
+    maxClients: therapist.maxClients ?? null,
   };
 }
 
@@ -55,14 +132,17 @@ export const therapistService = {
       email: therapist.user?.email,
       name: therapist.user?.name,
       specialty: therapist.specialty,
+      bio: therapist.bio,
+      avatar: therapist.avatar,
     };
   },
 
-  async create(data: { name: string; email: string; phone?: string; specialty?: string; tempPassword?: string }) {
+  async create(data: TherapistProfileInput & { name: string; email: string }) {
     const tempPassword = data.tempPassword?.trim() || generateTempPassword();
     const lastSeq = await this.getLastSequence();
     const nit = generateNIT(data.name, lastSeq + 1);
     const phone = data.phone?.trim() || "";
+    const profileValues = pickTherapistProfileValues(data);
 
     const newUser = await auth.api.createUser({
       body: {
@@ -83,25 +163,27 @@ export const therapistService = {
       id: nit,
       userId: newUser.user.id,
       nit,
-      specialty: data.specialty || "Therapist",
+      ...profileValues,
+      specialty: profileValues.specialty || "Therapist",
     }).returning();
 
     return { ...formatTherapist({ ...therapist, user: createdUser }), therapist, tempPassword, user: createdUser };
   },
 
-  async updateProfile(id: string, updates: { name?: string; email?: string; phone?: string; specialty?: string; specialization?: string; status?: string }) {
+  async updateProfile(id: string, updates: TherapistProfileInput) {
     const therapist = await db.query.therapists.findFirst({ where: eq(therapists.id, id) });
     if (!therapist) return null;
 
-    const specialty = updates.specialty || updates.specialization;
-    if (specialty) {
-      await db.update(therapists).set({ specialty }).where(eq(therapists.id, id));
+    const therapistUpdates = pickTherapistProfileValues(updates);
+    if (Object.keys(therapistUpdates).length > 0) {
+      await db.update(therapists).set(therapistUpdates).where(eq(therapists.id, id));
     }
 
     const userUpdates: any = {};
     if (typeof updates.name === "string") userUpdates.name = updates.name.trim();
     if (typeof updates.email === "string" && updates.email.trim()) userUpdates.email = updates.email.trim();
     if (typeof updates.phone === "string") userUpdates.phone = updates.phone.trim();
+    if (typeof updates.avatar === "string") userUpdates.image = updates.avatar.trim();
     if (typeof updates.status === "string") userUpdates.status = updates.status;
     if (Object.keys(userUpdates).length > 0) {
       await db.update(user).set({ ...userUpdates, updatedAt: new Date() }).where(eq(user.id, therapist.userId));

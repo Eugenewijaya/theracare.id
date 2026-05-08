@@ -37,13 +37,22 @@ router.post("/", requireAuth, requireRole("admin"), async (req, res, next) => {
   try {
     const { name, email, phone, specialty, specialization, tempPassword } = req.body;
     if (!name || !email) return badRequest(res, "Nama dan email wajib diisi");
-    const result = await therapistService.create({ name, email, phone, specialty: specialty || specialization, tempPassword });
+    const result = await therapistService.create({ ...req.body, name, email, phone, specialty: specialty || specialization, tempPassword });
     created(res, result, "Akun terapis berhasil dibuat");
   } catch (e) { next(e); }
 });
 
 router.patch("/:id", requireAuth, async (req, res, next) => {
   try {
+    if (req.user!.role !== "admin") {
+      if (req.user!.role !== "therapist") {
+        return res.status(403).json({ success: false, error: "Akses ditolak" });
+      }
+      const ownProfile = await therapistService.getByUserId(req.user!.id);
+      if (!ownProfile || ownProfile.id !== req.params.id) {
+        return res.status(403).json({ success: false, error: "Akses ditolak" });
+      }
+    }
     const result = await therapistService.updateProfile(req.params.id as string, req.body);
     if (!result) return notFound(res);
     ok(res, result);

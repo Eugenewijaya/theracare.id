@@ -3,6 +3,36 @@ import { useNavigate } from 'react-router-dom';
 import { sessionsApi } from '../../../shared/api/client';
 import ChildProfileModal from './ChildProfileModal';
 
+function todayKey() {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+}
+
+function getStoredTherapist() {
+    try {
+        const saved = sessionStorage.getItem('therapist_user') || localStorage.getItem('therapist_user');
+        return saved ? JSON.parse(saved) : null;
+    } catch {
+        return null;
+    }
+}
+
+function getDurationSeconds(session) {
+    const minutes = Number.parseInt(session?.duration, 10) || 45;
+    return minutes * 60;
+}
+
+function getRemainingSeconds(session) {
+    const total = getDurationSeconds(session);
+    if (!session?.startedAt) return total;
+    const started = new Date(session.startedAt).getTime();
+    if (Number.isNaN(started)) return total;
+    return Math.max(0, total - Math.floor((Date.now() - started) / 1000));
+}
+
 const TimelineList = () => {
     const navigate = useNavigate();
     const [sessions, setSessions] = useState([]);
@@ -14,12 +44,14 @@ const TimelineList = () => {
     const [profileModalSession, setProfileModalSession] = useState(null);
 
     const fetchSessions = async () => {
-        const userStr = sessionStorage.getItem('therapist_user');
-        const user = userStr ? JSON.parse(userStr) : null;
-        const nit = user ? user.id : 'NIT-001';
+        const user = getStoredTherapist();
+        if (!user?.id) {
+            setSessions([]);
+            return;
+        }
         
         try {
-            const res = await sessionsApi.getForTherapist(nit);
+            const res = await sessionsApi.getForTherapist(user.id, todayKey());
             const todaySessions = res.data?.data || [];
             setSessions(todaySessions);
         } catch (e) {
@@ -34,12 +66,16 @@ const TimelineList = () => {
     useEffect(() => {
         const activeSession = sessions.find(s => s.status === 'active');
         if (activeSession) {
+            setTimeLeft(getRemainingSeconds(activeSession));
             const interval = setInterval(() => {
                 setTimeLeft((prev) => {
                     if (prev <= 1) {
                         clearInterval(interval);
                         // Auto-complete if time runs out
-                        sessionsApi.updateStatus(activeSession.id, 'done').then(fetchSessions);
+                        sessionsApi.updateStatus(activeSession.id, 'done').then(() => {
+                            window.dispatchEvent(new Event('sessionUpdated'));
+                            fetchSessions();
+                        });
                         return 0;
                     }
                     return prev - 1;
@@ -64,6 +100,7 @@ const TimelineList = () => {
         try {
             await sessionsApi.updateStatus(completeModal.id, 'done');
             await fetchSessions();
+            window.dispatchEvent(new Event('sessionUpdated'));
         } catch(e) { console.error(e); }
         closeCompleteModal();
     };
@@ -72,6 +109,7 @@ const TimelineList = () => {
         try {
             await sessionsApi.saveNotes(noteOpenId, noteText);
             await fetchSessions();
+            window.dispatchEvent(new Event('sessionUpdated'));
             setNoteOpenId(null);
             setNoteText('');
             setNoteSaved(true);
@@ -83,7 +121,8 @@ const TimelineList = () => {
         try {
             await sessionsApi.updateStatus(sessionId, 'active');
             await fetchSessions();
-            setTimeLeft(45 * 60); // reset timer
+            window.dispatchEvent(new Event('sessionUpdated'));
+            setTimeLeft(45 * 60);
         } catch (e) { console.error(e); }
     };
 
@@ -220,7 +259,7 @@ const TimelineList = () => {
                                 <div className="flex flex-wrap gap-3 mt-2 relative z-10">
                                     {isDone && (
                                         <>
-                                            <button onClick={() => navigate('/reports/new')} className="text-teal-600 dark:text-teal-400 text-sm font-bold hover:text-teal-700 flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-colors border border-teal-100 dark:border-teal-900/50">
+                                            <button onClick={() => navigate(`/reports/new?sessionId=${session.id}&childId=${session.childId || ''}`)} className="text-teal-600 dark:text-teal-400 text-sm font-bold hover:text-teal-700 flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-colors border border-teal-100 dark:border-teal-900/50">
                                                 <span className="material-symbols-outlined text-[18px]">description</span> Fill Daily Report
                                             </button>
                                             <button onClick={() => { setNoteOpenId(session.id); setNoteText(session.notes || ''); }} className="text-slate-500 text-sm font-bold hover:text-slate-700 dark:hover:text-slate-300 flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
@@ -244,9 +283,6 @@ const TimelineList = () => {
                                         <>
                                             <button onClick={() => startSession(session.id)} className="text-white hover:bg-teal-600 bg-teal-500 text-sm font-bold flex items-center gap-1.5 px-4 py-2 rounded-xl shadow-md transition-colors hover:shadow-lg">
                                                 <span className="material-symbols-outlined text-[18px]">play_arrow</span> Start Session
-                                            </button>
-                                            <button onClick={() => {}} className="text-slate-500 hover:text-teal-600 dark:hover:text-teal-400 text-sm font-bold flex items-center gap-1.5 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 hover:border-teal-200 hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-colors">
-                                                <span className="material-symbols-outlined text-[18px]">assignment</span> View Prep Sheet
                                             </button>
                                         </>
                                     )}

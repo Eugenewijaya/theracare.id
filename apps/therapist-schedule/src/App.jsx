@@ -30,6 +30,29 @@ function calculateEndTime(startTime, durationStr) {
     return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }
 
+function getStoredTherapist() {
+    try {
+        const saved = sessionStorage.getItem('therapist_user') || localStorage.getItem('therapist_user');
+        return saved ? JSON.parse(saved) : null;
+    } catch {
+        return null;
+    }
+}
+
+function getDurationSeconds(session) {
+    const minutes = Number.parseInt(session?.raw?.duration || session?.duration, 10) || 45;
+    return minutes * 60;
+}
+
+function getRemainingSeconds(session) {
+    const total = getDurationSeconds(session);
+    const startedAt = session?.raw?.startedAt || session?.startedAt;
+    if (!startedAt) return total;
+    const started = new Date(startedAt).getTime();
+    if (Number.isNaN(started)) return total;
+    return Math.max(0, total - Math.floor((Date.now() - started) / 1000));
+}
+
 function getProgramStyle(programType = '') {
     if (programType.includes('Occupational') || programType === 'OT') return { tag: 'OT', color: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' };
     if (programType.includes('Speech') || programType === 'ST') return { tag: 'ST', color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' };
@@ -44,7 +67,7 @@ function App() {
     
     // User Session
     const [currentUser, setCurrentUser] = useState(() => {
-        try { return JSON.parse(sessionStorage.getItem('therapist_user')); } catch { return null; }
+        return getStoredTherapist();
     });
 
     const [currentDate, setCurrentDate] = useState(new Date());
@@ -63,7 +86,7 @@ function App() {
             const rawSessions = res.data?.data || [];
             
             const mapped = rawSessions.map(s => {
-                const program = s.child?.therapyPrograms?.[0]?.type || 'General Therapy';
+                const program = s.focus || s.child?.therapyPrograms?.[0]?.type || 'General Therapy';
                 const style = getProgramStyle(program);
                 return {
                     id: s.id,
@@ -71,7 +94,7 @@ function App() {
                     type: program,
                     typeTag: style.tag,
                     typeColor: style.color,
-                    room: s.roomId || 'Clinic Room',
+                    room: s.room?.name || s.roomId || 'Room not assigned',
                     start: s.startTime,
                     end: calculateEndTime(s.startTime, s.duration),
                     status: s.status, // upcoming, active, done
@@ -97,6 +120,7 @@ function App() {
     useEffect(() => {
         const activeSession = sessions.find(s => s.status === 'active');
         if (activeSession) {
+            setTimeLeft(getRemainingSeconds(activeSession));
             const interval = setInterval(() => {
                 setTimeLeft(prev => {
                     if (prev <= 1) {
@@ -115,6 +139,7 @@ function App() {
         try {
             await sessionsApi.updateStatus(id, 'done');
             loadSessions();
+            window.dispatchEvent(new Event('sessionUpdated'));
         } catch (e) {
             console.error('Failed to auto-finish session', e);
         }
@@ -143,6 +168,7 @@ function App() {
         try {
             await sessionsApi.updateStatus(finishModal.id, 'done');
             loadSessions();
+            window.dispatchEvent(new Event('sessionUpdated'));
         } catch (e) {
             console.error('Failed to finish session', e);
         }
@@ -154,8 +180,9 @@ function App() {
         if (!startModal) return;
         try {
             await sessionsApi.updateStatus(startModal.id, 'active');
-            setTimeLeft(45 * 60);
             loadSessions();
+            window.dispatchEvent(new Event('sessionUpdated'));
+            setTimeLeft(getDurationSeconds(startModal));
         } catch (e) {
             console.error('Failed to start session', e);
         }
@@ -170,8 +197,8 @@ function App() {
                     <h1 className="text-xl sm:text-2xl font-bold">My Schedule</h1>
                     <div className="flex items-center gap-3 sm:gap-4">
                         <div className="flex flex-col items-end hidden sm:flex">
-                            <span className="text-base font-bold">{currentUser?.name || 'Dr. Sarah Jenkins'}</span>
-                            <span className="text-sm text-slate-500">{currentUser?.specialty || 'Occupational Therapist'}</span>
+                            <span className="text-base font-bold">{currentUser?.name || 'Therapist'}</span>
+                            <span className="text-sm text-slate-500">{currentUser?.specialty || 'Clinical Team'}</span>
                         </div>
                         <div
                             onClick={() => navigate('/performance')}

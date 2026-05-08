@@ -102,8 +102,20 @@ export const sessionService = {
   },
 
   async updateStatus(id: string, status: string, cancelReason?: string) {
+    const timestampUpdates: Partial<typeof therapySessions.$inferInsert> = {};
+    if (status === "active") {
+      timestampUpdates.startedAt = new Date();
+      timestampUpdates.endedAt = null;
+    }
+    if (status === "done") {
+      timestampUpdates.endedAt = new Date();
+    }
+    if (status === "upcoming") {
+      timestampUpdates.startedAt = null;
+      timestampUpdates.endedAt = null;
+    }
     const [updated] = await db.update(therapySessions)
-      .set({ status, ...(cancelReason ? { cancelReason } : {}) })
+      .set({ status, ...timestampUpdates, ...(cancelReason ? { cancelReason } : {}) })
       .where(eq(therapySessions.id, id))
       .returning();
     return updated;

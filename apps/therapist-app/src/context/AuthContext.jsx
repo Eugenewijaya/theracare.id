@@ -38,6 +38,7 @@ export function AuthProvider({ children }) {
 
   const applyTherapist = (therapist, remember = true) => {
     const userData = {
+      ...therapist,
       id: therapist.id,
       nit: therapist.nit || therapist.id,
       userId: therapist.userId,
@@ -48,6 +49,18 @@ export function AuthProvider({ children }) {
       avatar: therapist.avatar || '',
       email: therapist.email,
       phone: therapist.phone,
+      educationLevel: therapist.educationLevel || '',
+      educationField: therapist.educationField || '',
+      educationInstitution: therapist.educationInstitution || '',
+      graduationYear: therapist.graduationYear || '',
+      strNumber: therapist.strNumber || '',
+      strExpiry: therapist.strExpiry || '',
+      yearsExperience: therapist.yearsExperience || '',
+      languages: therapist.languages || '',
+      certifications: Array.isArray(therapist.certifications) ? therapist.certifications : [],
+      schedule: therapist.schedule || {},
+      primaryRoom: therapist.primaryRoom || '',
+      maxClients: therapist.maxClients ?? null,
     };
     setUser(userData);
     storeUser(userData, remember);

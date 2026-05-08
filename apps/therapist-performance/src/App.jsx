@@ -3,13 +3,40 @@ import Header from './components/Header';
 import TherapistProfile from './components/TherapistProfile';
 import { sessionsApi, reportsApi, therapistsApi } from '../../shared/api/client';
 
-const INITIAL_GROWTH = [
-    { id: 1, icon: 'workspace_premium', title: 'Advanced ASD Intervention Certification', subtitle: 'Completed: May 2023' },
-    { id: 2, icon: 'event', title: 'Sensory Integration Workshop', subtitle: 'Upcoming: Aug 15, 2024' },
-];
-
-const PROFILE_DEFAULT = { name: 'Dr. Sarah Jenkins', specialty: 'Occupational Therapist', bio: 'Dedicated therapist with 8+ years of experience in pediatric occupational therapy.', avatar: '' };
 const MONTH_FORMATTER = new Intl.DateTimeFormat('en-US', { month: 'short' });
+
+function readStoredTherapist() {
+    try {
+        const storedUser = sessionStorage.getItem('therapist_user') || localStorage.getItem('therapist_user');
+        return storedUser ? JSON.parse(storedUser) : null;
+    } catch {
+        return null;
+    }
+}
+
+function normalizeCertification(cert, index) {
+    const title = cert?.title || cert?.name || '';
+    if (!title.trim()) return null;
+    const subtitle = cert?.subtitle || [cert?.institution, cert?.year].filter(Boolean).join(' - ') || 'Detail belum diisi';
+    return {
+        ...cert,
+        id: cert?.id || `${index}-${title}`,
+        icon: cert?.icon || 'workspace_premium',
+        title,
+        subtitle,
+    };
+}
+
+function normalizeCertifications(certifications = []) {
+    return certifications.map(normalizeCertification).filter(Boolean);
+}
+
+function storeTherapist(user) {
+    sessionStorage.setItem('therapist_user', JSON.stringify(user));
+    if (localStorage.getItem('therapist_user')) {
+        localStorage.setItem('therapist_user', JSON.stringify(user));
+    }
+}
 
 function formatRelativeDate(dateStr) {
     if (!dateStr) return 'Recently';
@@ -55,17 +82,12 @@ function buildMonthlySeries(sessions) {
 
 function App() {
     const [searchQuery, setSearchQuery] = useState('');
-    const [growth, setGrowth] = useState(INITIAL_GROWTH);
     const [profileModal, setProfileModal] = useState(false);
     
     // User Management
-    const [currentUser, setCurrentUser] = useState(() => {
-        try {
-            const storedUser = sessionStorage.getItem('therapist_user');
-            return storedUser ? JSON.parse(storedUser) : null;
-        } catch { return null; }
-    });
-    const [profileDraft, setProfileDraft] = useState(PROFILE_DEFAULT);
+    const [currentUser, setCurrentUser] = useState(readStoredTherapist);
+    const [growth, setGrowth] = useState(() => normalizeCertifications(readStoredTherapist()?.certifications || []));
+    const [profileDraft, setProfileDraft] = useState({});
 
     // Derived Statistics
     const [stats, setStats] = useState([
@@ -77,6 +99,10 @@ function App() {
     const [monthlySeries, setMonthlySeries] = useState([]);
     const [volumeSummary, setVolumeSummary] = useState({ scheduled: 0, completed: 0, delta: '0%', completionRate: '0%' });
     const [feedbackFeed, setFeedbackFeed] = useState([]);
+
+    useEffect(() => {
+        setGrowth(normalizeCertifications(currentUser?.certifications || []));
+    }, [currentUser?.certifications]);
 
     useEffect(() => {
         if (!currentUser) return;
@@ -163,9 +189,20 @@ function App() {
 
     const openProfileModal = () => { 
         setProfileDraft({ 
-            name: currentUser?.name || PROFILE_DEFAULT.name, 
-            specialty: currentUser?.specialty || PROFILE_DEFAULT.specialty, 
-            bio: currentUser?.bio || PROFILE_DEFAULT.bio 
+            name: currentUser?.name || '',
+            phone: currentUser?.phone || '',
+            specialty: currentUser?.specialty || '',
+            bio: currentUser?.bio || '',
+            educationLevel: currentUser?.educationLevel || '',
+            educationField: currentUser?.educationField || '',
+            educationInstitution: currentUser?.educationInstitution || '',
+            graduationYear: currentUser?.graduationYear || '',
+            strNumber: currentUser?.strNumber || '',
+            strExpiry: currentUser?.strExpiry || '',
+            yearsExperience: currentUser?.yearsExperience || '',
+            languages: currentUser?.languages || '',
+            primaryRoom: currentUser?.primaryRoom || '',
+            maxClients: currentUser?.maxClients ?? '',
         }); 
         setProfileModal(true); 
     };
@@ -177,7 +214,7 @@ function App() {
                 if (res.data?.data) {
                     const updated = { ...currentUser, ...res.data.data };
                     setCurrentUser(updated);
-                    sessionStorage.setItem('therapist_user', JSON.stringify(updated));
+                    storeTherapist(updated);
                 }
             } catch (e) {
                 console.error('Failed to update profile', e);
@@ -194,7 +231,7 @@ function App() {
                 if (res.data?.data) {
                     const updated = { ...currentUser, ...res.data.data };
                     setCurrentUser(updated);
-                    sessionStorage.setItem('therapist_user', JSON.stringify(updated));
+                    storeTherapist(updated);
                 }
                 showToast('Profile photo updated.');
             } catch (e) {
@@ -203,20 +240,45 @@ function App() {
         }
     };
 
+    const persistGrowth = async (nextGrowth, message) => {
+        setGrowth(nextGrowth);
+        if (!currentUser?.id) {
+            showToast(message);
+            return;
+        }
+
+        try {
+            const res = await therapistsApi.updateProfile(currentUser.id, { certifications: nextGrowth });
+            if (res.data?.data) {
+                const updated = { ...currentUser, ...res.data.data };
+                setCurrentUser(updated);
+                storeTherapist(updated);
+            }
+            showToast(message);
+        } catch (e) {
+            console.error('Failed to update certifications', e);
+            showToast('Gagal menyimpan sertifikasi.');
+        }
+    };
+
     const openAddGrowth = () => { setGrowthEdit(null); setGrowthDraft({ icon: 'workspace_premium', title: '', subtitle: '' }); setGrowthModal(true); };
     const openEditGrowth = (item) => { setGrowthEdit(item.id); setGrowthDraft({ icon: item.icon, title: item.title, subtitle: item.subtitle }); setGrowthModal(true); };
-    const saveGrowth = () => {
+    const saveGrowth = async () => {
         if (!growthDraft.title) return;
-        if (growthEdit) {
-            setGrowth(prev => prev.map(g => g.id === growthEdit ? { ...g, ...growthDraft } : g));
-            showToast('Growth item updated.');
+        if (growthEdit !== null) {
+            const nextGrowth = growth.map(g => g.id === growthEdit ? { ...g, ...growthDraft } : g);
+            await persistGrowth(nextGrowth, 'Sertifikasi diperbarui.');
         } else {
-            setGrowth(prev => [...prev, { id: Date.now(), ...growthDraft }]);
-            showToast('New certification added.');
+            const nextGrowth = [...growth, { id: Date.now(), ...growthDraft }];
+            await persistGrowth(nextGrowth, 'Sertifikasi ditambahkan.');
         }
         setGrowthModal(false);
     };
-    const confirmDelete = () => { setGrowth(prev => prev.filter(g => g.id !== deleteModal)); setDeleteModal(null); showToast('Item removed.'); };
+    const confirmDelete = async () => {
+        const nextGrowth = growth.filter(g => g.id !== deleteModal);
+        setDeleteModal(null);
+        await persistGrowth(nextGrowth, 'Sertifikasi dihapus.');
+    };
 
     return (
         <div className="layout-container flex h-full grow flex-col">
@@ -310,6 +372,11 @@ function App() {
                         </button>
                     </div>
                     <div className="flex flex-col gap-4 px-4 pb-10">
+                        {growth.length === 0 && (
+                            <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/60 p-6 text-center text-sm font-medium text-slate-500 dark:border-slate-700 dark:bg-slate-800/40 dark:text-slate-400">
+                                Belum ada sertifikasi yang tersimpan dari admin atau profil terapis.
+                            </div>
+                        )}
                         {growth.filter(g => !searchQuery || g.title.toLowerCase().includes(searchQuery.toLowerCase()) || g.subtitle.toLowerCase().includes(searchQuery.toLowerCase())).map((g) => (
                             <div key={g.id} className="flex items-center gap-4 rounded-lg border border-slate-200 dark:border-primary/20 bg-white dark:bg-background-dark p-4 shadow-sm group">
                                 <div className="bg-primary/10 dark:bg-primary/20 p-2 rounded-full text-primary">
@@ -336,12 +403,16 @@ function App() {
             {/* Edit Profile Modal */}
             {profileModal && (
                 <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4" onClick={() => setProfileModal(false)}>
-                    <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-md shadow-2xl border border-slate-200 dark:border-slate-800 p-8 flex flex-col gap-5" onClick={e => e.stopPropagation()}>
+                    <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-200 dark:border-slate-800 p-8 flex flex-col gap-5" onClick={e => e.stopPropagation()}>
                         <h2 className="text-xl font-extrabold text-slate-900 dark:text-white">Edit Profile</h2>
                         <div className="flex flex-col gap-4">
                             <div>
                                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1 block">Full Name</label>
                                 <input value={profileDraft.name} onChange={e => setProfileDraft(p => ({...p, name: e.target.value}))} className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary text-slate-900 dark:text-slate-100" />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1 block">Phone</label>
+                                <input value={profileDraft.phone || ''} onChange={e => setProfileDraft(p => ({...p, phone: e.target.value}))} className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary text-slate-900 dark:text-slate-100" />
                             </div>
                             <div>
                                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1 block">Specialty</label>
@@ -350,6 +421,50 @@ function App() {
                             <div>
                                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1 block">Bio</label>
                                 <textarea value={profileDraft.bio} onChange={e => setProfileDraft(p => ({...p, bio: e.target.value}))} rows={3} className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary text-slate-900 dark:text-slate-100 resize-none" />
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1 block">Education Level</label>
+                                    <input value={profileDraft.educationLevel || ''} onChange={e => setProfileDraft(p => ({...p, educationLevel: e.target.value}))} className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary text-slate-900 dark:text-slate-100" />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1 block">Education Field</label>
+                                    <input value={profileDraft.educationField || ''} onChange={e => setProfileDraft(p => ({...p, educationField: e.target.value}))} className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary text-slate-900 dark:text-slate-100" />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1 block">Education Institution</label>
+                                <input value={profileDraft.educationInstitution || ''} onChange={e => setProfileDraft(p => ({...p, educationInstitution: e.target.value}))} className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary text-slate-900 dark:text-slate-100" />
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1 block">STR Number</label>
+                                    <input value={profileDraft.strNumber || ''} onChange={e => setProfileDraft(p => ({...p, strNumber: e.target.value}))} className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary text-slate-900 dark:text-slate-100" />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1 block">STR Expiry</label>
+                                    <input type="date" value={profileDraft.strExpiry || ''} onChange={e => setProfileDraft(p => ({...p, strExpiry: e.target.value}))} className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary text-slate-900 dark:text-slate-100" />
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1 block">Experience</label>
+                                    <input value={profileDraft.yearsExperience || ''} onChange={e => setProfileDraft(p => ({...p, yearsExperience: e.target.value}))} className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary text-slate-900 dark:text-slate-100" />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1 block">Languages</label>
+                                    <input value={profileDraft.languages || ''} onChange={e => setProfileDraft(p => ({...p, languages: e.target.value}))} className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary text-slate-900 dark:text-slate-100" />
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1 block">Primary Room</label>
+                                    <input value={profileDraft.primaryRoom || ''} onChange={e => setProfileDraft(p => ({...p, primaryRoom: e.target.value}))} className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary text-slate-900 dark:text-slate-100" />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1 block">Max Clients / Day</label>
+                                    <input type="number" min="1" max="20" value={profileDraft.maxClients || ''} onChange={e => setProfileDraft(p => ({...p, maxClients: e.target.value}))} className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary text-slate-900 dark:text-slate-100" />
+                                </div>
                             </div>
                         </div>
                         <div className="flex gap-3 mt-2">
@@ -394,7 +509,7 @@ function App() {
             )}
 
             {/* Delete Confirm Modal */}
-            {deleteModal && (
+            {deleteModal !== null && (
                 <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4" onClick={() => setDeleteModal(null)}>
                     <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-sm shadow-2xl border border-slate-200 dark:border-slate-800 p-8 flex flex-col gap-5 text-center" onClick={e => e.stopPropagation()}>
                         <div className="w-14 h-14 rounded-full bg-red-50 dark:bg-red-900/20 flex items-center justify-center text-red-500 mx-auto">

@@ -1,16 +1,40 @@
 import { Router } from "express";
 import { requireAuth, requireRole } from "../middleware/auth.middleware.js";
 import { sessionService } from "../services/session.service.js";
+import { therapistService } from "../services/therapist.service.js";
 import { ok, created, notFound, badRequest, conflict } from "../utils/response.js";
 
 const router = Router();
+
+async function canAccessTherapistSchedule(req: any, therapistId: string) {
+  if (req.user?.role === "admin") return true;
+  if (req.user?.role !== "therapist") return false;
+  const ownProfile = await therapistService.getByUserId(req.user.id);
+  return ownProfile?.id === therapistId;
+}
+
+async function canMutateSession(req: any, sessionId: string) {
+  if (req.user?.role === "admin") return { allowed: true, session: null };
+  if (req.user?.role !== "therapist") return { allowed: false, session: null };
+  const [ownProfile, session] = await Promise.all([
+    therapistService.getByUserId(req.user.id),
+    sessionService.getById(sessionId),
+  ]);
+  if (!session) return { allowed: true, session: null };
+  return { allowed: ownProfile?.id === session.therapistId, session };
+}
 
 router.get("/", requireAuth, requireRole("admin"), async (req, res, next) => {
   try { ok(res, await sessionService.getAllWithDetails()); } catch (e) { next(e); }
 });
 
 router.get("/therapist/:id", requireAuth, async (req, res, next) => {
-  try { ok(res, await sessionService.getForTherapist(req.params.id as string, req.query.date as string as string)); } catch (e) { next(e); }
+  try {
+    if (!(await canAccessTherapistSchedule(req, req.params.id as string))) {
+      return res.status(403).json({ success: false, error: "Akses ditolak" });
+    }
+    ok(res, await sessionService.getForTherapist(req.params.id as string, req.query.date as string as string));
+  } catch (e) { next(e); }
 });
 
 router.get("/child/:id/upcoming", requireAuth, async (req, res, next) => {
@@ -46,6 +70,9 @@ router.post("/bulk", requireAuth, requireRole("admin"), async (req, res, next) =
 
 router.patch("/:id/status", requireAuth, async (req, res, next) => {
   try {
+    const access = await canMutateSession(req, req.params.id as string);
+    if (!access.allowed) return res.status(403).json({ success: false, error: "Akses ditolak" });
+    if (access.session === null && req.user!.role !== "admin") return notFound(res);
     const result = await sessionService.updateStatus(req.params.id as string, req.body.status, req.body.cancelReason);
     if (!result) return notFound(res);
     ok(res, result);
@@ -54,6 +81,9 @@ router.patch("/:id/status", requireAuth, async (req, res, next) => {
 
 router.patch("/:id/notes", requireAuth, async (req, res, next) => {
   try {
+    const access = await canMutateSession(req, req.params.id as string);
+    if (!access.allowed) return res.status(403).json({ success: false, error: "Akses ditolak" });
+    if (access.session === null && req.user!.role !== "admin") return notFound(res);
     const result = await sessionService.saveNotes(req.params.id as string, req.body.notes);
     if (!result) return notFound(res);
     ok(res, result);
