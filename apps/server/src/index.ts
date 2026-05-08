@@ -1,6 +1,6 @@
 import "dotenv/config";
 import express from "express";
-import cors from "cors";
+import cors, { type CorsOptions } from "cors";
 import { toNodeHandler } from "better-auth/node";
 import { auth } from "./auth.js";
 import { errorHandler } from "./middleware/error.middleware.js";
@@ -17,16 +17,34 @@ import adminRoutes from "./routes/admin.routes.js";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const normalizeOrigin = (origin: string) => origin.trim().replace(/\/+$/, "");
+const configuredOrigins = (process.env.CORS_ORIGIN || "http://localhost:5173")
+  .split(",")
+  .map(normalizeOrigin)
+  .filter(Boolean);
+const configuredOriginSet = new Set(configuredOrigins);
+const vercelOriginPattern = /^https:\/\/[a-z0-9-]+\.vercel\.app$/i;
+const localhostOriginPattern = /^http:\/\/localhost:\d+$/i;
+
+function isAllowedOrigin(origin: string) {
+  return configuredOriginSet.has(origin)
+    || vercelOriginPattern.test(origin)
+    || localhostOriginPattern.test(origin);
+}
+
+const corsOptions: CorsOptions = {
+  origin(origin, callback) {
+    if (!origin) return callback(null, true);
+    const normalized = normalizeOrigin(origin);
+    if (isAllowedOrigin(normalized)) return callback(null, true);
+    return callback(new Error(`CORS origin not allowed: ${origin}`));
+  },
+  credentials: true,
+};
 
 // ── Middleware ──────────────────────────────────────────
-app.use(
-  cors({
-    origin: (process.env.CORS_ORIGIN || "http://localhost:5173")
-      .split(",")
-      .map((s) => s.trim()),
-    credentials: true,
-  })
-);
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
 
 // Better Auth handler MUST be before express.json() for its own body parsing
 app.all("/api/auth/*", toNodeHandler(auth));
