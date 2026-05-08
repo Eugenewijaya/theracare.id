@@ -202,8 +202,7 @@ function App() {
                 startTime: formData.startTime,
                 duration: `${formData.duration} mins`,
                 focus: formData.program,
-                room: formData.room,
-                generatedByBulk: true,
+                roomId: formData.room,
             };
         });
 

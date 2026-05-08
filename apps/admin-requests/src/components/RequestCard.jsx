@@ -46,7 +46,7 @@ const RequestCard = ({ name, parentName, session, date, reason, slots, submitted
                     {slots.map((slot, i) => (
                         <label key={i} className="flex items-center p-3 border border-slate-200 dark:border-primary/30 rounded-lg cursor-pointer hover:bg-slate-50 dark:hover:bg-primary/10 transition-colors">
                             <input type="radio" name={`slot_${name.replace(/\s/g, '_')}`} className="text-primary focus:ring-primary h-4 w-4 border-slate-300 dark:border-primary/50 bg-transparent" />
-                            <span className="ml-3 text-sm text-slate-700 dark:text-slate-200 font-medium flex-1">{slot.time}</span>
+                            <span className="ml-3 text-sm text-slate-700 dark:text-slate-200 font-medium flex-1">{slot.label || slot.time}</span>
                             <span className={`text-xs font-medium px-2 py-0.5 rounded ${slot.status === 'available'
                                     ? 'text-green-600 dark:text-primary bg-green-100 dark:bg-primary/20'
                                     : 'text-yellow-600 dark:text-yellow-400 bg-yellow-100 dark:bg-yellow-900/30'

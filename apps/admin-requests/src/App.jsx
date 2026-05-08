@@ -182,7 +182,12 @@ function App() {
                     date: session.date ? `${session.date} • ${session.startTime}` : 'Date TBD',
                     reason: r.reason || r.details || 'No reason provided',
                     submittedAgo: new Date(r.createdAt || Date.now()).toLocaleDateString(),
-                    slots: (r.proposedSlots || []).map((s, idx) => ({ time: s, status: idx===0?'available':'conflict' })),
+                    slots: (r.proposedSlots || []).map((s, idx) => ({
+                        date: s.date,
+                        time: s.time,
+                        label: `${s.date || 'Tanggal TBD'} • ${s.time || 'Jam TBD'}`,
+                        status: idx===0?'available':'conflict',
+                    })),
                     status: r.status || 'pending',
                     reviewNote: r.reviewNote || '',
                     reviewedBy: 'Admin',
@@ -232,12 +237,10 @@ function App() {
         }
         else if (type === 'approve') {
             const chosenSlot = req.slots ? req.slots.find(s => s.status === 'available') || req.slots[0] : null;
-            let newD = '';
-            if (chosenSlot) {
-                // mock parse format from "Wed, Oct 25 • 4:00 PM"
-                newD = chosenSlot.time.substring(0, 12);
-            }
-            await rescheduleApi.updateStatus(req.id, 'approved', { newDate: newD || '2023-11-01' }); 
+            await rescheduleApi.updateStatus(req.id, 'approved', {
+                newDate: chosenSlot?.date,
+                newStartTime: chosenSlot?.time,
+            });
             refreshData();
             setTimeout(() => showPopup(`Request from ${req.name} has been approved.`, 'success'), 300);
         }

@@ -1,6 +1,13 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { adminApi } from '../../shared/api/client';
 
+const normalizeProgram = (program) => ({
+  ...program,
+  code: program?.code || '',
+  target: program?.target || '',
+  goals: Array.isArray(program?.goals) ? program.goals : [],
+});
+
 function App() {
   const [programs, setPrograms] = useState([]);
   const [search, setSearch] = useState('');
@@ -9,9 +16,11 @@ function App() {
     const load = async () => {
       try {
         const res = await adminApi.getPrograms();
-        setPrograms(res.data?.data || []);
+        if (!res.ok) throw new Error(res.data?.error || 'Gagal memuat program');
+        setPrograms((res.data?.data || []).map(normalizeProgram));
       } catch (e) {
         console.error(e);
+        showToast(e.message || 'Gagal memuat program', 'error');
       }
     };
     load();
@@ -41,7 +50,8 @@ function App() {
 
   const handleOpenEdit = (prog) => {
     setEditingProgram(prog);
-    setFormData({ ...prog, goals: [...prog.goals] });
+    const normalized = normalizeProgram(prog);
+    setFormData({ ...normalized, goals: [...normalized.goals] });
     setIsModalOpen(true);
   };
 
@@ -66,30 +76,40 @@ function App() {
     };
 
     try {
+      let saveRes;
       if (editingProgram) {
-        await adminApi.updateProgram(editingProgram.id, cleanedData);
-        showToast(`Program "${cleanedData.name}" berhasil diperbarui.`);
+        saveRes = await adminApi.updateProgram(editingProgram.id, cleanedData);
       } else {
-        await adminApi.createProgram(cleanedData);
-        showToast(`Program "${cleanedData.name}" berhasil ditambahkan.`);
+        saveRes = await adminApi.createProgram(cleanedData);
       }
+      if (!saveRes.ok) throw new Error(saveRes.data?.error || saveRes.data?.message || 'Gagal menyimpan program');
+      showToast(
+        editingProgram
+          ? `Program "${cleanedData.name}" berhasil diperbarui.`
+          : `Program "${cleanedData.name}" berhasil ditambahkan.`
+      );
       handleCloseModal();
       const res = await adminApi.getPrograms();
-      setPrograms(res.data?.data || []);
+      if (!res.ok) throw new Error(res.data?.error || 'Gagal memuat ulang program');
+      setPrograms((res.data?.data || []).map(normalizeProgram));
     } catch(e) {
-      showToast('Terjadi kesalahan', 'error');
+      showToast(e.message || 'Terjadi kesalahan', 'error');
     }
   };
 
   const handleDelete = async () => {
     const name = deleteConfirm.name;
     try {
-      await adminApi.deleteProgram(deleteConfirm.id);
+      const deleteRes = await adminApi.deleteProgram(deleteConfirm.id);
+      if (!deleteRes.ok) throw new Error(deleteRes.data?.error || deleteRes.data?.message || 'Gagal menghapus program');
       setDeleteConfirm(null);
       showToast(`Program "${name}" telah dihapus.`, 'warning');
       const res = await adminApi.getPrograms();
-      setPrograms(res.data?.data || []);
-    } catch(e) {}
+      if (!res.ok) throw new Error(res.data?.error || 'Gagal memuat ulang program');
+      setPrograms((res.data?.data || []).map(normalizeProgram));
+    } catch(e) {
+      showToast(e.message || 'Gagal menghapus program', 'error');
+    }
   };
 
   // --- Form Goal Array Handlers ---

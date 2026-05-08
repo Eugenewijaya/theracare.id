@@ -298,7 +298,6 @@ function App() {
             focus: newSession.program || 'General Therapy',
             status: 'upcoming',
             notes: '',
-            addedByAdmin: true,
         };
 
         try {

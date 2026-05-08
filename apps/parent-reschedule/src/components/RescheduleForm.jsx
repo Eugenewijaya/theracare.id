@@ -20,6 +20,12 @@ const REASONS = [
     { value: 'other',          label: 'Other' },
 ];
 
+const getPrimaryChildId = (user = {}) => {
+    if (user.childId) return user.childId;
+    const firstChild = Array.isArray(user.children) ? user.children[0] : null;
+    return firstChild?.id || firstChild?.nita || (typeof firstChild === 'string' ? firstChild : '');
+};
+
 const RescheduleForm = () => {
     const [upcomingSessions, setUpcomingSessions] = useState([]);
     const [requestType, setRequestType] = useState('reschedule'); // 'reschedule' or 'new'
@@ -40,7 +46,7 @@ const RescheduleForm = () => {
             const saved = sessionStorage.getItem('parent_user');
             if (!saved) return;
             const user  = JSON.parse(saved);
-            const childId = user.childId;
+            const childId = getPrimaryChildId(user);
             if (!childId) return;
 
             try {
@@ -74,14 +80,15 @@ const RescheduleForm = () => {
 
         const saved  = sessionStorage.getItem('parent_user');
         const user   = saved ? JSON.parse(saved) : {};
+        const childId = getPrimaryChildId(user);
+        if (!childId) { setError('Data anak tidak ditemukan untuk akun orang tua ini.'); return; }
         const proposedSlots = slots.filter(s => s.date && s.time);
 
         try {
             await rescheduleApi.create({
                 parentId:   user.parentId,
-                childId:    user.childId,
-                requestType, // 'reschedule' or 'new'
-                sessionId:  requestType === 'reschedule' ? selectedSessionId : 'NEW_SESSION',
+                childId,
+                sessionId:  selectedSessionId,
                 reason,
                 details,
                 proposedSlots,
@@ -147,8 +154,10 @@ const RescheduleForm = () => {
                         Reschedule Sesi
                     </button>
                     <button
-                        onClick={() => setRequestType('new')}
-                        className={`px-4 py-2 text-sm font-bold rounded-lg transition-colors ${requestType === 'new' ? 'bg-primary text-white shadow-sm' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}
+                        type="button"
+                        disabled
+                        title="Belum didukung oleh schema backend karena request wajib terhubung ke sesi yang sudah ada."
+                        className="px-4 py-2 text-sm font-bold rounded-lg transition-colors text-slate-400 opacity-50 cursor-not-allowed"
                     >
                         Sesi Tambahan Baru
                     </button>

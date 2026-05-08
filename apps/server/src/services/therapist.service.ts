@@ -62,6 +62,7 @@ export const therapistService = {
     const tempPassword = data.tempPassword?.trim() || generateTempPassword();
     const lastSeq = await this.getLastSequence();
     const nit = generateNIT(data.name, lastSeq + 1);
+    const phone = data.phone?.trim() || "";
 
     const newUser = await auth.api.createUser({
       body: {
@@ -69,9 +70,14 @@ export const therapistService = {
         password: tempPassword,
         name: data.name,
         role: "therapist" as any,
-        phone: data.phone || "",
+        phone,
       } as any,
     });
+
+    await db.update(user)
+      .set({ phone, role: "therapist", status: "active", updatedAt: new Date() })
+      .where(eq(user.id, newUser.user.id));
+    const [createdUser] = await db.select().from(user).where(eq(user.id, newUser.user.id));
 
     const [therapist] = await db.insert(therapists).values({
       id: nit,
@@ -80,7 +86,7 @@ export const therapistService = {
       specialty: data.specialty || "Therapist",
     }).returning();
 
-    return { ...formatTherapist({ ...therapist, user: newUser.user }), therapist, tempPassword, user: newUser.user };
+    return { ...formatTherapist({ ...therapist, user: createdUser }), therapist, tempPassword, user: createdUser };
   },
 
   async updateProfile(id: string, updates: { name?: string; email?: string; phone?: string; specialty?: string; specialization?: string; status?: string }) {

@@ -66,10 +66,11 @@ export const parentService = {
     };
   },
 
-  async create(data: { name: string; email: string; phone?: string; address?: string }, lastId: number) {
+  async create(data: { name: string; email?: string; phone?: string; address?: string }, lastId: number) {
     const tempPassword = generateTempPassword();
     const parentId = generateSeqId("P", lastId + 1);
     const email = parentLoginEmail(data.phone, data.email);
+    const phone = data.phone?.trim() || "";
 
     // Create Better Auth user
     const newUser = await auth.api.createUser({
@@ -78,9 +79,14 @@ export const parentService = {
         password: tempPassword,
         name: data.name,
         role: "parent" as any,
-        phone: data.phone || "",
+        phone,
       } as any,
     });
+
+    await db.update(user)
+      .set({ phone, role: "parent", status: "active", updatedAt: new Date() })
+      .where(eq(user.id, newUser.user.id));
+    const [createdUser] = await db.select().from(user).where(eq(user.id, newUser.user.id));
 
     // Create parent record
     const [parent] = await db.insert(parents).values({
@@ -89,7 +95,7 @@ export const parentService = {
       address: data.address || "",
     }).returning();
 
-    return { ...formatParent({ ...parent, user: newUser.user, children: [] }), parent, tempPassword, user: newUser.user };
+    return { ...formatParent({ ...parent, user: createdUser, children: [] }), parent, tempPassword, user: createdUser };
   },
 
   async updateStatus(id: string, status: string) {

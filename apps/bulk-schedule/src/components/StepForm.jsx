@@ -64,7 +64,7 @@ function StepCriteria({ data, update }) {
                     className="block w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-sm focus:border-primary focus:ring-primary sm:text-sm h-10 px-3">
                     <option value="">Pilih ruang...</option>
                     {rooms.map(r => (
-                        <option key={r.id} value={r.name}>{r.name} ({r.type})</option>
+                        <option key={r.id} value={r.id}>{r.name} ({r.type})</option>
                     ))}
                 </select>
             </div>

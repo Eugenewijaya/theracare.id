@@ -4,32 +4,72 @@ import { eq, and, sql } from "drizzle-orm";
 import { generateSeqId } from "../utils/id-generators.js";
 import { notificationService } from "./notification.service.js";
 
+type ReportInsert = typeof reports.$inferInsert;
+
+function formatReport(report: any) {
+  if (!report) return null;
+  return {
+    ...report,
+    childName: report.child?.name || report.childName || "",
+    therapistName: report.therapist?.user?.name || report.therapistName || "",
+  };
+}
+
+function pickReportValues(data: any): Partial<ReportInsert> {
+  return {
+    ...(typeof data.type === "string" ? { type: data.type } : {}),
+    ...(typeof data.childId === "string" ? { childId: data.childId } : {}),
+    ...(typeof data.therapistId === "string" ? { therapistId: data.therapistId } : {}),
+    ...(typeof data.sessionId === "string" && data.sessionId ? { sessionId: data.sessionId } : {}),
+    ...(typeof data.status === "string" ? { status: data.status } : {}),
+    ...(typeof data.date === "string" ? { date: data.date } : {}),
+    ...(typeof data.sessionFocus === "string" ? { sessionFocus: data.sessionFocus } : {}),
+    ...(Array.isArray(data.aspects) ? { aspects: data.aspects } : {}),
+    ...(data.evaluations && typeof data.evaluations === "object" ? { evaluations: data.evaluations } : {}),
+    ...(Number.isFinite(Number(data.sessionScore)) ? { sessionScore: Number(data.sessionScore) } : {}),
+    ...(typeof data.description === "string" ? { description: data.description } : {}),
+    ...(typeof data.childResponse === "string" ? { childResponse: data.childResponse } : {}),
+    ...(typeof data.obstacles === "string" ? { obstacles: data.obstacles } : {}),
+    ...(typeof data.recommendations === "string" ? { recommendations: data.recommendations } : {}),
+    ...(typeof data.internalNotes === "string" ? { internalNotes: data.internalNotes } : {}),
+    ...(typeof data.dateFrom === "string" ? { dateFrom: data.dateFrom } : {}),
+    ...(typeof data.dateTo === "string" ? { dateTo: data.dateTo } : {}),
+    ...(Array.isArray(data.progressPoints) ? { progressPoints: data.progressPoints } : {}),
+    ...(Array.isArray(data.improvementPoints) ? { improvementPoints: data.improvementPoints } : {}),
+    ...(typeof data.summary === "string" ? { summary: data.summary } : {}),
+    ...(typeof data.parentNotes === "string" ? { parentNotes: data.parentNotes } : {}),
+  };
+}
+
 export const reportService = {
   async getById(id: string) {
-    return db.query.reports.findFirst({
+    const report = await db.query.reports.findFirst({
       where: eq(reports.id, id),
       with: { child: true, therapist: { with: { user: true } }, session: true },
     });
+    return formatReport(report);
   },
 
   async getForTherapist(therapistId: string, type?: string) {
     const conditions = [eq(reports.therapistId, therapistId)];
     if (type) conditions.push(eq(reports.type, type));
-    return db.query.reports.findMany({
+    const rows = await db.query.reports.findMany({
       where: and(...conditions),
       with: { child: true, session: true },
       orderBy: (r, { desc }) => [desc(r.createdAt)],
     });
+    return rows.map(formatReport);
   },
 
   async getForChild(childId: string, type?: string) {
     const conditions = [eq(reports.childId, childId)];
     if (type) conditions.push(eq(reports.type, type));
-    return db.query.reports.findMany({
+    const rows = await db.query.reports.findMany({
       where: and(...conditions),
       with: { therapist: { with: { user: true } }, session: true },
       orderBy: (r, { desc }) => [desc(r.createdAt)],
     });
+    return rows.map(formatReport);
   },
 
   async getSessionReport(sessionId: string) {
@@ -44,10 +84,10 @@ export const reportService = {
     // Check if updating existing report
     if (data.id) {
       const [updated] = await db.update(reports)
-        .set({ ...data, updatedAt: now })
+        .set({ ...pickReportValues(data), updatedAt: now })
         .where(eq(reports.id, data.id))
         .returning();
-      return updated;
+      return formatReport(updated);
     }
 
     // Check for existing daily report for same session
@@ -57,19 +97,27 @@ export const reportService = {
       });
       if (existing) {
         const [updated] = await db.update(reports)
-          .set({ ...data, updatedAt: now })
+          .set({ ...pickReportValues(data), updatedAt: now })
           .where(eq(reports.id, existing.id))
           .returning();
-        return updated;
+        return formatReport(updated);
       }
     }
 
     // Create new report
     const lastId = await this.getLastId();
     const id = generateSeqId("REP", lastId + 1);
-    const [report] = await db.insert(reports).values({
-      ...data, id, status: "pending_review", createdAt: now, updatedAt: now,
-    }).returning();
+    const values: ReportInsert = {
+      id,
+      type: data.type,
+      childId: data.childId,
+      therapistId: data.therapistId,
+      ...pickReportValues(data),
+      status: "pending_review",
+      createdAt: now,
+      updatedAt: now,
+    };
+    const [report] = await db.insert(reports).values(values).returning();
 
     // Update session notes if daily report
     if (data.type === "harian" && data.sessionId && data.description) {
@@ -78,7 +126,7 @@ export const reportService = {
         .where(eq(therapySessions.id, data.sessionId));
     }
 
-    return report;
+    return formatReport(report);
   },
 
   async updateStatus(id: string, status: string) {
@@ -105,10 +153,7 @@ export const reportService = {
   },
 
   async update(id: string, updates: any) {
-    const values: any = {};
-    for (const [key, value] of Object.entries(updates)) {
-      if (key !== "id" && key !== "createdAt" && value !== undefined) values[key] = value;
-    }
+    const values: any = pickReportValues(updates);
     if (Object.keys(values).length === 0) return this.getById(id);
 
     const [updated] = await db.update(reports)
