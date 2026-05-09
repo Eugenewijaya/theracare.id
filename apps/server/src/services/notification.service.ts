@@ -2,6 +2,7 @@ import { db } from "../db/index.js";
 import { notifications, notificationReads } from "../db/schema.js";
 import { eq } from "drizzle-orm";
 import { generateId } from "../utils/id-generators.js";
+import { emailService } from "./email.service.js";
 
 export const notificationService = {
   async getForUser(role: string, userId: string) {
@@ -36,6 +37,9 @@ export const notificationService = {
   async create(data: { type: string; icon: string; title: string; message: string; targetRole: string; targetUserId?: string; relatedId?: string }) {
     const id = generateId("NOTIF");
     const [notif] = await db.insert(notifications).values({ id, ...data }).returning();
+    emailService.sendNotification(data).catch((error) => {
+      console.error("[email] notification delivery failed", error);
+    });
     return notif;
   },
 

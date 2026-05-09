@@ -9,4 +9,10 @@
   .material-symbols-outlined.fill {
     font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
   }
+  body {
+    overflow-wrap: anywhere;
+  }
+  :where(h1, h2, h3, p, a, button, label, th, td, li) {
+    min-width: 0;
+  }
 }

@@ -133,24 +133,24 @@ function App() {
     return (
         <>
             <Header user={currentUser} />
-            <main className="flex-1 flex justify-center py-8 px-4 sm:px-8 lg:px-12 bg-background-light dark:bg-background-dark">
-                <div className="w-full max-w-7xl flex flex-col lg:flex-row gap-8">
+            <main className="flex-1 flex justify-center py-6 sm:py-8 px-3 sm:px-6 lg:px-12 bg-background-light dark:bg-background-dark">
+                <div className="w-full max-w-7xl min-w-0 flex flex-col lg:flex-row gap-6 lg:gap-8">
 
                     {/* Main Content Area */}
-                    <div className="flex-1 flex flex-col bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
+                    <div className="min-w-0 flex-1 flex flex-col bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
 
-                        <div className="p-6 md:p-8">
+                        <div className="p-4 sm:p-6 md:p-8">
                             {/* Toolbar */}
                             <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
-                                <div className="flex flex-col gap-1">
-                                    <h1 className="text-3xl font-bold leading-tight text-slate-900 dark:text-white">Pusat Pengumuman</h1>
-                                    <p className="text-slate-500 dark:text-slate-400 text-sm">Kelola peringatan dan kirim pengumuman ke portal Orang Tua dan Terapis.</p>
+                                <div className="min-w-0 flex flex-col gap-1">
+                                    <h1 className="text-[clamp(1.65rem,4vw,3rem)] font-bold leading-tight text-slate-900 dark:text-white">Pusat Pengumuman</h1>
+                                    <p className="max-w-2xl text-slate-500 dark:text-slate-400 text-sm leading-relaxed">Kelola peringatan dan kirim pengumuman ke portal Orang Tua dan Terapis.</p>
                                 </div>
-                                <div className="flex items-center gap-3">
+                                <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
                                     <select 
                                         value={audienceFilter}
                                         onChange={(e) => setAudienceFilter(e.target.value)}
-                                        className="h-9 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-primary"
+                                        className="h-10 w-full sm:w-auto px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-primary"
                                     >
                                         <option value="all">Audiens: Semua</option>
                                         <option value="admin">Hanya Admin</option>
@@ -159,14 +159,14 @@ function App() {
                                     </select>
                                     <button 
                                         onClick={markAllRead}
-                                        className="flex items-center justify-center rounded-lg h-9 px-4 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-sm font-bold transition-colors text-slate-700 dark:text-slate-200"
+                                        className="flex items-center justify-center rounded-lg h-10 px-4 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-sm font-bold transition-colors text-slate-700 dark:text-slate-200"
                                     >
                                         <span className="material-symbols-outlined text-lg mr-2">done_all</span>
                                         Tandai Dibaca
                                     </button>
                                     <button 
                                         onClick={() => setIsCreating(true)}
-                                        className="flex items-center justify-center rounded-lg h-9 px-4 bg-primary hover:bg-primary/90 text-sm font-bold transition-colors text-white shadow-sm"
+                                        className="flex items-center justify-center rounded-lg h-10 px-4 bg-primary hover:bg-primary/90 text-sm font-bold transition-colors text-white shadow-sm"
                                     >
                                         <span className="material-symbols-outlined text-lg mr-2">add_alert</span>
                                         Buat Pengumuman
@@ -178,7 +178,7 @@ function App() {
                             {isCreating && (
                                 <div className="mb-8 p-5 rounded-xl border border-primary/30 bg-primary/5">
                                     <h3 className="font-bold mb-3 text-slate-800 dark:text-white">Pengumuman Baru</h3>
-                                    <div className="flex flex-col gap-3">
+                                    <div className="flex min-w-0 flex-col gap-3">
                                         <input 
                                             type="text" 
                                             placeholder="Judul Pengumuman"
@@ -239,7 +239,7 @@ function App() {
                                     <div
                                         key={n.id}
                                         onClick={() => toggleRead(n)}
-                                        className={`flex gap-4 rounded-xl p-4 cursor-pointer transition-colors relative border group ${n.unread
+                                        className={`flex min-w-0 gap-3 sm:gap-4 rounded-xl p-4 cursor-pointer transition-colors relative border group ${n.unread
                                             ? 'bg-primary/5 dark:bg-primary/10 hover:bg-primary/10 dark:hover:bg-primary/20 border-primary/20'
                                             : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'
                                             }`}
@@ -247,22 +247,22 @@ function App() {
                                         {n.unread && (
                                             <div className="absolute top-4 left-4 size-2.5 rounded-full bg-primary -ml-1 mt-1"></div>
                                         )}
-                                        <div className="pl-2 flex items-start gap-4 w-full relative">
+                                        <div className="min-w-0 pl-2 flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4 w-full relative">
                                             <div className={`flex items-center justify-center rounded-lg shrink-0 size-12 ${n.unread ? 'bg-primary/10 dark:bg-primary/20 text-primary' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
                                                 }`}>
                                                 <span className="material-symbols-outlined text-2xl">{n.icon}</span>
                                             </div>
-                                            <div className="flex flex-1 flex-col justify-center pr-12">
-                                                <div className="flex items-center gap-2 mb-0.5">
-                                                    <p className="text-base font-bold leading-normal text-slate-900 dark:text-white">{n.title}</p>
+                                            <div className="flex min-w-0 flex-1 flex-col justify-center pr-0 sm:pr-12">
+                                                <div className="flex min-w-0 flex-wrap items-center gap-2 mb-0.5">
+                                                    <p className="min-w-0 break-words text-[clamp(0.95rem,2.5vw,1rem)] font-bold leading-normal text-slate-900 dark:text-white">{n.title}</p>
                                                     <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
                                                         {n.source === 'inbox' ? 'Inbox' : n.audience === 'all' ? 'Global' : n.audience}
                                                     </span>
                                                 </div>
-                                                <p className={`text-sm leading-normal ${n.unread ? 'font-medium text-slate-700 dark:text-slate-200' : 'font-normal text-slate-600 dark:text-slate-400'} mb-1`}>{n.desc}</p>
+                                                <p className={`break-words text-sm leading-relaxed ${n.unread ? 'font-medium text-slate-700 dark:text-slate-200' : 'font-normal text-slate-600 dark:text-slate-400'} mb-1`}>{n.desc}</p>
                                             </div>
                                             
-                                            <div className="shrink-0 text-right flex flex-col items-end justify-between h-full">
+                                            <div className="shrink-0 text-left sm:text-right flex flex-row sm:flex-col items-start sm:items-end justify-between gap-2 sm:h-full">
                                                 <p className={`text-sm leading-normal ${n.unread ? 'text-primary font-bold' : 'text-slate-500 dark:text-slate-400 font-medium'}`}>{n.time}</p>
                                                 {n.source === 'announcement' && (
                                                     <button
