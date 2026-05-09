@@ -402,13 +402,6 @@ function DailyReportForm({ childId, sessionId, onBack, onSaved, currentUser, chi
             <section className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
                 <h3 className="font-bold text-lg mb-4">Deskripsi Aktivitas Sesi</h3>
                 <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-teal-500/50 transition-all">
-                    <div className="bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-700 px-3 py-2 flex items-center gap-1">
-                        {['format_bold','format_italic','format_underlined','format_list_bulleted','format_list_numbered'].map(ic => (
-                            <button key={ic} type="button" className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 transition-colors">
-                                <span className="material-symbols-outlined text-[18px]">{ic}</span>
-                            </button>
-                        ))}
-                    </div>
                     <textarea value={description} onChange={e => setDescription(e.target.value)} className="w-full bg-transparent p-4 min-h-[120px] resize-y text-slate-900 dark:text-slate-100 focus:ring-0 outline-none placeholder:text-slate-400 text-sm" placeholder="Jelaskan aktivitas yang dilakukan selama sesi..." />
                 </div>
             </section>
@@ -666,6 +659,12 @@ function PeriodicReportForm({ childId, onBack, currentUser, childrenData, onRepo
 
 // ── History Panel (inside landing) ──────────────────────────────────
 function ReportHistory({ onSelectReport, reports }) {
+    const statusLabel = (status) => {
+        if (status === 'approved' || status === 'published' || status === 'ready_for_parent') return 'Siap Dibaca';
+        if (status === 'needs_revision') return 'Perlu Revisi';
+        return 'Menunggu Review';
+    };
+
     if (!reports.length) return (
         <div className="py-10 text-center">
             <span className="material-symbols-outlined text-4xl text-slate-300 dark:text-slate-600">inventory_2</span>
@@ -691,7 +690,7 @@ function ReportHistory({ onSelectReport, reports }) {
                         </div>
                     </div>
                     <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400">
-                        {r.status === 'approved' ? 'Siap Dibaca' : 'Menunggu Review'}
+                        {statusLabel(r.status)}
                     </span>
                 </div>
             ))}
@@ -703,6 +702,12 @@ function ReportHistory({ onSelectReport, reports }) {
 
 function ReportDetail({ report, onBack }) {
     const centerSettings = useClinicSettings();
+    const statusLabel = (status) => {
+        if (status === 'approved' || status === 'published' || status === 'ready_for_parent') return 'Siap Dibaca';
+        if (status === 'needs_revision') return 'Perlu Revisi';
+        return 'Menunggu Review';
+    };
+    const isReady = ['approved', 'published', 'ready_for_parent'].includes(report.status);
     const handleDownload = () => {
         openReportPdf(report, centerSettings.settings || centerSettings);
     };
@@ -725,7 +730,7 @@ function ReportDetail({ report, onBack }) {
             <div className="space-y-3">
                 <p><strong>Nama Anak:</strong> {report.childName || report.childId}</p>
                 <p><strong>Tanggal:</strong> {report.date || report.dateFrom || '—'}</p>
-                <p><strong>Status:</strong> <span className={`px-2 py-1 rounded font-bold text-xs ${report.status === 'approved' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>{report.status === 'approved' ? 'Siap Dibaca' : 'Menunggu Review'}</span></p>
+                <p><strong>Status:</strong> <span className={`px-2 py-1 rounded font-bold text-xs ${isReady ? 'bg-green-100 text-green-700' : report.status === 'needs_revision' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>{statusLabel(report.status)}</span></p>
                 {report.summary && <div className="mt-4"><p><strong>Ringkasan:</strong></p><p className="mt-1 text-slate-600 dark:text-slate-300">{report.summary}</p></div>}
                 {report.description && <div className="mt-4"><p><strong>Deskripsi:</strong></p><p className="mt-1 text-slate-600 dark:text-slate-300">{report.description}</p></div>}
             </div>

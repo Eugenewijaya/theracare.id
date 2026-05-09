@@ -84,6 +84,14 @@ function isPeriodicReport(report) {
   return report?.type === 'periodik' || !!report?.dateFrom || !!report?.progressPoints || !!report?.improvementPoints;
 }
 
+function getStatusLabel(status) {
+  if (status === 'approved' || status === 'ready_for_parent') return 'Siap Dibaca';
+  if (status === 'published') return 'Dipublikasikan';
+  if (status === 'needs_revision') return 'Perlu Revisi';
+  if (status === 'pending_review') return 'Menunggu Review';
+  return status || 'Draft';
+}
+
 function normalizeCenterInfo(settings = {}) {
   const source = { ...DEFAULT_CENTER_INFO, ...settings };
   const phone = source.centerPhone || source.phone || source.adminWhatsApp || '';
@@ -113,7 +121,7 @@ function normalizeReport(report = {}) {
     dateLabel: periodic
       ? compact([formatDate(report.dateFrom), formatDate(report.dateTo)]).join(' - ')
       : formatDate(report.date),
-    statusLabel: report.status === 'approved' ? 'Siap Dibaca' : report.status ? report.status : 'Draft',
+    statusLabel: getStatusLabel(report.status),
     evaluations: report.evaluations || {},
     progressPoints: asList(report.progressPoints),
     improvementPoints: asList(report.improvementPoints),
@@ -354,38 +362,94 @@ function buildReportHtml(reportInput, settingsInput) {
   };
 }
 
-function writePrintableDocument(targetWindow, html) {
+function buildPreviewHtml(html, title) {
+  const toolbar = `
+    <div class="print-toolbar" role="region" aria-label="Aksi laporan">
+      <div>
+        <strong>Preview PDF Laporan</strong>
+        <span>${escapeHtml(title)}</span>
+      </div>
+      <div class="print-toolbar-actions">
+        <button type="button" onclick="window.print()">Cetak / Simpan PDF</button>
+        <button type="button" class="secondary" onclick="window.close()">Tutup</button>
+      </div>
+    </div>
+  `;
+  const toolbarStyles = `
+    .print-toolbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      padding: 12px 20px;
+      background: #0f172a;
+      color: #ffffff;
+      box-shadow: 0 10px 32px rgba(15, 23, 42, 0.22);
+    }
+    .print-toolbar strong { display: block; font-size: 14px; line-height: 1.2; }
+    .print-toolbar span { display: block; color: #cbd5e1; font-size: 11px; margin-top: 2px; }
+    .print-toolbar-actions { display: flex; gap: 10px; align-items: center; }
+    .print-toolbar button {
+      border: 0;
+      border-radius: 10px;
+      padding: 9px 14px;
+      background: #2563eb;
+      color: #ffffff;
+      font-weight: 800;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .print-toolbar button.secondary { background: #334155; }
+    .print-toolbar button:hover { filter: brightness(1.08); }
+    @media screen and (max-width: 720px) {
+      .print-toolbar { position: static; align-items: flex-start; flex-direction: column; }
+      .print-toolbar-actions, .print-toolbar button { width: 100%; }
+      .document { width: 100%; min-height: auto; padding: 22px 18px; }
+      .brand-header, .report-title, .footer { flex-direction: column; align-items: flex-start; }
+      .meta-grid, .evaluation-grid { grid-template-columns: 1fr; }
+    }
+    @media print {
+      .print-toolbar { display: none !important; }
+    }
+  `;
+
+  return html
+    .replace('</style>', `${toolbarStyles}</style>`)
+    .replace('<body>', `<body>${toolbar}`);
+}
+
+function writePreviewDocument(targetWindow, html, title) {
   const targetDocument = targetWindow.document;
   targetDocument.open();
-  targetDocument.write(html);
+  targetDocument.write(buildPreviewHtml(html, title));
   targetDocument.close();
 
-  const print = () => {
-    targetWindow.focus();
-    targetWindow.print();
-  };
-
   if (targetDocument.readyState === 'complete') {
-    setTimeout(print, 300);
+    setTimeout(() => targetWindow.focus(), 120);
   } else {
-    targetWindow.onload = () => setTimeout(print, 300);
+    targetWindow.onload = () => setTimeout(() => targetWindow.focus(), 120);
   }
 }
 
-function printViaIframe(html, title) {
-  const iframe = document.createElement('iframe');
-  iframe.title = title;
-  iframe.style.position = 'fixed';
-  iframe.style.right = '0';
-  iframe.style.bottom = '0';
-  iframe.style.width = '0';
-  iframe.style.height = '0';
-  iframe.style.border = '0';
-  iframe.style.opacity = '0';
-  document.body.appendChild(iframe);
-
-  writePrintableDocument(iframe.contentWindow, html);
-  setTimeout(() => iframe.remove(), 5000);
+function openBlobPreview(html, title) {
+  if (typeof URL === 'undefined' || typeof Blob === 'undefined') {
+    return false;
+  }
+  const blob = new Blob([buildPreviewHtml(html, title)], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.target = '_blank';
+  link.rel = 'noopener';
+  link.style.display = 'none';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  return true;
 }
 
 export function openReportPdf(report, centerSettings = {}) {
@@ -396,12 +460,15 @@ export function openReportPdf(report, centerSettings = {}) {
   const { title, html } = buildReportHtml(report, centerSettings);
   const printWindow = window.open('', '_blank', 'width=920,height=1100');
   if (printWindow) {
-    writePrintableDocument(printWindow, html);
-    return { ok: true, mode: 'window', title };
+    writePreviewDocument(printWindow, html, title);
+    return { ok: true, mode: 'preview', title };
   }
 
-  printViaIframe(html, title);
-  return { ok: true, mode: 'iframe', title };
+  if (openBlobPreview(html, title)) {
+    return { ok: true, mode: 'blob-preview', title };
+  }
+
+  return { ok: false, reason: 'popup-blocked', title };
 }
 
 export { buildReportHtml, normalizeCenterInfo };

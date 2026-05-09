@@ -57,6 +57,7 @@ const Header = ({ title = "Reports Archive" }) => {
 
     const handleChildChange = (e) => {
         const childId = e.target.value;
+        setActiveChildId(childId);
         const saved = sessionStorage.getItem('parent_user');
         if (saved) {
             const user = JSON.parse(saved);

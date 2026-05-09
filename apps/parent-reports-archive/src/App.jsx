@@ -7,6 +7,12 @@ import { openReportPdf } from '../../shared/reportPdf';
 // ── Constants ─────────────────────────────────────────────────────────
 const SCALE_MAP = { 1: 'Sangat Kurang', 2: 'Kurang', 3: 'Cukup', 4: 'Baik', 5: 'Sangat Baik' };
 const PER_PAGE = 5;
+const PARENT_VISIBLE_REPORT_STATUSES = new Set(['approved', 'published', 'ready_for_parent']);
+const REPORT_STATUS_LABELS = {
+    approved: 'Siap Dibaca',
+    published: 'Dipublikasikan',
+    ready_for_parent: 'Siap Dibaca',
+};
 
 // Dynamic color palette — rotates by index so custom programs get consistent colors
 const COLOR_PALETTE = [
@@ -30,6 +36,9 @@ const buildTypeColors = (programs) => {
     });
     return map;
 };
+
+const isParentVisibleReport = (report) => PARENT_VISIBLE_REPORT_STATUSES.has(report?.status);
+const getReportStatusLabel = (report) => REPORT_STATUS_LABELS[report?.status] || 'Siap Dibaca';
 
 // ── Helpers ────────────────────────────────────────────────────────────
 const formatDate = (dateStr) => {
@@ -117,6 +126,9 @@ function DailyReportCard({ report, onRate, onDownload, typeColors = {} }) {
                     <div className={`mt-1 inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold w-fit ${typeColors[report.type]?.bg || DEFAULT_COLOR}`}>
                         {report.type}
                     </div>
+                    <div className="mt-1 inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold w-fit bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300">
+                        {report.statusLabel}
+                    </div>
                 </div>
 
                 <div className="flex-1">
@@ -130,6 +142,10 @@ function DailyReportCard({ report, onRate, onDownload, typeColors = {} }) {
                                 {renderStars(report.parentRating)}
                                 <span className="text-[10px] text-slate-400">Penilaian Anda</span>
                             </div>
+                        ) : !report.canRate ? (
+                            <span className="text-[11px] font-bold text-slate-400 bg-slate-100 dark:bg-slate-700 dark:text-slate-300 px-3 py-1.5 rounded-lg shrink-0">
+                                Rating belum tersedia
+                            </span>
                         ) : (
                             <button
                                 onClick={() => onRate(report)}
@@ -204,7 +220,7 @@ function PeriodicReportCard({ report, onDownload }) {
                     </p>
                 </div>
                 <span className="text-xs font-bold px-3 py-1 bg-white dark:bg-slate-800 rounded-full border border-amber-200 dark:border-amber-700 text-amber-600 dark:text-amber-400 shrink-0">
-                    Menunggu Review Admin
+                    {getReportStatusLabel(report)}
                 </span>
             </div>
 
@@ -363,16 +379,17 @@ function App() {
 
         try {
             const rRes = await reportsApi.getForChild(childId);
+            if (!rRes.ok) {
+                setToast(rRes.data?.error || 'Gagal memuat laporan anak.');
+                return;
+            }
             const therapistReports = rRes.data?.data || [];
-            const dailyReportMap = new Map(
-                therapistReports
-                    .filter(report => report.type === 'harian')
-                    .map(report => [report.sessionId || `${report.childId}-${report.date}`, report])
-            );
+            const visibleReports = therapistReports.filter(isParentVisibleReport);
+            const visibleDailyReports = visibleReports.filter(report => report.type === 'harian');
 
-            // Daily reports from completed sessions
             const sRes = await sessionsApi.getCompletedForChild(childId);
             const sessions = sRes.data?.data || [];
+            const sessionMap = new Map(sessions.map(session => [session.id, session]));
             
             const pRes = await adminApi.getPrograms();
             const allProg = pRes.data?.data || [];
@@ -380,37 +397,43 @@ function App() {
                 availableChildren.find(c => c.id === childId || c.nita === childId) ||
                 (savedUser.children || []).find(c => c.id === childId || c.nita === childId);
 
-            const mapped = await Promise.all(sessions.map(async s => {
+            const mapped = await Promise.all(visibleDailyReports.map(async savedReport => {
+                const s = savedReport.sessionId ? sessionMap.get(savedReport.sessionId) : null;
                 let rating = null;
-                try {
-                    const rtgRes = await sessionsApi.getRating(s.id);
-                    rating = rtgRes.data?.data;
-                } catch(e){}
+                if (savedReport.sessionId) {
+                    try {
+                        const rtgRes = await sessionsApi.getRating(savedReport.sessionId);
+                        rating = rtgRes.data?.data;
+                    } catch(e){}
+                }
                 
-                const savedReport = dailyReportMap.get(s.id) || dailyReportMap.get(`${childId}-${s.date}`) || null;
                 return {
-                    id:           s.id,
-                    sessionId:    s.id,
+                    id:           savedReport.id,
+                    sessionId:    savedReport.sessionId || s?.id || '',
                     childId,
-                    childName:    s.child?.name || childProfile?.name || 'Anak',
-                    parentId:     savedUser.parentId || childProfile?.parentId || s.child?.parentId || '',
-                    date:         s.date,
-                    type:         guessTherapyType(savedReport?.sessionFocus || savedReport?.program || s.focus, allProg),
-                    title:        savedReport?.sessionFocus || s.focus || 'Therapy Session',
-                    therapist:    savedReport?.therapistName || s.therapist?.name || 'Terapis',
+                    childName:    savedReport.childName || s?.child?.name || childProfile?.name || 'Anak',
+                    parentId:     savedUser.parentId || childProfile?.parentId || s?.child?.parentId || '',
+                    date:         savedReport.date || s?.date,
+                    type:         guessTherapyType(savedReport.sessionFocus || savedReport.program || s?.focus, allProg),
+                    title:        savedReport.sessionFocus || s?.focus || 'Laporan Harian Terapi',
+                    therapist:    savedReport.therapistName || s?.therapist?.name || 'Terapis',
                     parentRating: rating?.rating || null,
                     ratingComment: rating?.comment || '',
-                    description:  savedReport?.description || s.notes || 'Catatan sesi belum ditambahkan oleh terapis.',
-                    hasNotes:     !!(savedReport?.description || s.notes || '').trim(),
-                    evaluations: savedReport?.evaluations || {},
-                    parentNotes: savedReport?.recommendations || '',
+                    description:  savedReport.description || savedReport.summary || 'Laporan sudah tersedia, namun catatan deskriptif belum diisi.',
+                    hasNotes:     !!(savedReport.description || savedReport.summary || '').trim(),
+                    evaluations:  savedReport.evaluations || {},
+                    parentNotes:  savedReport.recommendations || savedReport.parentNotes || '',
+                    status:       savedReport.status,
+                    statusLabel:  getReportStatusLabel(savedReport),
+                    canRate:      !!savedReport.sessionId,
                 };
             }));
 
             setDailyReports(mapped);
-            setPeriodicReports(therapistReports.filter(report => report.type === 'periodik'));
+            setPeriodicReports(visibleReports.filter(report => report.type === 'periodik'));
         } catch(e) {
             console.error(e);
+            setToast('Gagal memuat arsip laporan.');
         }
     };
 
@@ -436,7 +459,7 @@ function App() {
     const handleDownload = (report) => {
         const result = openReportPdf(report, centerSettings.settings || centerSettings);
         if (result.ok) {
-            setToast('Template PDF laporan dibuka. Pilih Save as PDF untuk menyimpan.');
+            setToast('Preview PDF laporan dibuka. Pilih Cetak / Simpan PDF untuk menyimpan.');
         } else {
             setToast('Browser tidak dapat membuka template PDF saat ini.');
         }
@@ -444,17 +467,25 @@ function App() {
 
     const handleSubmitRating = async () => {
         if (!ratingModal || hoverRating === 0) return;
+        if (!ratingModal.sessionId) {
+            setToast('Rating hanya bisa disimpan untuk laporan yang terhubung ke sesi.');
+            return;
+        }
         if (!ratingModal.parentId) {
             setToast('Data orang tua belum lengkap untuk menyimpan rating.');
             return;
         }
         try {
-            await sessionsApi.addRating(ratingModal.sessionId, {
+            const response = await sessionsApi.addRating(ratingModal.sessionId, {
                 childId: ratingModal.childId,
                 parentId: ratingModal.parentId,
                 rating: hoverRating,
                 comment: ratingComment.trim()
             });
+            if (!response.ok) {
+                setToast(response.data?.error || 'Rating gagal disimpan.');
+                return;
+            }
             setRatingModal(null);
             setHoverRating(0);
             setRatingComment('');
@@ -462,6 +493,7 @@ function App() {
             loadReports();
         } catch(e){
             console.error(e);
+            setToast('Rating gagal disimpan.');
         }
     };
 
@@ -567,7 +599,7 @@ function App() {
                                         <EmptyState
                                             icon="folder_open"
                                             title={search ? 'Tidak ada laporan yang cocok.' : 'Belum ada laporan harian.'}
-                                            subtitle={search ? 'Coba kata kunci lain.' : 'Laporan harian akan muncul setelah sesi terapi diselesaikan.'}
+                                            subtitle={search ? 'Coba kata kunci lain.' : 'Laporan harian akan muncul setelah terapis mengirim laporan dan admin menyetujuinya.'}
                                         />
                                     )}
 

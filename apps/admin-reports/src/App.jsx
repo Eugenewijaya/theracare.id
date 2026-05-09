@@ -2,65 +2,108 @@ import React, { useState, useEffect, useMemo } from 'react';
 import ReportCard from './components/ReportCard';
 import { useClinicSettings } from '../../shared/clinicSettings';
 import { openReportPdf } from '../../shared/reportPdf';
-
-const getStore = () => {
-    try { return JSON.parse(localStorage.getItem('clinicData') || '{}'); }
-    catch { return {}; }
-};
+import { adminApi, childrenApi, reportsApi, sessionsApi, therapistsApi } from '../../shared/api/client';
 
 function App() {
     const [timeframe, setTimeframe] = useState('7H'); // 7 Hari
     const [toast, setToast] = useState(null);
-    const [data, setData] = useState(getStore());
+    const [data, setData] = useState({ children: [], sessions: [], therapists: [], programs: [], stats: {}, pendingReports: [] });
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
     const centerSettings = useClinicSettings();
 
     useEffect(() => {
-        const handleUpdate = () => setData(getStore());
+        loadReportData();
+        const handleUpdate = () => loadReportData();
         window.addEventListener('clinicDataUpdated', handleUpdate);
         return () => window.removeEventListener('clinicDataUpdated', handleUpdate);
     }, []);
+
+    const loadReportData = async () => {
+        setLoading(true);
+        setError('');
+        try {
+            const [statsRes, sessionsRes, childrenRes, therapistsRes, programsRes, pendingReportsRes] = await Promise.all([
+                adminApi.getStats(),
+                sessionsApi.getAll(),
+                childrenApi.getAll(),
+                therapistsApi.getAll(),
+                adminApi.getPrograms(),
+                reportsApi.getAll('pending_review'),
+            ]);
+            const failed = [statsRes, sessionsRes, childrenRes, therapistsRes, programsRes, pendingReportsRes].find((res) => !res.ok);
+            setData({
+                stats: statsRes.ok ? statsRes.data?.data || {} : {},
+                sessions: sessionsRes.ok ? sessionsRes.data?.data || [] : [],
+                children: childrenRes.ok ? childrenRes.data?.data || [] : [],
+                therapists: therapistsRes.ok ? therapistsRes.data?.data || [] : [],
+                programs: programsRes.ok ? programsRes.data?.data || [] : [],
+                pendingReports: pendingReportsRes.ok ? pendingReportsRes.data?.data || [] : [],
+            });
+            if (failed) {
+                setError(failed.data?.error || 'Sebagian data laporan gagal dimuat dari backend.');
+            }
+        } catch (err) {
+            console.error(err);
+            setData({
+                stats: {},
+                sessions: [],
+                children: [],
+                therapists: [],
+                programs: [],
+                pendingReports: [],
+            });
+            setError('Backend belum bisa memuat laporan.');
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const showToast = (msg, type = 'success') => {
         setToast({ msg, type });
         setTimeout(() => setToast(null), 3500);
     };
 
-    // Calculate dynamic KPIs
+    // Calculate dynamic KPIs from persisted backend data.
     const kpis = useMemo(() => {
         const children = data.children || [];
         const sessions = data.sessions || [];
         const therapists = data.therapists || [];
+        const programs = data.programs || [];
+        const stats = data.stats || {};
+        const rangeDays = timeframe === '7H' ? 7 : timeframe === '30H' ? 30 : 365;
+        const startDate = new Date();
+        startDate.setHours(0, 0, 0, 0);
+        startDate.setDate(startDate.getDate() - (rangeDays - 1));
+        const inRangeSessions = sessions.filter((session) => {
+            if (!session.date) return false;
+            const sessionDate = new Date(`${session.date}T00:00:00`);
+            return !Number.isNaN(sessionDate.getTime()) && sessionDate >= startDate;
+        });
 
-        const activeChildren = children.filter(c => c.status !== 'inactive').length;
-        const totalCompleted = sessions.filter(s => s.status === 'done' || s.status === 'completed').length;
+        const activeChildren = Number(stats.activeChildren ?? children.filter(c => c.status !== 'inactive').length);
+        const totalCompleted = inRangeSessions.filter(s => s.status === 'done' || s.status === 'completed').length;
         
         let cancellationRate = 0;
-        if (sessions.length > 0) {
-            const cancelled = sessions.filter(s => s.status === 'cancelled').length;
-            cancellationRate = (cancelled / sessions.length) * 100;
+        if (inRangeSessions.length > 0) {
+            const cancelled = inRangeSessions.filter(s => s.status === 'cancelled').length;
+            cancellationRate = (cancelled / inRangeSessions.length) * 100;
         }
 
-        const activeTherapists = therapists.filter(t => t.status === 'active').length;
-        // Mock utilization based on arbitrary limits (e.g. 10 sessions per active therapist is considered 100%)
-        let utilization = 0;
-        if (activeTherapists > 0) {
-            // just a mock derived stat that moves with data
-            const expectedSessions = activeTherapists * 10; 
-            utilization = Math.min(((sessions.length / expectedSessions) * 100), 100) || 82;
-            if (sessions.length === 0) utilization = 0;
-        }
+        const activeTherapists = Number(stats.totalTherapists ?? therapists.filter(t => t.status !== 'inactive').length);
+        const avgSessionsPerTherapist = activeTherapists > 0 ? (inRangeSessions.length / activeTherapists) : 0;
 
-        // Program distribution
         const progCounts = {};
         let progTotal = 0;
-        sessions.forEach(s => {
-            const focus = s.focus || 'Terapi Umum';
-            let label = 'Terapi Umum';
-            if (focus.includes('OT') || focus.includes('Occupational')) label = 'Terapi Okupasi (OT)';
-            else if (focus.includes('ST') || focus.includes('Speech') || focus.includes('Wicara')) label = 'Terapi Wicara (ST)';
-            else if (focus.includes('PT') || focus.includes('Physical') || focus.includes('Fisik')) label = 'Fisioterapi (PT)';
-            else if (focus.includes('ABA') || focus.includes('Behavior')) label = 'Terapi Perilaku (ABA)';
-            else if (focus.includes('SI') || focus.includes('Sensory')) label = 'Sensory Integration (SI)';
+        inRangeSessions.forEach(s => {
+            const focus = s.programName || s.program || s.focus || 'Terapi Umum';
+            const lowerFocus = String(focus).toLowerCase();
+            const matchedProgram = programs.find((program) => {
+                const name = String(program.name || '').toLowerCase();
+                const code = String(program.code || '').toLowerCase();
+                return (name && lowerFocus.includes(name)) || (code && lowerFocus.includes(code));
+            });
+            const label = matchedProgram?.name || focus;
             
             progCounts[label] = (progCounts[label] || 0) + 1;
             progTotal++;
@@ -72,19 +115,33 @@ function App() {
             pct: Math.round((progCounts[k] / progTotal) * 100)
         })).sort((a, b) => b.pct - a.pct);
 
+        const seriesMap = new Map();
+        inRangeSessions.forEach((session) => {
+            const date = new Date(`${session.date}T00:00:00`);
+            const key = timeframe === '12B'
+                ? date.toLocaleDateString('id-ID', { month: 'short', year: '2-digit' })
+                : date.toLocaleDateString('id-ID', { day: '2-digit', month: 'short' });
+            seriesMap.set(key, (seriesMap.get(key) || 0) + 1);
+        });
+        const series = Array.from(seriesMap.entries()).map(([label, count]) => ({ label, count }));
+        const maxSeries = Math.max(1, ...series.map((item) => item.count));
+
         return {
             activeChildren,
             totalCompleted,
             cancellationRate: cancellationRate.toFixed(1),
-            utilization: utilization.toFixed(0),
-            dist
+            avgSessionsPerTherapist: avgSessionsPerTherapist.toFixed(1),
+            dist,
+            series,
+            maxSeries,
+            rangeLabel: timeframe === '7H' ? '7 hari terakhir' : timeframe === '30H' ? '30 hari terakhir' : '12 bulan terakhir',
         };
-    }, [data]);
+    }, [data, timeframe]);
 
     const colors = ['bg-blue-500', 'bg-emerald-500', 'bg-purple-500', 'bg-amber-500', 'bg-pink-500'];
     const handleExportPdf = () => {
         const today = new Date().toISOString().split('T')[0];
-        openReportPdf({
+        const result = openReportPdf({
             type: 'periodik',
             title: `Ringkasan Operasional Pusat Terapi (${timeframe})`,
             childName: 'Seluruh Anak',
@@ -95,16 +152,31 @@ function App() {
             summary: 'Ringkasan ini dibuat dari data dashboard admin untuk memantau aktivitas, sesi terapi, dan pemanfaatan terapis.',
             progressPoints: [
                 `Total anak aktif: ${kpis.activeChildren}`,
-                `Sesi selesai: ${kpis.totalCompleted}`,
+                `Sesi selesai (${kpis.rangeLabel}): ${kpis.totalCompleted}`,
                 `Tingkat pembatalan: ${kpis.cancellationRate}%`,
-                `Pemanfaatan terapis: ${kpis.utilization}%`,
+                `Rata-rata sesi per terapis: ${kpis.avgSessionsPerTherapist}`,
             ],
             improvementPoints: kpis.dist.length
                 ? kpis.dist.map((item) => `${item.label}: ${item.pct}% dari total sesi`)
                 : ['Belum ada distribusi sesi yang dapat dihitung.'],
             status: 'approved',
         }, centerSettings.settings || centerSettings);
-        showToast('Template PDF ringkasan operasional dibuka. Pilih Save as PDF untuk menyimpan.', 'info');
+        showToast(
+            result.ok
+                ? 'Preview PDF ringkasan operasional dibuka. Pilih Cetak / Simpan PDF untuk menyimpan.'
+                : 'Browser memblokir preview PDF. Izinkan pop-up untuk export laporan.',
+            'info'
+        );
+    };
+
+    const handleReviewReport = async (reportId, status) => {
+        const res = await reportsApi.updateStatus(reportId, status);
+        if (!res.ok) {
+            showToast(res.data?.error || 'Status laporan gagal diperbarui.', 'info');
+            return;
+        }
+        showToast(status === 'approved' ? 'Laporan disetujui dan tersedia di portal orang tua.' : 'Laporan dikirim kembali untuk revisi.', 'success');
+        loadReportData();
     };
 
     return (
@@ -147,52 +219,144 @@ function App() {
                 </div>
             </header>
 
+            {(loading || error) && (
+                <div className={`rounded-xl border px-4 py-3 text-sm font-semibold ${
+                    error
+                        ? 'border-amber-200 bg-amber-50 text-amber-800'
+                        : 'border-blue-200 bg-blue-50 text-blue-800'
+                }`}>
+                    {error || 'Memuat data laporan dari backend...'}
+                </div>
+            )}
+
             {/* KPI Cards */}
             <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                 <ReportCard
                     title="Total Anak Aktif"
                     value={kpis.activeChildren.toString()}
-                    trend={{ isPositive: true, value: 5.2 }}
                     icon="group"
                     color="text-blue-600 bg-blue-100 dark:bg-blue-900/40 dark:text-blue-400"
                 />
                 <ReportCard
                     title="Sesi Selesai"
                     value={kpis.totalCompleted.toString()}
-                    trend={{ isPositive: true, value: 12.4 }}
                     icon="event_available"
                     color="text-emerald-600 bg-emerald-100 dark:bg-emerald-900/40 dark:text-emerald-400"
                 />
                 <ReportCard
                     title="Tingkat Pembatalan"
                     value={`${kpis.cancellationRate}%`}
-                    trend={{ isPositive: false, value: 1.5 }}
                     icon="event_busy"
                     color="text-red-600 bg-red-100 dark:bg-red-900/40 dark:text-red-400"
                 />
                 <ReportCard
-                    title="Pemanfaatan Terapis"
-                    value={`${kpis.utilization}%`}
-                    trend={{ isPositive: true, value: 3.1 }}
+                    title="Rata-rata Sesi/Terapis"
+                    value={kpis.avgSessionsPerTherapist}
                     icon="trending_up"
                     color="text-purple-600 bg-purple-100 dark:bg-purple-900/40 dark:text-purple-400"
                 />
             </section>
 
+            <section className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
+                    <div>
+                        <h3 className="font-bold text-slate-900 dark:text-white text-lg">Review Laporan Terapis</h3>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Laporan pending harus disetujui sebelum tampil di portal orang tua.</p>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={loadReportData}
+                        className="inline-flex items-center gap-2 rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700"
+                    >
+                        <span className="material-symbols-outlined text-[16px]">refresh</span>
+                        Refresh
+                    </button>
+                </div>
+                {data.pendingReports.length > 0 ? (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        {data.pendingReports.slice(0, 6).map((report) => (
+                            <article key={report.id} className="rounded-xl border border-slate-200 dark:border-slate-700 p-4 flex flex-col gap-3">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                        <p className="text-sm font-black text-slate-900 dark:text-white">{report.sessionFocus || report.title || 'Laporan Terapi'}</p>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                                            {report.childName || 'Anak'} - {report.therapistName || 'Terapis'} - {report.date || report.dateFrom || '-'}
+                                        </p>
+                                    </div>
+                                    <span className="rounded-full bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300 px-2 py-1 text-[11px] font-bold">
+                                        Pending
+                                    </span>
+                                </div>
+                                <p className="text-xs text-slate-600 dark:text-slate-300 line-clamp-2">
+                                    {report.description || report.summary || report.parentNotes || 'Belum ada ringkasan yang ditampilkan.'}
+                                </p>
+                                <div className="flex flex-col sm:flex-row gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => openReportPdf(report, centerSettings.settings || centerSettings)}
+                                        className="flex-1 rounded-lg bg-slate-900 dark:bg-white px-3 py-2 text-xs font-bold text-white dark:text-slate-900 hover:opacity-90"
+                                    >
+                                        Preview
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleReviewReport(report.id, 'approved')}
+                                        className="flex-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700"
+                                    >
+                                        Setujui
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleReviewReport(report.id, 'needs_revision')}
+                                        className="flex-1 rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700"
+                                    >
+                                        Minta Revisi
+                                    </button>
+                                </div>
+                            </article>
+                        ))}
+                    </div>
+                ) : (
+                    <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-700 p-8 text-center text-sm font-semibold text-slate-400">
+                        Tidak ada laporan yang menunggu review.
+                    </div>
+                )}
+            </section>
+
             {/* Main Content Area */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 
-                {/* Chart Placeholder */}
                 <div className="lg:col-span-2 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-6 flex flex-col min-h-[400px]">
                     <div className="flex justify-between items-center mb-6">
-                        <h3 className="font-bold text-slate-900 dark:text-white text-lg">Sesi Terapi dari Waktu ke Waktu</h3>
-                        <button className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
-                            <span className="material-symbols-outlined">more_vert</span>
+                        <div>
+                            <h3 className="font-bold text-slate-900 dark:text-white text-lg">Sesi Terapi dari Waktu ke Waktu</h3>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Berdasarkan jadwal sesi yang tersimpan di backend.</p>
+                        </div>
+                        <button onClick={loadReportData} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300" title="Refresh data">
+                            <span className="material-symbols-outlined">refresh</span>
                         </button>
                     </div>
-                    <div className="flex-1 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-dashed border-slate-300 dark:border-slate-600 flex items-center justify-center flex-col text-slate-400 dark:text-slate-500 gap-2">
-                        <span className="material-symbols-outlined text-4xl">bar_chart</span>
-                        <p className="text-sm font-medium">Area visualisasi grafik detail (Dalam Pengembangan)</p>
+                    <div className="flex-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 p-4 flex items-end gap-2 overflow-x-auto">
+                        {kpis.series.length > 0 ? (
+                            kpis.series.map((item) => (
+                                <div key={item.label} className="flex min-w-[52px] flex-1 flex-col items-center gap-2">
+                                    <div className="w-full h-56 flex items-end rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 overflow-hidden">
+                                        <div
+                                            className="w-full bg-primary rounded-t-lg transition-all"
+                                            style={{ height: `${Math.max(8, (item.count / kpis.maxSeries) * 100)}%` }}
+                                            title={`${item.count} sesi`}
+                                        />
+                                    </div>
+                                    <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300">{item.count}</span>
+                                    <span className="text-[10px] text-slate-400 whitespace-nowrap">{item.label}</span>
+                                </div>
+                            ))
+                        ) : (
+                            <div className="flex flex-1 items-center justify-center flex-col text-slate-400 dark:text-slate-500 gap-2">
+                                <span className="material-symbols-outlined text-4xl">bar_chart</span>
+                                <p className="text-sm font-medium">Belum ada sesi pada rentang {kpis.rangeLabel}.</p>
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -200,21 +364,27 @@ function App() {
                 <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-6 flex flex-col overflow-hidden">
                     <h3 className="font-bold text-slate-900 dark:text-white text-lg mb-6">Sesi Berdasarkan Disiplin</h3>
                     <div className="flex flex-col gap-6 flex-1 overflow-y-auto pr-2">
-                        {kpis.dist.map((d, i) => (
-                            <div key={d.label} className="flex flex-col gap-2">
-                                <div className="flex justify-between text-sm font-medium">
-                                    <span className="text-slate-700 dark:text-slate-300">{d.label}</span>
-                                    <span className="text-slate-900 dark:text-white">{d.pct}%</span>
+                        {kpis.dist.length > 0 ? (
+                            kpis.dist.map((d, i) => (
+                                <div key={d.label} className="flex flex-col gap-2">
+                                    <div className="flex justify-between text-sm font-medium">
+                                        <span className="text-slate-700 dark:text-slate-300">{d.label}</span>
+                                        <span className="text-slate-900 dark:text-white">{d.pct}%</span>
+                                    </div>
+                                    <div className="w-full h-2 rounded-full bg-slate-100 dark:bg-slate-700 overflow-hidden">
+                                        <div className={`h-full ${colors[i % colors.length]} rounded-full`} style={{ width: `${d.pct}%` }}></div>
+                                    </div>
                                 </div>
-                                <div className="w-full h-2 rounded-full bg-slate-100 dark:bg-slate-700 overflow-hidden">
-                                    <div className={`h-full ${colors[i % colors.length]} rounded-full`} style={{ width: `${d.pct}%` }}></div>
-                                </div>
+                            ))
+                        ) : (
+                            <div className="flex flex-1 items-center justify-center text-center text-sm text-slate-400">
+                                Belum ada distribusi program pada rentang ini.
                             </div>
-                        ))}
+                        )}
                     </div>
-                    <button onClick={() => showToast('Laporan detail lengkap akan segera tersedia.', 'info')} className="w-full mt-6 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
-                        Lihat Rincian Detail
-                    </button>
+                    <p className="mt-6 rounded-lg bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 px-3 py-2 text-xs text-slate-500 dark:text-slate-400">
+                        Distribusi dihitung dari fokus/program sesi pada rentang {kpis.rangeLabel}.
+                    </p>
                 </div>
             </div>
             

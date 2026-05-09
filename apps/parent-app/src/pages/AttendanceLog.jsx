@@ -123,6 +123,32 @@ export default function AttendanceLog() {
         return log.program === selectedProgram;
     });
 
+    const handleDownload = () => {
+        const escapeCsv = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+        const rows = [
+            ['Tanggal', 'Program', 'Terapis', 'Status', 'Check In', 'Check Out', 'Catatan'],
+            ...filteredLogs.map((log) => [
+                log.date,
+                log.program,
+                log.therapist,
+                getStatusLabel(log.status),
+                log.checkIn || '',
+                log.checkOut || '',
+                log.note || '',
+            ]),
+        ];
+        const csv = rows.map((row) => row.map(escapeCsv).join(',')).join('\n');
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `kehadiran-${child?.name || 'anak'}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+    };
+
     if (!child) return (
         <div className="flex h-full items-center justify-center bg-slate-50 dark:bg-slate-900">
             <div className="flex flex-col items-center gap-4">
@@ -172,7 +198,12 @@ export default function AttendanceLog() {
                                 </select>
                                 <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-[18px] text-slate-400 pointer-events-none">expand_more</span>
                             </div>
-                            <button className="flex-none flex items-center gap-2 px-4 py-2 bg-primary text-white hover:bg-primary/90 rounded-lg text-sm font-bold shadow-sm transition-all hover:-translate-y-0.5">
+                            <button
+                                type="button"
+                                onClick={handleDownload}
+                                disabled={filteredLogs.length === 0}
+                                className="flex-none flex items-center gap-2 px-4 py-2 bg-primary text-white hover:bg-primary/90 rounded-lg text-sm font-bold shadow-sm transition-all hover:-translate-y-0.5 disabled:opacity-40 disabled:hover:translate-y-0"
+                            >
                                 <span className="material-symbols-outlined text-[18px]">download</span>
                                 <span className="hidden sm:inline">Download</span>
                             </button>

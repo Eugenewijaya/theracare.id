@@ -117,6 +117,7 @@ export const sessionsApi = {
 // ── Reports API ──────────────────────────────────────────────────
 export const reportsApi = {
   getById: (id) => api.get(`/reports/${id}`),
+  getAll: (status) => api.get(`/reports${status ? `?status=${encodeURIComponent(status)}` : ''}`),
   getForTherapist: (id, type) => api.get(`/reports/therapist/${id}${type ? `?type=${type}` : ''}`),
   getForChild: (id, type) => api.get(`/reports/child/${id}${type ? `?type=${type}` : ''}`),
   getSessionReport: (sessionId) => api.get(`/reports/session/${sessionId}`),

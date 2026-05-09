@@ -1,10 +1,14 @@
 import { db } from "../db/index.js";
 import { children, parents, reports, therapySessions } from "../db/schema.js";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, inArray, sql } from "drizzle-orm";
 import { generateSeqId } from "../utils/id-generators.js";
 import { notificationService } from "./notification.service.js";
 
 type ReportInsert = typeof reports.$inferInsert;
+type ReportQueryOptions = { visibleToParentOnly?: boolean; therapistId?: string };
+type ReportUpdateOptions = { allowStatus?: boolean };
+
+const PARENT_VISIBLE_REPORT_STATUSES = ["approved", "published", "ready_for_parent"];
 
 function formatReport(report: any) {
   if (!report) return null;
@@ -15,13 +19,13 @@ function formatReport(report: any) {
   };
 }
 
-function pickReportValues(data: any): Partial<ReportInsert> {
+function pickReportValues(data: any, options: ReportUpdateOptions = { allowStatus: true }): Partial<ReportInsert> {
   return {
     ...(typeof data.type === "string" ? { type: data.type } : {}),
     ...(typeof data.childId === "string" ? { childId: data.childId } : {}),
     ...(typeof data.therapistId === "string" ? { therapistId: data.therapistId } : {}),
     ...(typeof data.sessionId === "string" && data.sessionId ? { sessionId: data.sessionId } : {}),
-    ...(typeof data.status === "string" ? { status: data.status } : {}),
+    ...(options.allowStatus !== false && typeof data.status === "string" ? { status: data.status } : {}),
     ...(typeof data.date === "string" ? { date: data.date } : {}),
     ...(typeof data.sessionFocus === "string" ? { sessionFocus: data.sessionFocus } : {}),
     ...(Array.isArray(data.aspects) ? { aspects: data.aspects } : {}),
@@ -42,6 +46,15 @@ function pickReportValues(data: any): Partial<ReportInsert> {
 }
 
 export const reportService = {
+  async canParentAccessChild(userId: string, childId: string) {
+    const parent = await db.query.parents.findFirst({ where: eq(parents.userId, userId) });
+    if (!parent) return false;
+    const child = await db.query.children.findFirst({
+      where: and(eq(children.id, childId), eq(children.parentId, parent.id)),
+    });
+    return !!child;
+  },
+
   async getById(id: string) {
     const report = await db.query.reports.findFirst({
       where: eq(reports.id, id),
@@ -61,9 +74,15 @@ export const reportService = {
     return rows.map(formatReport);
   },
 
-  async getForChild(childId: string, type?: string) {
+  async getForChild(childId: string, type?: string, options: ReportQueryOptions = {}) {
     const conditions = [eq(reports.childId, childId)];
     if (type) conditions.push(eq(reports.type, type));
+    if (options.visibleToParentOnly) {
+      conditions.push(inArray(reports.status, PARENT_VISIBLE_REPORT_STATUSES));
+    }
+    if (options.therapistId) {
+      conditions.push(eq(reports.therapistId, options.therapistId));
+    }
     const rows = await db.query.reports.findMany({
       where: and(...conditions),
       with: { therapist: { with: { user: true } }, session: true },
@@ -72,10 +91,23 @@ export const reportService = {
     return rows.map(formatReport);
   },
 
-  async getSessionReport(sessionId: string) {
-    return db.query.reports.findFirst({
-      where: and(eq(reports.type, "harian"), eq(reports.sessionId, sessionId)),
+  async getAll(status?: string) {
+    const conditions: any[] = [];
+    if (status) conditions.push(eq(reports.status, status));
+    const rows = await db.query.reports.findMany({
+      where: conditions.length ? and(...conditions) : undefined,
+      with: { child: true, therapist: { with: { user: true } }, session: true },
+      orderBy: (r, { desc }) => [desc(r.createdAt)],
     });
+    return rows.map(formatReport);
+  },
+
+  async getSessionReport(sessionId: string) {
+    const report = await db.query.reports.findFirst({
+      where: and(eq(reports.type, "harian"), eq(reports.sessionId, sessionId)),
+      with: { child: true, therapist: { with: { user: true } }, session: true },
+    });
+    return formatReport(report);
   },
 
   async save(data: any) {
@@ -84,7 +116,7 @@ export const reportService = {
     // Check if updating existing report
     if (data.id) {
       const [updated] = await db.update(reports)
-        .set({ ...pickReportValues(data), updatedAt: now })
+        .set({ ...pickReportValues(data, { allowStatus: false }), status: "pending_review", updatedAt: now })
         .where(eq(reports.id, data.id))
         .returning();
       return formatReport(updated);
@@ -97,7 +129,7 @@ export const reportService = {
       });
       if (existing) {
         const [updated] = await db.update(reports)
-          .set({ ...pickReportValues(data), updatedAt: now })
+          .set({ ...pickReportValues(data, { allowStatus: false }), status: "pending_review", updatedAt: now })
           .where(eq(reports.id, existing.id))
           .returning();
         return formatReport(updated);
@@ -152,15 +184,15 @@ export const reportService = {
     return updated;
   },
 
-  async update(id: string, updates: any) {
-    const values: any = pickReportValues(updates);
+  async update(id: string, updates: any, options: ReportUpdateOptions = {}) {
+    const values: any = pickReportValues(updates, options);
     if (Object.keys(values).length === 0) return this.getById(id);
 
     const [updated] = await db.update(reports)
       .set({ ...values, updatedAt: new Date() })
       .where(eq(reports.id, id))
       .returning();
-    return updated;
+    return formatReport(updated);
   },
 
   async delete(id: string) {
