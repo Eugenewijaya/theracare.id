@@ -38,6 +38,21 @@ router.patch("/:id", requireAuth, requireRole("admin"), async (req, res, next) =
   } catch (e) { next(e); }
 });
 
+router.patch("/:id/photo", requireAuth, async (req, res, next) => {
+  try {
+    const { photoUrl } = req.body || {};
+    if (!photoUrl || typeof photoUrl !== "string") return badRequest(res, "photoUrl wajib diisi");
+    const existing = await childService.getById(req.params.id as string);
+    if (!existing) return notFound(res);
+    if (req.user?.role === "parent" && existing.parent?.userId !== req.user.id) {
+      return res.status(403).json({ success: false, error: "Akses ditolak - anak tidak terhubung ke akun orang tua ini" });
+    }
+    const updated = await childService.updatePhoto(req.params.id as string, photoUrl);
+    if (!updated) return notFound(res);
+    ok(res, updated, "Foto anak berhasil diperbarui");
+  } catch (e) { next(e); }
+});
+
 router.delete("/:id", requireAuth, requireRole("admin"), async (req, res, next) => {
   try {
     const result = await childService.delete(req.params.id as string);

@@ -2,6 +2,7 @@ import { db } from "../db/index.js";
 import { reports, rescheduleRequests, sessionRatings, therapySessions } from "../db/schema.js";
 import { eq, and, gte, sql } from "drizzle-orm";
 import { generateId } from "../utils/id-generators.js";
+import { attachChildPhotoUrl, getChildPhotoUrlMap } from "./child.service.js";
 
 type TherapySessionInsert = typeof therapySessions.$inferInsert;
 
@@ -20,30 +21,43 @@ function pickSessionValues(data: any): Partial<TherapySessionInsert> {
   };
 }
 
+async function enrichSessionChildren<T extends { child?: any }>(sessions: T[]) {
+  const photoMap = await getChildPhotoUrlMap();
+  return sessions.map((session) => ({
+    ...session,
+    child: attachChildPhotoUrl(session.child, photoMap),
+  }));
+}
+
 export const sessionService = {
   async getAllWithDetails() {
-    return db.query.therapySessions.findMany({
+    const sessions = await db.query.therapySessions.findMany({
       with: { therapist: { with: { user: true } }, child: { with: { parent: true } }, room: true },
       orderBy: (s, { desc }) => [desc(s.date), desc(s.startTime)],
     });
+    return enrichSessionChildren(sessions);
   },
 
   async getById(id: string) {
-    return db.query.therapySessions.findFirst({
+    const session = await db.query.therapySessions.findFirst({
       where: eq(therapySessions.id, id),
       with: { therapist: { with: { user: true } }, child: { with: { parent: true } }, room: true },
     });
+    if (!session) return null;
+    const [enriched] = await enrichSessionChildren([session]);
+    return enriched;
   },
 
   async getForTherapist(therapistId: string, dateStr?: string) {
     const conditions = [eq(therapySessions.therapistId, therapistId)];
     if (dateStr) conditions.push(eq(therapySessions.date, dateStr));
 
-    return db.query.therapySessions.findMany({
+    const sessions = await db.query.therapySessions.findMany({
       where: and(...conditions),
       with: { child: { with: { parent: true } }, room: true },
       orderBy: (s, { asc }) => [asc(s.date), asc(s.startTime)],
     });
+    return enrichSessionChildren(sessions);
   },
 
   async getUpcomingForChild(childId: string) {

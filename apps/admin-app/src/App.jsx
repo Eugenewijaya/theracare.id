@@ -5,6 +5,7 @@ import { useAdmin } from './context/AdminContext';
 import Sidebar from './components/Sidebar';
 import LoginPage from './pages/LoginPage';
 import LegalPage from '../../shared/ui/LegalPage';
+import ClinicLogoMark from '../../shared/ui/ClinicLogoMark';
 
 const ClinicAdmin = lazy(() => import('../../clinic-admin/src/App'));
 const AdminScheduling = lazy(() => import('../../admin-scheduling/src/App'));
@@ -52,7 +53,7 @@ function ProtectedRoute({ children }) {
 }
 
 function MobileTopBar({ onMenuOpen }) {
-  const { clinicName, brandColor } = useAdmin();
+  const { clinicName, brandColor, logoUrl } = useAdmin();
   return (
     <header className="lg:hidden flex items-center gap-3 px-4 py-3 border-b border-slate-200/80 dark:border-slate-800/80 sticky top-0 z-40 bg-white dark:bg-slate-900 shadow-sm transition-colors">
       <button
@@ -63,12 +64,7 @@ function MobileTopBar({ onMenuOpen }) {
         <span className="material-symbols-outlined text-[22px]">menu</span>
       </button>
       <div className="flex items-center gap-2.5">
-        <div 
-            className="p-1.5 rounded-lg flex items-center justify-center shadow-sm"
-            style={{ backgroundColor: brandColor || '#3b82f6', color: '#fff' }}
-        >
-          <span className="material-symbols-outlined text-[16px]" style={{ fontVariationSettings: "'FILL' 1" }}>health_and_safety</span>
-        </div>
+        <ClinicLogoMark logoUrl={logoUrl} name={clinicName || 'TheraCare'} color={brandColor || '#3b82f6'} className="h-8 w-8 rounded-lg" />
         <span className="text-sm font-extrabold text-slate-900 dark:text-white tracking-tight">{clinicName || 'TheraCare'}</span>
         <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider hidden sm:inline">Admin</span>
       </div>

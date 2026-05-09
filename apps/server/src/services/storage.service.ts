@@ -11,10 +11,10 @@ const ALLOWED_IMAGE_TYPES = new Set([
   "image/vnd.microsoft.icon",
 ]);
 
-type BrandingAssetKind = "logo" | "favicon" | "photo";
+type StorageAssetKind = "logo" | "favicon" | "photo" | "therapist-profile" | "parent-profile" | "child-profile";
 
 type UploadBrandingAssetInput = {
-  kind: BrandingAssetKind;
+  kind: StorageAssetKind;
   fileName: string;
   contentType: string;
   dataBase64: string;
@@ -99,8 +99,9 @@ async function uploadToGenericCdn(path: string, buffer: Buffer, contentType: str
 
 export const storageService = {
   async uploadBrandingAsset(input: UploadBrandingAssetInput) {
-    if (!["logo", "favicon", "photo"].includes(input.kind)) {
-      throw new Error("Jenis asset branding tidak valid");
+    const allowedKinds: StorageAssetKind[] = ["logo", "favicon", "photo", "therapist-profile", "parent-profile", "child-profile"];
+    if (!allowedKinds.includes(input.kind)) {
+      throw new Error("Jenis asset upload tidak valid");
     }
     if (!input.fileName || !input.dataBase64) {
       throw new Error("File upload tidak lengkap");
@@ -114,7 +115,7 @@ export const storageService = {
       throw new Error("Ukuran file harus lebih kecil dari 5MB.");
     }
 
-    const path = `branding/${input.kind}/${Date.now()}-${sanitizeFileName(input.fileName)}`;
+    const path = `uploads/${input.kind}/${Date.now()}-${sanitizeFileName(input.fileName)}`;
 
     if (process.env.BLOB_READ_WRITE_TOKEN) {
       const blob = await put(path, buffer, {

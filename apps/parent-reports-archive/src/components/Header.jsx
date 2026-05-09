@@ -62,7 +62,7 @@ const Header = ({ title = "Reports Archive" }) => {
                 user.childId = selected.nita;
                 user.childName = selected.name;
                 sessionStorage.setItem('parent_user', JSON.stringify(user));
-                window.dispatchEvent(new CustomEvent('clinicDataUpdated'));
+                window.dispatchEvent(new CustomEvent('parentChildSelectionChanged'));
             }
         }
     };

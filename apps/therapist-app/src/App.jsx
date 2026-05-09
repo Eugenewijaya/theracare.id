@@ -16,6 +16,7 @@ import Announcements from './pages/Announcements';
 import ScheduleUpdates from './pages/ScheduleUpdates';
 import { useClinicSettings } from '../../shared/clinicSettings';
 import LegalPage from '../../shared/ui/LegalPage';
+import ClinicLogoMark from '../../shared/ui/ClinicLogoMark';
 
 function Loading() {
   return (
@@ -44,7 +45,7 @@ function ProtectedRoute({ children }) {
 }
 
 function MobileTopBar({ onMenuOpen }) {
-  const { clinicName, primaryColor } = useClinicSettings();
+  const { clinicName, primaryColor, logoUrl } = useClinicSettings();
   return (
     <header className="lg:hidden flex items-center gap-3 px-4 py-3 bg-slate-50 dark:bg-slate-900 border-b border-slate-200/80 dark:border-slate-800/80 sticky top-0 z-40">
       <button
@@ -55,9 +56,7 @@ function MobileTopBar({ onMenuOpen }) {
         <span className="material-symbols-outlined text-[22px]">menu</span>
       </button>
       <div className="flex items-center gap-2.5">
-        <div className="p-1.5 rounded-lg text-white flex items-center justify-center shadow-sm" style={{ backgroundColor: primaryColor }}>
-          <span className="material-symbols-outlined text-[16px]" style={{ fontVariationSettings: "'FILL' 1" }}>psychology</span>
-        </div>
+        <ClinicLogoMark logoUrl={logoUrl} name={clinicName} color={primaryColor} icon="psychology" className="h-8 w-8 rounded-lg" />
         <span className="text-sm font-extrabold text-slate-900 dark:text-white tracking-tight">{clinicName}</span>
         <span className="text-[10px] font-bold text-teal-600 dark:text-teal-400 uppercase tracking-wider">Therapist</span>
       </div>

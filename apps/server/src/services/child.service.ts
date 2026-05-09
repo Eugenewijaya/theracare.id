@@ -1,27 +1,66 @@
 import { db } from "../db/index.js";
-import { children, reports, rescheduleRequests, sessionRatings, therapyPrograms, therapySessions } from "../db/schema.js";
+import { children, clinicSettings, reports, rescheduleRequests, sessionRatings, therapyPrograms, therapySessions } from "../db/schema.js";
 import { eq } from "drizzle-orm";
 import { generateNITA } from "../utils/id-generators.js";
 
+const CHILD_PHOTO_SETTINGS_KEY = "childPhotoUrls";
+
+function parseChildPhotoMap(value?: string | null): Record<string, string> {
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(value);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return Object.fromEntries(
+      Object.entries(parsed)
+        .filter(([, url]) => typeof url === "string" && url.trim())
+        .map(([id, url]) => [id, String(url).trim()])
+    );
+  } catch {
+    return {};
+  }
+}
+
+export async function getChildPhotoUrlMap() {
+  const row = await db.query.clinicSettings.findFirst({
+    where: eq(clinicSettings.key, CHILD_PHOTO_SETTINGS_KEY),
+  });
+  return parseChildPhotoMap(row?.value);
+}
+
+export function attachChildPhotoUrl<T extends { id?: string | null; nita?: string | null }>(child: T | null | undefined, photoMap: Record<string, string>) {
+  if (!child) return child;
+  const photoUrl = (child.id && photoMap[child.id]) || (child.nita && photoMap[child.nita]) || "";
+  return { ...child, photoUrl };
+}
+
+async function enrichChildList<T extends { id?: string | null; nita?: string | null }>(list: T[]) {
+  const photoMap = await getChildPhotoUrlMap();
+  return list.map((child) => attachChildPhotoUrl(child, photoMap));
+}
+
 export const childService = {
   async getAll() {
-    return db.query.children.findMany({
+    const rows = await db.query.children.findMany({
       with: { parent: true, therapyPrograms: true },
     });
+    return enrichChildList(rows);
   },
 
   async getById(id: string) {
-    return db.query.children.findFirst({
+    const child = await db.query.children.findFirst({
       where: eq(children.id, id),
       with: { parent: true, therapyPrograms: true, sessions: true },
     });
+    const photoMap = await getChildPhotoUrlMap();
+    return attachChildPhotoUrl(child, photoMap);
   },
 
   async getByParent(parentId: string) {
-    return db.query.children.findMany({
+    const rows = await db.query.children.findMany({
       where: eq(children.parentId, parentId),
       with: { therapyPrograms: true },
     });
+    return enrichChildList(rows);
   },
 
   async create(parentId: string, data: {
@@ -77,6 +116,24 @@ export const childService = {
       .where(eq(children.id, id))
       .returning();
     return updated;
+  },
+
+  async updatePhoto(id: string, photoUrl: string) {
+    const child = await db.query.children.findFirst({ where: eq(children.id, id) });
+    if (!child) return null;
+
+    const photoMap = await getChildPhotoUrlMap();
+    photoMap[child.id] = photoUrl.trim();
+    if (child.nita) photoMap[child.nita] = photoUrl.trim();
+
+    await db.insert(clinicSettings)
+      .values({ key: CHILD_PHOTO_SETTINGS_KEY, value: JSON.stringify(photoMap), updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: clinicSettings.key,
+        set: { value: JSON.stringify(photoMap), updatedAt: new Date() },
+      });
+
+    return this.getById(id);
   },
 
   async delete(id: string) {

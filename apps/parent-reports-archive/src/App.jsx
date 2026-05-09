@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Header from './components/Header';
-import { sessionsApi, reportsApi, adminApi } from '../../shared/api/client';
+import { sessionsApi, reportsApi, adminApi, childrenApi } from '../../shared/api/client';
 import { useClinicSettings } from '../../shared/clinicSettings';
 import { openReportPdf } from '../../shared/reportPdf';
 
@@ -330,9 +330,14 @@ function App() {
         if (saved && !childId) {
             try {
                 const user = JSON.parse(saved);
-                const store = JSON.parse(localStorage.getItem('clinicData') || '{}');
-                const actualChildren = (store.children || []).filter(c => c.parentId === user.parentId || c.id === user.childId || c.nita === user.childId);
-                const children = actualChildren.length > 0 ? actualChildren : [];
+                let children = [];
+                if (user.parentId) {
+                    const childRes = await childrenApi.getByParent(user.parentId);
+                    children = childRes.data?.data || [];
+                } else if (user.childId) {
+                    const childRes = await childrenApi.getById(user.childId);
+                    children = childRes.data?.data ? [childRes.data.data] : [];
+                }
                 availableChildren = children;
                 
                 setChildrenList(children);
@@ -340,7 +345,8 @@ function App() {
                 const progList = pRes.data?.data || [];
                 setProgramsList(progList);
                 if (children.length > 0) {
-                    childId = children[0].id;
+                    const preferredChild = children.find(c => c.id === user.childId || c.nita === user.childId) || children[0];
+                    childId = preferredChild.id || preferredChild.nita;
                     setSelectedChild(childId);
                 }
             } catch { /* ignore */ }
@@ -387,7 +393,7 @@ function App() {
                     sessionId:    s.id,
                     childId,
                     childName:    s.child?.name || childProfile?.name || 'Anak',
-                    parentId:     savedUser.parentId || 'p1',
+                    parentId:     savedUser.parentId || childProfile?.parentId || s.child?.parentId || '',
                     date:         s.date,
                     type:         guessTherapyType(savedReport?.sessionFocus || savedReport?.program || s.focus, allProg),
                     title:        savedReport?.sessionFocus || s.focus || 'Therapy Session',
@@ -410,8 +416,8 @@ function App() {
 
     useEffect(() => {
         loadReports();
-        window.addEventListener('clinicDataUpdated', loadReports);
-        return () => window.removeEventListener('clinicDataUpdated', loadReports);
+        window.addEventListener('parentChildSelectionChanged', loadReports);
+        return () => window.removeEventListener('parentChildSelectionChanged', loadReports);
     }, [selectedChild]);
 
     // Filtered daily
@@ -438,6 +444,10 @@ function App() {
 
     const handleSubmitRating = async () => {
         if (!ratingModal || hoverRating === 0) return;
+        if (!ratingModal.parentId) {
+            setToast('Data orang tua belum lengkap untuk menyimpan rating.');
+            return;
+        }
         try {
             await sessionsApi.addRating(ratingModal.sessionId, {
                 childId: ratingModal.childId,

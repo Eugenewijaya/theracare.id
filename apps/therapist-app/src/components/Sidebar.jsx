@@ -3,6 +3,7 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { notificationsApi } from '../../../shared/api/client';
 import { useClinicSettings } from '../../../shared/clinicSettings';
+import ClinicLogoMark from '../../../shared/ui/ClinicLogoMark';
 
 const navItems = [
   { path: '/', icon: 'space_dashboard', label: 'Dasbor', end: true },
@@ -20,7 +21,7 @@ export default function Sidebar({ isOpen, onClose }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const { clinicName, primaryColor } = useClinicSettings();
+  const { clinicName, primaryColor, logoUrl } = useClinicSettings();
   const [badgeCounts, setBadgeCounts] = useState({ schedule: 0, notification: 0 });
   const [totalUnread, setTotalUnread] = useState(0);
 
@@ -60,9 +61,7 @@ export default function Sidebar({ isOpen, onClose }) {
         <div className="flex items-center gap-3.5 pb-5 border-b border-slate-200/60 dark:border-slate-800/60">
           <div className="relative group">
             <div className="absolute inset-0 rounded-xl blur opacity-40 group-hover:opacity-70 transition-opacity" style={{ backgroundColor: primaryColor }}></div>
-            <div className="p-2 rounded-xl text-white flex items-center justify-center relative shadow-sm ring-1 ring-white/20" style={{ backgroundColor: primaryColor }}>
-              <span className="material-symbols-outlined text-[22px]" style={{ fontVariationSettings: "'FILL' 1" }}>psychology</span>
-            </div>
+            <ClinicLogoMark logoUrl={logoUrl} name={clinicName} color={primaryColor} icon="psychology" className="relative h-10 w-10 ring-1 ring-white/20" />
           </div>
           <div className="flex-1">
             <h1 className="text-base font-extrabold text-slate-900 dark:text-white tracking-tight leading-tight truncate">{clinicName}</h1>

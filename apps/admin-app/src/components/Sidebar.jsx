@@ -3,6 +3,7 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAdmin } from '../context/AdminContext';
 import { rescheduleApi, notificationsApi } from '../../../shared/api/client';
+import ClinicLogoMark from '../../../shared/ui/ClinicLogoMark';
 
 const navGroups = [
   {
@@ -48,7 +49,7 @@ export default function Sidebar({ isOpen, onClose }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const { clinicName, brandColor, adminProfile, sidebarCollapsed, setSidebarCollapsed } = useAdmin();
+  const { clinicName, brandColor, logoUrl, adminProfile, sidebarCollapsed, setSidebarCollapsed } = useAdmin();
   const [badgeCounts, setBadgeCounts] = useState({ requests: 0, notifications: 0 });
 
   // Compute notification badges from API
@@ -104,12 +105,7 @@ export default function Sidebar({ isOpen, onClose }) {
         <div className="p-4 flex flex-col gap-5 flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar">
           {/* Branding */}
           <div className={`flex items-center gap-3 pb-4 border-b border-white/10 ${isCollapsed ? 'justify-center px-0' : 'px-2'}`}>
-            <div 
-              className="p-2 rounded-xl flex items-center justify-center shadow-sm flex-shrink-0"
-              style={{ backgroundColor: `${brandColor}20`, color: brandColor }}
-            >
-              <span className="material-symbols-outlined text-[20px]" style={{ fontVariationSettings: "'FILL' 1" }}>local_hospital</span>
-            </div>
+            <ClinicLogoMark logoUrl={logoUrl} name={clinicName || 'TheraCare'} color={brandColor} className="h-10 w-10" />
             {!isCollapsed && (
               <div className="min-w-0 flex-1">
                 <h1 className="text-sm font-bold text-white leading-tight truncate">{clinicName || 'TheraCare'}</h1>

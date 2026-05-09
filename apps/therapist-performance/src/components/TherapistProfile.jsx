@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 
-const MAX_PHOTO_SIZE = 1024 * 1024;
+const MAX_PHOTO_SIZE = 5 * 1024 * 1024;
 
 const TherapistProfile = ({ user, onPhotoUpdate }) => {
     const fileInputRef = useRef(null);
@@ -22,16 +22,12 @@ const TherapistProfile = ({ user, onPhotoUpdate }) => {
         const file = e.target.files?.[0];
         if (!file) return;
         if (file.size > MAX_PHOTO_SIZE) {
-            setError('Ukuran foto maksimal 1 MB untuk penyimpanan sementara.');
+            setError('Ukuran foto maksimal 5 MB.');
             e.target.value = '';
             return;
         }
-
-        const reader = new FileReader();
-        reader.onloadend = () => {
-            if (onPhotoUpdate) onPhotoUpdate(reader.result);
-        };
-        reader.readAsDataURL(file);
+        if (onPhotoUpdate) onPhotoUpdate(file);
+        e.target.value = '';
     };
 
     return (

@@ -1,9 +1,42 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { childrenApi } from '../../../shared/api/client';
+import { uploadImageFile } from '../../../shared/uploadImage';
 
 const ChildProfileModal = ({ session, onClose }) => {
+    const sourceChild = session?.child || null;
+    const [photoUrl, setPhotoUrl] = useState(sourceChild?.photoUrl || '');
+    const [uploading, setUploading] = useState(false);
+    const [error, setError] = useState('');
+    const inputRef = useRef(null);
+
+    useEffect(() => {
+        setPhotoUrl(sourceChild?.photoUrl || '');
+        setError('');
+    }, [sourceChild?.id, sourceChild?.photoUrl]);
+
     if (!session || !session.child) return null;
 
-    const { child, parent } = session;
+    const { parent } = session;
+    const child = { ...session.child, photoUrl };
+
+    const handlePhotoChange = async (event) => {
+        const file = event.target.files?.[0];
+        event.target.value = '';
+        if (!file) return;
+
+        setUploading(true);
+        setError('');
+        try {
+            const uploadedUrl = await uploadImageFile(file, 'child-profile');
+            const res = await childrenApi.updatePhoto(child.id || child.nita, uploadedUrl);
+            if (!res.ok) throw new Error(res.data?.error || 'Gagal menyimpan foto anak');
+            setPhotoUrl(res.data?.data?.photoUrl || uploadedUrl);
+        } catch (err) {
+            setError(err.message || 'Gagal upload foto anak');
+        } finally {
+            setUploading(false);
+        }
+    };
 
     return (
         <div className="fixed inset-0 z-[300] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 animate-in fade-in duration-200" onClick={onClose}>
@@ -13,15 +46,29 @@ const ChildProfileModal = ({ session, onClose }) => {
                 <div className="bg-gradient-to-r from-teal-500 to-cyan-600 p-6 flex justify-between items-start relative overflow-hidden">
                     <div className="absolute -top-10 -right-10 w-32 h-32 bg-white/10 rounded-full blur-2xl"></div>
                     <div className="relative z-10 flex items-center gap-4">
-                        <div className="w-16 h-16 rounded-full bg-white/20 border-2 border-white text-white flex items-center justify-center text-2xl font-bold shadow-lg shadow-black/10">
-                            {child.name.charAt(0).toUpperCase()}
-                        </div>
+                        <button
+                            type="button"
+                            onClick={() => inputRef.current?.click()}
+                            className="group relative w-16 h-16 overflow-hidden rounded-full bg-white/20 border-2 border-white text-white flex items-center justify-center text-2xl font-bold shadow-lg shadow-black/10"
+                            aria-label="Upload foto anak"
+                        >
+                            {child.photoUrl ? (
+                                <img src={child.photoUrl} alt={child.name || 'Foto anak'} className="h-full w-full object-cover" />
+                            ) : (
+                                child.name.charAt(0).toUpperCase()
+                            )}
+                            <span className="absolute inset-0 flex items-center justify-center bg-black/45 opacity-0 transition-opacity group-hover:opacity-100">
+                                <span className="material-symbols-outlined text-[22px]">{uploading ? 'hourglass_top' : 'photo_camera'}</span>
+                            </span>
+                        </button>
+                        <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handlePhotoChange} />
                         <div className="text-white">
                             <h2 className="text-2xl font-bold leading-tight">{child.name}</h2>
                             <p className="text-teal-100 font-medium text-sm flex items-center gap-1">
                                 <span className="material-symbols-outlined text-[16px]">child_care</span>
                                 NITA: {child.nita || child.id}
                             </p>
+                            {error && <p className="mt-1 text-xs font-semibold text-red-100">{error}</p>}
                         </div>
                     </div>
                     <button onClick={onClose} className="relative z-10 w-8 h-8 flex items-center justify-center rounded-full bg-black/10 hover:bg-black/20 text-white transition-colors">

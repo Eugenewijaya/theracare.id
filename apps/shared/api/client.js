@@ -76,6 +76,7 @@ export const childrenApi = {
   getByParent: (parentId) => api.get(`/children/by-parent/${parentId}`),
   create: (data) => api.post('/children', data),
   update: (id, data) => api.patch(`/children/${id}`, data),
+  updatePhoto: (id, photoUrl) => api.patch(`/children/${id}/photo`, { photoUrl }),
   delete: (id) => api.delete(`/children/${id}`),
 };
 
@@ -149,6 +150,10 @@ export const notificationsApi = {
   markRead: (id) => api.patch(`/notifications/${id}/read`),
   markAllRead: () => api.post('/notifications/read-all'),
   delete: (id) => api.delete(`/notifications/${id}`),
+};
+
+export const uploadsApi = {
+  image: (data) => api.post('/uploads/image', data),
 };
 
 // ── Admin API (rooms, programs, settings, stats, announcements) ──

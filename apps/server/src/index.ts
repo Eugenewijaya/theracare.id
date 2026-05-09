@@ -15,6 +15,7 @@ import rescheduleRoutes from "./routes/reschedule.routes.js";
 import meetingRoutes from "./routes/meeting.routes.js";
 import notificationRoutes from "./routes/notification.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
+import uploadRoutes from "./routes/upload.routes.js";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -71,6 +72,7 @@ app.use("/api/reschedule", rescheduleRoutes);
 app.use("/api/meetings", meetingRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/uploads", uploadRoutes);
 
 // ── Error Handler ──────────────────────────────────────
 app.use(errorHandler);

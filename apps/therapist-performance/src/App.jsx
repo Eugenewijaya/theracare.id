@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Header from './components/Header';
 import TherapistProfile from './components/TherapistProfile';
 import { sessionsApi, reportsApi, therapistsApi } from '../../shared/api/client';
+import { uploadImageFile } from '../../shared/uploadImage';
 
 const MONTH_FORMATTER = new Intl.DateTimeFormat('en-US', { month: 'short' });
 
@@ -224,10 +225,11 @@ function App() {
         showToast('Profile updated successfully.'); 
     };
 
-    const handlePhotoUpdate = async (photoBase64) => {
+    const handlePhotoUpdate = async (file) => {
         if (currentUser) {
             try {
-                const res = await therapistsApi.updateProfile(currentUser.id, { avatar: photoBase64 });
+                const avatarUrl = await uploadImageFile(file, 'therapist-profile');
+                const res = await therapistsApi.updateProfile(currentUser.id, { avatar: avatarUrl });
                 if (res.data?.data) {
                     const updated = { ...currentUser, ...res.data.data };
                     setCurrentUser(updated);
@@ -236,6 +238,7 @@ function App() {
                 showToast('Profile photo updated.');
             } catch (e) {
                 console.error('Failed to update photo', e);
+                showToast(e.message || 'Failed to update profile photo.');
             }
         }
     };

@@ -1,9 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { childrenApi, sessionsApi } from '../../../shared/api/client';
+import { uploadImageFile } from '../../../shared/uploadImage';
 
 export default function ChildProfile() {
     const [child, setChild] = useState(null);
     const [completedSessions, setCompletedSessions] = useState([]);
+    const [uploadingPhoto, setUploadingPhoto] = useState(false);
+    const [photoError, setPhotoError] = useState('');
+    const photoInputRef = useRef(null);
 
     useEffect(() => {
         const loadProfile = async () => {
@@ -59,6 +63,25 @@ export default function ChildProfile() {
         return `${age} years old`;
     };
 
+    const handleChildPhotoChange = async (e) => {
+        const file = e.target.files?.[0];
+        e.target.value = '';
+        if (!file || !child) return;
+
+        setUploadingPhoto(true);
+        setPhotoError('');
+        try {
+            const photoUrl = await uploadImageFile(file, 'child-profile');
+            const res = await childrenApi.updatePhoto(child.id || child.nita, photoUrl);
+            if (!res.ok) throw new Error(res.data?.error || 'Gagal menyimpan foto anak');
+            setChild(res.data?.data || { ...child, photoUrl });
+        } catch (error) {
+            setPhotoError(error.message || 'Gagal upload foto anak');
+        } finally {
+            setUploadingPhoto(false);
+        }
+    };
+
     return (
         <div className="flex flex-col h-full bg-slate-50/50 dark:bg-slate-900">
             {/* Minimal Header */}
@@ -80,8 +103,32 @@ export default function ChildProfile() {
                         <div className="absolute top-0 right-0 w-64 h-64 bg-sky-50 dark:bg-sky-900/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
 
                         {/* Avatar */}
-                        <div className="w-32 h-32 md:w-40 md:h-40 shrink-0 rounded-full bg-gradient-to-br from-sky-400 to-cyan-500 border-4 border-white dark:border-slate-800 shadow-xl flex items-center justify-center text-white text-5xl font-bold relative z-10">
-                            {child.name.charAt(0)}
+                        <div className="relative z-10 flex flex-col items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={() => photoInputRef.current?.click()}
+                                className="group relative w-32 h-32 md:w-40 md:h-40 shrink-0 overflow-hidden rounded-full bg-gradient-to-br from-sky-400 to-cyan-500 border-4 border-white dark:border-slate-800 shadow-xl flex items-center justify-center text-white text-5xl font-bold"
+                                aria-label="Upload foto anak"
+                            >
+                                {child.photoUrl ? (
+                                    <img src={child.photoUrl} alt={child.name || 'Foto anak'} className="h-full w-full object-cover" />
+                                ) : (
+                                    (child.name || 'A').charAt(0)
+                                )}
+                                <span className="absolute inset-0 flex items-center justify-center bg-black/45 text-white opacity-0 transition-opacity group-hover:opacity-100">
+                                    <span className="material-symbols-outlined text-3xl">{uploadingPhoto ? 'hourglass_top' : 'photo_camera'}</span>
+                                </span>
+                            </button>
+                            <input ref={photoInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleChildPhotoChange} />
+                            <button
+                                type="button"
+                                onClick={() => photoInputRef.current?.click()}
+                                disabled={uploadingPhoto}
+                                className="rounded-full border border-sky-200 bg-white px-3 py-1.5 text-xs font-bold text-sky-700 shadow-sm hover:bg-sky-50 disabled:cursor-wait disabled:opacity-70 dark:border-sky-800 dark:bg-slate-900 dark:text-sky-300"
+                            >
+                                {uploadingPhoto ? 'Uploading...' : 'Upload Foto'}
+                            </button>
+                            {photoError && <p className="max-w-[10rem] text-center text-xs font-semibold text-red-500">{photoError}</p>}
                         </div>
 
                         {/* Basic Info */}
