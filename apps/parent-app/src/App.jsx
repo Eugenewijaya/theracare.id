@@ -7,6 +7,7 @@ import ChildProfile from './pages/ChildProfile';
 import AttendanceLog from './pages/AttendanceLog';
 import ProgressSummary from './pages/ProgressSummary';
 import Announcements from './pages/Announcements';
+import Meetings from './pages/Meetings';
 import Settings from './pages/Settings';
 import { useClinicSettings } from '../../shared/clinicSettings';
 import LegalPage from '../../shared/ui/LegalPage';
@@ -81,6 +82,7 @@ function DashboardLayout() {
               <Route path="attendance" element={<AttendanceLog />} />
               <Route path="progress" element={<ProgressSummary />} />
               <Route path="announcements" element={<Announcements />} />
+              <Route path="meetings" element={<Meetings />} />
               <Route path="settings" element={<Settings />} />
             </Routes>
           </Suspense>

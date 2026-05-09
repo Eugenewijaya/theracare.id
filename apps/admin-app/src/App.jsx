@@ -10,6 +10,7 @@ const ClinicAdmin = lazy(() => import('../../clinic-admin/src/App'));
 const AdminScheduling = lazy(() => import('../../admin-scheduling/src/App'));
 const BulkSchedule = lazy(() => import('../../bulk-schedule/src/App'));
 const AdminRequests = lazy(() => import('../../admin-requests/src/App'));
+const ParentsMeeting = lazy(() => import('../../parents-meeting/src/App'));
 const AdminAttendance = lazy(() => import('../../admin-attendance/src/App'));
 const TherapistRegistration = lazy(() => import('../../therapist-registration/src/App'));
 const AdminReports = lazy(() => import('../../admin-reports/src/App'));
@@ -90,6 +91,7 @@ function DashboardLayout() {
               <Route path="scheduling" element={<AdminScheduling />} />
               <Route path="bulk-schedule" element={<BulkSchedule />} />
               <Route path="requests" element={<AdminRequests />} />
+              <Route path="parent-meetings" element={<ParentsMeeting mode="admin" />} />
               <Route path="attendance" element={<AdminAttendance />} />
               <Route path="therapist-registration" element={<TherapistRegistration />} />
               <Route path="reports" element={<AdminReports />} />

@@ -34,4 +34,12 @@ router.patch("/:id", requireAuth, requireRole("admin"), async (req, res, next) =
   } catch (e) { next(e); }
 });
 
+router.delete("/:id", requireAuth, requireRole("admin"), async (req, res, next) => {
+  try {
+    const result = await rescheduleService.delete(req.params.id as string);
+    if (!result) return notFound(res);
+    ok(res, result);
+  } catch (e) { next(e); }
+});
+
 export default router;

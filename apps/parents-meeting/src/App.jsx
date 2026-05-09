@@ -1,286 +1,366 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { childrenApi, meetingsApi, sessionsApi, therapistsApi } from '../../shared/api/client';
 
-const DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
-const TIMES = ['09:00 AM', '09:30 AM', '10:00 AM', '11:30 AM', '01:00 PM', '02:30 PM'];
 const MEETING_TYPES = ['In-person', 'Video Call', 'Phone Call'];
-const OBJECTIVES = ['Monthly Review', 'Quarterly Eval', 'Incident Report', 'Goal Setting'];
+const OBJECTIVES = ['Monthly Review', 'Quarterly Evaluation', 'Incident Follow-up', 'Goal Setting'];
+const STATUS_LABELS = {
+    pending_admin_review: 'Menunggu review admin',
+    approved_by_admin: 'Menunggu persetujuan orang tua',
+    parent_confirmed: 'Disetujui orang tua',
+    parent_declined: 'Ditolak orang tua',
+    cancelled: 'Dibatalkan',
+};
 
-const INITIAL_MEETINGS = [
-    { id: 1, child: 'Emma Thompson', parent: 'Mrs. Thompson', therapist: 'Dr. Sarah Jenkins', date: 'Oct 5, 2023', time: '10:00 AM', type: 'In-person', objective: 'Monthly Review' },
-];
+function statusClass(status) {
+    if (status === 'parent_confirmed') return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+    if (status === 'approved_by_admin') return 'bg-sky-50 text-sky-700 border-sky-200';
+    if (status === 'cancelled' || status === 'parent_declined') return 'bg-red-50 text-red-700 border-red-200';
+    return 'bg-amber-50 text-amber-700 border-amber-200';
+}
 
-function App() {
-    const [selectedDate, setSelectedDate] = useState(5);
-    const [selectedTime, setSelectedTime] = useState('10:00 AM');
-    const [meetings, setMeetings] = useState(INITIAL_MEETINGS);
-    const [confirmModal, setConfirmModal] = useState(false);
-    const [editModal, setEditModal] = useState(null);
-    const [deleteModal, setDeleteModal] = useState(null);
+function formatDate(date) {
+    if (!date) return '-';
+    return new Date(`${date}T00:00:00`).toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function readStoredTherapist() {
+    try {
+        const saved = sessionStorage.getItem('therapist_user') || localStorage.getItem('therapist_user');
+        return saved ? JSON.parse(saved) : null;
+    } catch {
+        return null;
+    }
+}
+
+export default function App({ mode = 'therapist' }) {
+    const isAdmin = mode === 'admin';
+    const [meetings, setMeetings] = useState([]);
+    const [children, setChildren] = useState([]);
+    const [therapists, setTherapists] = useState([]);
+    const [loading, setLoading] = useState(true);
     const [toast, setToast] = useState('');
-    const [form, setForm] = useState({ child: '', type: 'In-person', objective: 'Monthly Review', notes: '' });
-    const [editDraft, setEditDraft] = useState(null);
+    const [reviewTarget, setReviewTarget] = useState(null);
+    const [reviewDraft, setReviewDraft] = useState({ parentContactConfirmed: false, communicationMethod: 'WhatsApp', reviewNote: '' });
+    const [createConfirmOpen, setCreateConfirmOpen] = useState(false);
+    const [createDraft, setCreateDraft] = useState({ parentContactConfirmed: false, communicationMethod: 'WhatsApp', reviewNote: '' });
+    const [form, setForm] = useState({
+        childId: '',
+        therapistId: '',
+        date: new Date().toISOString().split('T')[0],
+        time: '10:00',
+        type: 'In-person',
+        objective: 'Monthly Review',
+        notes: '',
+    });
 
-    const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 3000); };
-
-    const handleSchedule = () => {
-        if (!form.child) return;
-        setConfirmModal(true);
+    const showToast = (msg) => {
+        setToast(msg);
+        setTimeout(() => setToast(''), 3000);
     };
 
-    const confirmSchedule = () => {
-        const newMeeting = {
-            id: Date.now(),
-            child: form.child,
-            parent: 'Auto-filled',
-            therapist: 'Dr. Sarah Jenkins',
-            date: `Oct ${selectedDate}, 2023`,
-            time: selectedTime,
-            type: form.type,
-            objective: form.objective,
-        };
-        setMeetings(prev => [...prev, newMeeting]);
-        setConfirmModal(false);
-        setForm({ child: '', type: 'In-person', objective: 'Monthly Review', notes: '' });
-        showToast('Meeting invitation sent successfully!');
+    const load = async () => {
+        try {
+            setLoading(true);
+            if (isAdmin) {
+                const [meetRes, childRes, therRes] = await Promise.all([
+                    meetingsApi.getAll(),
+                    childrenApi.getAll(),
+                    therapistsApi.getAll(),
+                ]);
+                setMeetings(meetRes.data?.data || []);
+                setChildren(childRes.data?.data || []);
+                setTherapists(therRes.data?.data || []);
+            } else {
+                const therapist = readStoredTherapist();
+                const [meetRes, sessionRes] = await Promise.all([
+                    meetingsApi.getForTherapist(),
+                    therapist?.id ? sessionsApi.getForTherapist(therapist.id) : Promise.resolve({ data: { data: [] } }),
+                ]);
+                const sessionChildren = [];
+                (sessionRes.data?.data || []).forEach((session) => {
+                    if (session.child && !sessionChildren.some((child) => child.id === session.child.id)) {
+                        sessionChildren.push(session.child);
+                    }
+                });
+                setMeetings(meetRes.data?.data || []);
+                setChildren(sessionChildren);
+                setForm((prev) => ({ ...prev, therapistId: therapist?.id || prev.therapistId }));
+            }
+        } catch (e) {
+            console.error(e);
+            showToast('Gagal memuat data parent meeting.');
+        } finally {
+            setLoading(false);
+        }
     };
 
-    const openEdit = (m) => { setEditDraft({ ...m }); setEditModal(m.id); };
-    const saveEdit = () => {
-        setMeetings(prev => prev.map(m => m.id === editModal ? { ...m, ...editDraft } : m));
-        setEditModal(null);
-        showToast('Meeting updated.');
+    useEffect(() => {
+        load();
+    }, [isAdmin]);
+
+    const visibleMeetings = useMemo(() => meetings, [meetings]);
+
+    const createMeeting = async (extra = {}) => {
+        const res = await meetingsApi.create({
+            ...form,
+            ...extra,
+            parentContactConfirmed: isAdmin ? !!extra.parentContactConfirmed : false,
+        });
+        if (!res.ok) {
+            showToast(res.data?.error || 'Gagal membuat parent meeting.');
+            return false;
+        }
+        setForm((prev) => ({ ...prev, childId: '', notes: '' }));
+        await load();
+        showToast(isAdmin ? 'Meeting dibuat dan dikirim ke parent portal.' : 'Request meeting dikirim untuk review admin.');
+        return true;
     };
-    const confirmDelete = () => {
-        setMeetings(prev => prev.filter(m => m.id !== deleteModal));
-        setDeleteModal(null);
-        showToast('Meeting cancelled.');
+
+    const handleSchedule = async () => {
+        if (!form.childId || !form.date || !form.time) {
+            showToast('Pilih anak, tanggal, dan jam meeting.');
+            return;
+        }
+        if (isAdmin && !form.therapistId) {
+            showToast('Admin perlu memilih terapis untuk parent meeting.');
+            return;
+        }
+        if (isAdmin) {
+            setCreateDraft({ parentContactConfirmed: false, communicationMethod: 'WhatsApp', reviewNote: '' });
+            setCreateConfirmOpen(true);
+            return;
+        }
+        await createMeeting();
+    };
+
+    const confirmAdminCreate = async () => {
+        if (!createDraft.parentContactConfirmed) {
+            showToast('Centang konfirmasi bahwa orang tua sudah dihubungi dan setuju.');
+            return;
+        }
+        const ok = await createMeeting(createDraft);
+        if (ok) setCreateConfirmOpen(false);
+    };
+
+    const approveMeeting = async () => {
+        if (!reviewDraft.parentContactConfirmed) {
+            showToast('Centang konfirmasi bahwa orang tua sudah dihubungi dan setuju.');
+            return;
+        }
+        const res = await meetingsApi.adminReview(reviewTarget.id, {
+            status: 'approved_by_admin',
+            ...reviewDraft,
+        });
+        if (!res.ok) {
+            showToast(res.data?.error || 'Gagal approve meeting.');
+            return;
+        }
+        setReviewTarget(null);
+        await load();
+        showToast('Meeting disetujui admin dan dikirim ke parent portal.');
+    };
+
+    const rejectMeeting = async (meeting) => {
+        const res = await meetingsApi.adminReview(meeting.id, {
+            status: 'cancelled',
+            reviewNote: 'Tidak disetujui admin.',
+            parentContactConfirmed: true,
+            communicationMethod: 'Internal',
+        });
+        if (!res.ok) {
+            showToast(res.data?.error || 'Gagal membatalkan meeting.');
+            return;
+        }
+        await load();
+        showToast('Meeting dibatalkan.');
     };
 
     return (
-        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl w-full max-w-5xl overflow-hidden flex flex-col max-h-[90vh]">
-            {/* Header */}
-            <div className="px-6 py-5 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center shrink-0">
-                <h2 className="text-2xl font-bold">Schedule Parents Meeting</h2>
-            </div>
-
-            <div className="flex-1 overflow-y-auto">
-                {/* Booking Form */}
-                <div className="p-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8">
-                        {/* Left Column: Selectors */}
-                        <div className="space-y-6">
-                            <div>
-                                <label className="block text-sm font-medium mb-2">Child</label>
-                                <div className="relative">
-                                    <select value={form.child} onChange={e => setForm(p => ({...p, child: e.target.value}))} className="w-full rounded-lg border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 focus:border-primary focus:ring-primary shadow-sm h-12 pl-4 pr-10 appearance-none">
-                                        <option value="">Select child</option>
-                                        <option value="Emma Thompson">Emma Thompson</option>
-                                        <option value="Liam Davis">Liam Davis</option>
-                                        <option value="Noah Wilson">Noah Wilson</option>
-                                    </select>
-                                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-500"><span className="material-symbols-outlined">expand_more</span></div>
-                                </div>
-                                {!form.child && <p className="text-xs text-red-500 mt-1">Please select a child to continue.</p>}
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium mb-2">Parent / Guardian</label>
-                                <div className="relative">
-                                    <select className="w-full rounded-lg border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-sm h-12 pl-4 pr-10 appearance-none" disabled>
-                                        <option>{form.child ? 'Auto-filled from child record' : 'Select child first'}</option>
-                                    </select>
-                                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-500"><span className="material-symbols-outlined">expand_more</span></div>
-                                </div>
-                            </div>
-
-                            <div className="pt-4 border-t border-slate-200 dark:border-slate-700 space-y-4">
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-sm font-medium mb-2">Meeting Type</label>
-                                        <div className="relative">
-                                            <select value={form.type} onChange={e => setForm(p => ({...p, type: e.target.value}))} className="w-full rounded-lg border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 focus:border-primary focus:ring-primary shadow-sm h-12 pl-4 pr-10 appearance-none">
-                                                {MEETING_TYPES.map(t => <option key={t}>{t}</option>)}
-                                            </select>
-                                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-500"><span className="material-symbols-outlined">expand_more</span></div>
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-2">Objective</label>
-                                        <div className="relative">
-                                            <select value={form.objective} onChange={e => setForm(p => ({...p, objective: e.target.value}))} className="w-full rounded-lg border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 focus:border-primary focus:ring-primary shadow-sm h-12 pl-4 pr-10 appearance-none">
-                                                {OBJECTIVES.map(o => <option key={o}>{o}</option>)}
-                                            </select>
-                                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-500"><span className="material-symbols-outlined">expand_more</span></div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium mb-2">Notes (Optional)</label>
-                                    <textarea value={form.notes} onChange={e => setForm(p => ({...p, notes: e.target.value}))} className="w-full rounded-lg border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 focus:border-primary focus:ring-primary shadow-sm p-3 resize-none h-24" placeholder="Add additional context..."></textarea>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Right Column: Calendar & Time */}
-                        <div className="flex flex-col gap-6">
-                            <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
-                                <div className="flex items-center justify-between mb-4">
-                                    <button className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"><span className="material-symbols-outlined">chevron_left</span></button>
-                                    <h3 className="font-bold text-lg">October 2023</h3>
-                                    <button className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"><span className="material-symbols-outlined">chevron_right</span></button>
-                                </div>
-                                <div className="grid grid-cols-7 text-center mb-2">
-                                    {['SU','MO','TU','WE','TH','FR','SA'].map(d => <div key={d} className="text-xs font-semibold text-slate-500 dark:text-slate-400 py-1">{d}</div>)}
-                                </div>
-                                <div className="grid grid-cols-7 gap-1">
-                                    <div className="h-10"></div><div className="h-10"></div><div className="h-10"></div>
-                                    {DAYS.map(d => (
-                                        <button key={d} onClick={() => setSelectedDate(d)} className={`h-10 w-full flex items-center justify-center rounded-full text-sm transition-colors ${selectedDate === d ? 'bg-primary text-slate-900 font-bold shadow-md' : 'hover:bg-slate-200 dark:hover:bg-slate-700'}`}>{d}</button>
-                                    ))}
-                                </div>
-                            </div>
-                            <div>
-                                <div className="flex items-center justify-between mb-3">
-                                    <h4 className="font-semibold text-sm">Available Times for Oct {selectedDate}</h4>
-                                    <span className="text-xs text-slate-500 dark:text-slate-400">Timezone: EST</span>
-                                </div>
-                                <div className="grid grid-cols-2 gap-3">
-                                    {TIMES.map(t => (
-                                        <button key={t} onClick={() => setSelectedTime(t)} className={`py-2.5 rounded-lg border transition-colors text-sm font-medium ${selectedTime === t ? 'border-primary bg-primary/10 text-primary shadow-sm' : 'border-slate-200 dark:border-slate-700 hover:border-primary dark:hover:border-primary hover:text-primary'}`}>{t}</button>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+        <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm w-full overflow-hidden flex flex-col h-full border border-slate-200 dark:border-slate-800">
+            <div className="px-6 py-5 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center shrink-0">
+                <div>
+                    <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Parent Meeting</h2>
+                    <p className="text-sm text-slate-500 dark:text-slate-400">
+                        {isAdmin ? 'Review request meeting dari terapis dan konfirmasi ke orang tua.' : 'Ajukan jadwal meeting orang tua untuk direview admin.'}
+                    </p>
                 </div>
-
-                {/* Scheduled Meetings List */}
-                {meetings.length > 0 && (
-                    <div className="px-6 pb-6 border-t border-slate-200 dark:border-slate-700 pt-6">
-                        <h3 className="text-lg font-bold mb-4">Scheduled Meetings</h3>
-                        <div className="flex flex-col gap-3">
-                            {meetings.map(m => (
-                                <div key={m.id} className="flex items-center justify-between p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 group">
-                                    <div className="flex items-center gap-4">
-                                        <div className="bg-primary/10 p-2 rounded-lg text-primary">
-                                            <span className="material-symbols-outlined text-[20px]">{m.type === 'Video Call' ? 'videocam' : m.type === 'Phone Call' ? 'phone' : 'groups'}</span>
-                                        </div>
-                                        <div>
-                                            <p className="font-bold text-sm">{m.child}</p>
-                                            <p className="text-xs text-slate-500">{m.date} · {m.time} · {m.type}</p>
-                                            <p className="text-xs text-slate-400">{m.objective}</p>
-                                        </div>
-                                    </div>
-                                    <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <button onClick={() => openEdit(m)} className="p-2 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 hover:text-primary transition-colors">
-                                            <span className="material-symbols-outlined text-[18px]">edit</span>
-                                        </button>
-                                        <button onClick={() => setDeleteModal(m.id)} className="p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-slate-500 hover:text-red-500 transition-colors">
-                                            <span className="material-symbols-outlined text-[18px]">cancel</span>
-                                        </button>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
+                {isAdmin && <span className="px-3 py-1 rounded-full bg-amber-50 text-amber-700 text-xs font-black">{meetings.filter(m => m.status === 'pending_admin_review').length} pending</span>}
             </div>
 
-            {/* Footer Actions */}
-            <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 flex justify-end gap-3 shrink-0">
-                <button
-                    onClick={handleSchedule}
-                    disabled={!form.child}
-                    className="px-6 py-2.5 rounded-lg font-semibold bg-primary text-slate-900 hover:bg-primary/90 transition-colors shadow-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                    <span className="material-symbols-outlined text-sm">send</span>
-                    Send Invitation
-                </button>
-            </div>
+            <div className="grid grid-cols-1 xl:grid-cols-[420px_1fr] gap-0 flex-1 min-h-0">
+                <section className="p-6 border-b xl:border-b-0 xl:border-r border-slate-200 dark:border-slate-800 overflow-y-auto">
+                    <div className="flex flex-col gap-4">
+                        <div>
+                            <label className="block text-sm font-bold mb-2 text-slate-700 dark:text-slate-300">Anak</label>
+                            <select value={form.childId} onChange={e => setForm(p => ({ ...p, childId: e.target.value }))} className="w-full rounded-lg border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 h-11">
+                                <option value="">Pilih anak</option>
+                                {children.map(child => (
+                                    <option key={child.id} value={child.id}>{child.name} {child.parent?.user?.name ? `- ${child.parent.user.name}` : ''}</option>
+                                ))}
+                            </select>
+                        </div>
 
-            {/* Confirm Scheduling Modal */}
-            {confirmModal && (
-                <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4" onClick={() => setConfirmModal(false)}>
-                    <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-md shadow-2xl border border-slate-200 dark:border-slate-800 p-8 flex flex-col gap-5" onClick={e => e.stopPropagation()}>
-                        <div className="flex flex-col items-center gap-3 text-center">
-                            <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-                                <span className="material-symbols-outlined text-3xl" style={{fontVariationSettings:"'FILL' 1"}}>send</span>
+                        {isAdmin && (
+                            <div>
+                                <label className="block text-sm font-bold mb-2 text-slate-700 dark:text-slate-300">Terapis</label>
+                                <select value={form.therapistId} onChange={e => setForm(p => ({ ...p, therapistId: e.target.value }))} className="w-full rounded-lg border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 h-11">
+                                    <option value="">Pilih terapis</option>
+                                    {therapists.map(t => <option key={t.id} value={t.id}>{t.name || t.user?.name || t.id}</option>)}
+                                </select>
+                            </div>
+                        )}
+
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="block text-sm font-bold mb-2 text-slate-700 dark:text-slate-300">Tanggal</label>
+                                <input type="date" value={form.date} onChange={e => setForm(p => ({ ...p, date: e.target.value }))} className="w-full rounded-lg border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 h-11" />
                             </div>
                             <div>
-                                <h2 className="text-xl font-extrabold text-slate-900 dark:text-white mb-1">Confirm Meeting</h2>
-                                <p className="text-slate-500 dark:text-slate-400 text-sm">An invitation will be sent for:</p>
+                                <label className="block text-sm font-bold mb-2 text-slate-700 dark:text-slate-300">Jam</label>
+                                <input type="time" value={form.time} onChange={e => setForm(p => ({ ...p, time: e.target.value }))} className="w-full rounded-lg border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 h-11" />
                             </div>
                         </div>
-                        <div className="bg-slate-50 dark:bg-slate-800 rounded-xl p-4 flex flex-col gap-2 text-sm">
-                            <div className="flex justify-between"><span className="text-slate-500">Child</span><span className="font-bold">{form.child}</span></div>
-                            <div className="flex justify-between"><span className="text-slate-500">Date</span><span className="font-bold">Oct {selectedDate}, 2023</span></div>
-                            <div className="flex justify-between"><span className="text-slate-500">Time</span><span className="font-bold">{selectedTime}</span></div>
-                            <div className="flex justify-between"><span className="text-slate-500">Type</span><span className="font-bold">{form.type}</span></div>
-                            <div className="flex justify-between"><span className="text-slate-500">Objective</span><span className="font-bold">{form.objective}</span></div>
-                        </div>
-                        <div className="flex gap-3">
-                            <button onClick={() => setConfirmModal(false)} className="flex-1 px-5 py-3 rounded-xl font-bold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 transition-colors">Cancel</button>
-                            <button onClick={confirmSchedule} className="flex-1 px-5 py-3 rounded-xl font-bold bg-primary text-slate-900 hover:bg-primary/90 shadow-md transition-colors">Confirm & Send</button>
-                        </div>
-                    </div>
-                </div>
-            )}
 
-            {/* Edit Meeting Modal */}
-            {editModal && editDraft && (
-                <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4" onClick={() => setEditModal(null)}>
-                    <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-md shadow-2xl border border-slate-200 dark:border-slate-800 p-8 flex flex-col gap-5" onClick={e => e.stopPropagation()}>
-                        <h2 className="text-xl font-extrabold text-slate-900 dark:text-white">Edit Meeting</h2>
-                        <div className="flex flex-col gap-4">
+                        <div className="grid grid-cols-2 gap-3">
                             <div>
-                                <label className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1 block">Meeting Type</label>
-                                <select value={editDraft.type} onChange={e => setEditDraft(p => ({...p, type: e.target.value}))} className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary text-slate-900 dark:text-slate-100">
+                                <label className="block text-sm font-bold mb-2 text-slate-700 dark:text-slate-300">Tipe</label>
+                                <select value={form.type} onChange={e => setForm(p => ({ ...p, type: e.target.value }))} className="w-full rounded-lg border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 h-11">
                                     {MEETING_TYPES.map(t => <option key={t}>{t}</option>)}
                                 </select>
                             </div>
                             <div>
-                                <label className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1 block">Objective</label>
-                                <select value={editDraft.objective} onChange={e => setEditDraft(p => ({...p, objective: e.target.value}))} className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary text-slate-900 dark:text-slate-100">
+                                <label className="block text-sm font-bold mb-2 text-slate-700 dark:text-slate-300">Tujuan</label>
+                                <select value={form.objective} onChange={e => setForm(p => ({ ...p, objective: e.target.value }))} className="w-full rounded-lg border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 h-11">
                                     {OBJECTIVES.map(o => <option key={o}>{o}</option>)}
                                 </select>
                             </div>
                         </div>
-                        <div className="flex gap-3">
-                            <button onClick={() => setEditModal(null)} className="flex-1 px-5 py-3 rounded-xl font-bold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 transition-colors">Cancel</button>
-                            <button onClick={saveEdit} className="flex-1 px-5 py-3 rounded-xl font-bold bg-primary text-slate-900 hover:bg-primary/90 shadow-md transition-colors">Save Changes</button>
-                        </div>
-                    </div>
-                </div>
-            )}
 
-            {/* Cancel Meeting Modal */}
-            {deleteModal && (
-                <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4" onClick={() => setDeleteModal(null)}>
-                    <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-sm shadow-2xl border border-slate-200 dark:border-slate-800 p-8 flex flex-col gap-5 text-center" onClick={e => e.stopPropagation()}>
-                        <div className="w-14 h-14 rounded-full bg-red-50 dark:bg-red-900/20 flex items-center justify-center text-red-500 mx-auto">
-                            <span className="material-symbols-outlined text-3xl">event_busy</span>
-                        </div>
                         <div>
-                            <h2 className="text-xl font-extrabold text-slate-900 dark:text-white mb-1">Cancel Meeting?</h2>
-                            <p className="text-slate-500 dark:text-slate-400 text-sm">This meeting will be removed and the parent will be notified.</p>
+                            <label className="block text-sm font-bold mb-2 text-slate-700 dark:text-slate-300">Catatan</label>
+                            <textarea value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} rows={4} className="w-full rounded-lg border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 resize-none" placeholder="Konteks meeting untuk admin/orang tua." />
                         </div>
-                        <div className="flex gap-3">
-                            <button onClick={() => setDeleteModal(null)} className="flex-1 px-5 py-3 rounded-xl font-bold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 transition-colors">Keep</button>
-                            <button onClick={confirmDelete} className="flex-1 px-5 py-3 rounded-xl font-bold bg-red-500 text-white hover:bg-red-600 shadow-md transition-colors">Cancel Meeting</button>
+
+                        <button onClick={handleSchedule} className="h-11 rounded-lg bg-primary text-slate-900 font-black hover:bg-primary/90 flex items-center justify-center gap-2">
+                            <span className="material-symbols-outlined text-[18px]">send</span>
+                            {isAdmin ? 'Buat & Kirim ke Parent' : 'Submit ke Admin'}
+                        </button>
+                    </div>
+                </section>
+
+                <section className="p-6 overflow-y-auto">
+                    {loading ? (
+                        <div className="space-y-3">{[1,2,3].map(i => <div key={i} className="h-24 rounded-xl bg-slate-100 dark:bg-slate-800 animate-pulse" />)}</div>
+                    ) : visibleMeetings.length === 0 ? (
+                        <div className="h-full min-h-[240px] flex flex-col items-center justify-center text-center text-slate-500 gap-3">
+                            <span className="material-symbols-outlined text-4xl text-slate-300">groups</span>
+                            <p className="font-bold">Belum ada parent meeting.</p>
+                        </div>
+                    ) : (
+                        <div className="flex flex-col gap-3">
+                            {visibleMeetings.map(meeting => (
+                                <div key={meeting.id} className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-4">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div className="min-w-0">
+                                            <p className="font-black text-slate-900 dark:text-white">{meeting.childName}</p>
+                                            <p className="text-sm text-slate-500 dark:text-slate-400">{meeting.parentName} - {meeting.therapistName}</p>
+                                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{formatDate(meeting.date)} · {meeting.time} · {meeting.type}</p>
+                                        </div>
+                                        <span className={`shrink-0 border rounded-full px-2.5 py-1 text-[10px] font-black ${statusClass(meeting.status)}`}>{STATUS_LABELS[meeting.status] || meeting.status}</span>
+                                    </div>
+                                    <div className="mt-3 rounded-lg bg-white dark:bg-slate-900/60 p-3 text-sm text-slate-600 dark:text-slate-300">
+                                        <p className="font-bold text-slate-800 dark:text-slate-100">{meeting.objective}</p>
+                                        {meeting.notes && <p className="mt-1">{meeting.notes}</p>}
+                                        {meeting.reviewNote && <p className="mt-1 text-xs text-slate-500">Catatan admin: {meeting.reviewNote}</p>}
+                                    </div>
+                                    {isAdmin && meeting.status === 'pending_admin_review' && (
+                                        <div className="mt-3 flex flex-wrap gap-2 justify-end">
+                                            <button onClick={() => rejectMeeting(meeting)} className="px-3 py-2 rounded-lg text-sm font-bold text-red-600 bg-red-50 hover:bg-red-100">Tolak</button>
+                                            <button onClick={() => { setReviewTarget(meeting); setReviewDraft({ parentContactConfirmed: false, communicationMethod: 'WhatsApp', reviewNote: '' }); }} className="px-3 py-2 rounded-lg text-sm font-bold text-slate-900 bg-primary hover:bg-primary/90">Approve</button>
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </section>
+            </div>
+
+            {createConfirmOpen && (
+                <div className="fixed inset-0 z-[250] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4" onClick={() => setCreateConfirmOpen(false)}>
+                    <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-lg p-6 shadow-2xl border border-slate-200 dark:border-slate-800" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-start gap-3">
+                            <div className="size-11 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center">
+                                <span className="material-symbols-outlined">contact_phone</span>
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-black text-slate-900 dark:text-white">Konfirmasi Sebelum Kirim ke Parent</h3>
+                                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Admin hanya boleh membuat meeting langsung jika orang tua sudah diinformasikan dan menyetujui jadwal melalui tatap muka, WhatsApp, telepon, atau media komunikasi lain.</p>
+                            </div>
+                        </div>
+                        <div className="mt-5 flex flex-col gap-4">
+                            <label className="flex items-start gap-3 rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm font-semibold text-sky-800">
+                                <input type="checkbox" checked={createDraft.parentContactConfirmed} onChange={e => setCreateDraft(p => ({ ...p, parentContactConfirmed: e.target.checked }))} className="mt-1 rounded border-sky-400 text-sky-600 focus:ring-sky-500" />
+                                Saya sudah memastikan orang tua menerima informasi jadwal ini dan menyetujuinya secara langsung atau melalui media komunikasi.
+                            </label>
+                            <div>
+                                <label className="block text-sm font-bold mb-2 text-slate-700 dark:text-slate-300">Media konfirmasi</label>
+                                <select value={createDraft.communicationMethod} onChange={e => setCreateDraft(p => ({ ...p, communicationMethod: e.target.value }))} className="w-full rounded-lg border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 h-11">
+                                    <option>WhatsApp</option>
+                                    <option>Telepon</option>
+                                    <option>Tatap muka</option>
+                                    <option>Email</option>
+                                    <option>Lainnya</option>
+                                </select>
+                            </div>
+                            <textarea value={createDraft.reviewNote} onChange={e => setCreateDraft(p => ({ ...p, reviewNote: e.target.value }))} rows={3} className="w-full rounded-lg border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 resize-none" placeholder="Catatan admin (opsional)" />
+                        </div>
+                        <div className="mt-6 flex justify-end gap-3">
+                            <button onClick={() => setCreateConfirmOpen(false)} className="px-4 py-2 rounded-lg font-bold text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800">Batal</button>
+                            <button onClick={confirmAdminCreate} className="px-5 py-2 rounded-lg font-black bg-primary text-slate-900 hover:bg-primary/90">Kirim ke Parent</button>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* Toast */}
-            {toast && (
-                <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl font-bold text-sm flex items-center gap-2">
-                    <span className="material-symbols-outlined text-teal-400 text-[18px]">check_circle</span>
-                    {toast}
+            {reviewTarget && (
+                <div className="fixed inset-0 z-[250] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4" onClick={() => setReviewTarget(null)}>
+                    <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-lg p-6 shadow-2xl border border-slate-200 dark:border-slate-800" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-start gap-3">
+                            <div className="size-11 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+                                <span className="material-symbols-outlined">verified_user</span>
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-black text-slate-900 dark:text-white">Konfirmasi Persetujuan Orang Tua</h3>
+                                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Admin hanya boleh approve jika orang tua sudah diinformasikan dan menyetujui jadwal melalui tatap muka, WhatsApp, telepon, atau media komunikasi lain.</p>
+                            </div>
+                        </div>
+                        <div className="mt-5 flex flex-col gap-4">
+                            <label className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-800">
+                                <input type="checkbox" checked={reviewDraft.parentContactConfirmed} onChange={e => setReviewDraft(p => ({ ...p, parentContactConfirmed: e.target.checked }))} className="mt-1 rounded border-amber-400 text-amber-600 focus:ring-amber-500" />
+                                Saya sudah memastikan orang tua menerima informasi jadwal ini dan menyetujuinya secara langsung atau melalui media komunikasi.
+                            </label>
+                            <div>
+                                <label className="block text-sm font-bold mb-2 text-slate-700 dark:text-slate-300">Media konfirmasi</label>
+                                <select value={reviewDraft.communicationMethod} onChange={e => setReviewDraft(p => ({ ...p, communicationMethod: e.target.value }))} className="w-full rounded-lg border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 h-11">
+                                    <option>WhatsApp</option>
+                                    <option>Telepon</option>
+                                    <option>Tatap muka</option>
+                                    <option>Email</option>
+                                    <option>Lainnya</option>
+                                </select>
+                            </div>
+                            <textarea value={reviewDraft.reviewNote} onChange={e => setReviewDraft(p => ({ ...p, reviewNote: e.target.value }))} rows={3} className="w-full rounded-lg border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 resize-none" placeholder="Catatan admin (opsional)" />
+                        </div>
+                        <div className="mt-6 flex justify-end gap-3">
+                            <button onClick={() => setReviewTarget(null)} className="px-4 py-2 rounded-lg font-bold text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800">Batal</button>
+                            <button onClick={approveMeeting} className="px-5 py-2 rounded-lg font-black bg-primary text-slate-900 hover:bg-primary/90">Approve & Kirim</button>
+                        </div>
+                    </div>
                 </div>
             )}
+
+            {toast && <div className="fixed bottom-6 right-6 z-[300] bg-slate-900 text-white px-5 py-3 rounded-xl shadow-2xl font-bold text-sm">{toast}</div>}
         </div>
     );
 }
-
-export default App;

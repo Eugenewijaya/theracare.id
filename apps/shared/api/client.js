@@ -128,6 +128,17 @@ export const rescheduleApi = {
   getForTherapist: (id) => api.get(`/reschedule/therapist/${id}`),
   create: (data) => api.post('/reschedule', data),
   updateStatus: (id, status, updates) => api.patch(`/reschedule/${id}`, { status, ...updates }),
+  delete: (id) => api.delete(`/reschedule/${id}`),
+};
+
+export const meetingsApi = {
+  getAll: () => api.get('/meetings'),
+  getForTherapist: () => api.get('/meetings/therapist/me'),
+  getForParent: () => api.get('/meetings/parent/me'),
+  create: (data) => api.post('/meetings', data),
+  adminReview: (id, data) => api.patch(`/meetings/${id}/admin-review`, data),
+  parentResponse: (id, data) => api.patch(`/meetings/${id}/parent-response`, data),
+  delete: (id) => api.delete(`/meetings/${id}`),
 };
 
 // ── Notifications API ────────────────────────────────────────────

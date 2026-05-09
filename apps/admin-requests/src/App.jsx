@@ -123,7 +123,7 @@ function ReviewCard({ name, parentName, session, date, reason, submittedAgo, rev
 }
 
 // ── Resolved History row component ────────────────────────────────
-function ResolvedRow({ name, parentName, session, originalDate, newDate, resolvedBy, resolvedOn, outcome }) {
+function ResolvedRow({ name, parentName, session, originalDate, newDate, resolvedBy, resolvedOn, outcome, onDelete }) {
     const outcomeConfig = {
         approved:       { label: 'Approved',       bg: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400', icon: 'check_circle' },
         rejected:       { label: 'Rejected',        bg: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',               icon: 'cancel'        },
@@ -149,6 +149,13 @@ function ResolvedRow({ name, parentName, session, originalDate, newDate, resolve
                 <div className="flex items-center gap-1 text-slate-500 dark:text-slate-400 line-through text-xs">{originalDate}</div>
                 {newDate !== '—' && <div className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-medium text-xs"><span className="material-symbols-outlined text-[14px]">arrow_forward</span>{newDate}</div>}
                 <p className="text-xs text-slate-400 dark:text-slate-500">by {resolvedBy}</p>
+                <button
+                    type="button"
+                    onClick={onDelete}
+                    className="mt-1 text-xs font-bold text-red-500 hover:text-red-700 transition-colors"
+                >
+                    Hapus riwayat
+                </button>
             </div>
         </div>
     );
@@ -264,6 +271,13 @@ function App() {
         showPopup(`Confirm approval for ${req.name}'s request?`, 'info', true);
     };
 
+    const handleDelete = async (req) => {
+        if (!window.confirm(`Hapus riwayat request ${req.name}?`)) return;
+        await rescheduleApi.delete(req.id);
+        refreshData();
+        showPopup('Riwayat request berhasil dihapus.', 'success');
+    };
+
     return (
         <>
             <Header searchValue={searchQuery} onSearchChange={setSearchQuery} />
@@ -289,11 +303,11 @@ function App() {
                         </div>
                         <div className="flex items-end">
                             <button
-                                onClick={() => showPopup('Filter options not yet implemented.', 'info')}
+                                onClick={refreshData}
                                 className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-primary/10 border border-slate-300 dark:border-primary/30 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-primary/20 transition-colors text-sm font-medium"
                             >
-                                <span className="material-symbols-outlined text-sm">filter_list</span>
-                                Filter
+                                <span className="material-symbols-outlined text-sm">refresh</span>
+                                Refresh
                             </button>
                         </div>
                     </div>
@@ -386,7 +400,7 @@ function App() {
                                         ))}
                                     </div>
                                     {resolved.map((r, i) => (
-                                        <ResolvedRow key={i} {...r} />
+                                        <ResolvedRow key={i} {...r} onDelete={() => handleDelete(r)} />
                                     ))}
                                 </div>
                             )}

@@ -4,6 +4,7 @@ import QuickStats from './components/QuickStats';
 import PendingAttendance from './components/PendingAttendance';
 import ScheduleRequests from './components/ScheduleRequests';
 import Timeline from './components/Timeline';
+import DailyScheduleTable from './components/DailyScheduleTable';
 import QuickActions from './components/QuickActions';
 import MiniCalendar from './components/MiniCalendar';
 import ChildrenMonthChart from './components/ChildrenMonthChart';
@@ -31,6 +32,7 @@ function App() {
 
                         {/* Timeline full width under the cards */}
                         <Timeline />
+                        <DailyScheduleTable />
                     </div>
 
                     {/* ── Right Column (sidebar) ── */}

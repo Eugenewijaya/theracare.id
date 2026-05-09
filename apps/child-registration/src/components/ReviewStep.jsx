@@ -1,5 +1,10 @@
 import React from 'react';
 
+const formatCurrency = (value) => {
+    const amount = Number(value || 0);
+    if (!amount) return 'Harga belum diset';
+    return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(amount);
+};
 
 const ReviewStep = ({ parentData, childrenList, onAddAnother, isExistingParent }) => (
     <div className="flex flex-col gap-5">
@@ -34,6 +39,8 @@ const ReviewStep = ({ parentData, childrenList, onAddAnother, isExistingParent }
                     <div><p className="text-xs text-slate-500">Date of Birth</p><p className="font-semibold text-slate-900 dark:text-slate-100 text-sm mt-0.5">{child.dob}</p></div>
                     <div><p className="text-xs text-slate-500">Gender</p><p className="font-semibold text-slate-900 dark:text-slate-100 text-sm mt-0.5 capitalize">{child.gender || '—'}</p></div>
                     <div><p className="text-xs text-slate-500">Program</p><p className="font-semibold text-slate-900 dark:text-slate-100 text-sm mt-0.5">{child.program || '—'}</p></div>
+                    <div><p className="text-xs text-slate-500">Harga per Sesi</p><p className="font-semibold text-slate-900 dark:text-slate-100 text-sm mt-0.5">{formatCurrency(child.programPricePerSession)}</p></div>
+                    <div><p className="text-xs text-slate-500">Harga per Bulan</p><p className="font-semibold text-slate-900 dark:text-slate-100 text-sm mt-0.5">{formatCurrency(child.programPricePerMonth)}</p></div>
                     {child.school && <div><p className="text-xs text-slate-500">School</p><p className="font-semibold text-slate-900 dark:text-slate-100 text-sm mt-0.5">{child.school}</p></div>}
                     {child.diagnosis && <div className="col-span-2 md:col-span-3"><p className="text-xs text-slate-500">Diagnosis</p><p className="font-semibold text-slate-900 dark:text-slate-100 text-sm mt-0.5">{child.diagnosis}</p></div>}
                 </div>

@@ -64,7 +64,9 @@ const SidePanel = ({ onClose, selectedDate, sessions = [], onEventClick }) => {
                 <div className="flex-1 overflow-y-auto p-4 space-y-4">
                     <div className="relative pl-4 border-l-2 border-slate-200 dark:border-slate-800 space-y-6">
                         {daySessions.length > 0 ? daySessions.map((session, i) => {
-                            const child = childrenList.find(c => c.id === session.childId) || { name: 'Pasien Tidak Dikenal' };
+                            const child = session.isOneTime
+                                ? { name: session.visitorName || session.child?.name || 'One-time visit' }
+                                : childrenList.find(c => c.id === session.childId) || { name: 'Pasien Tidak Dikenal' };
                             const therapist = therapistsList.find(t => t.id === session.therapistId) || { name: 'Terapis Tidak Dikenal' };
                             const colors = getEventColor(session.focus);
                             const shortFocus = getShortFocus(session.focus);
@@ -74,7 +76,7 @@ const SidePanel = ({ onClose, selectedDate, sessions = [], onEventClick }) => {
                                     <div className={`absolute -left-[21px] top-1.5 w-2.5 h-2.5 rounded-full ${colors.dot} ring-4 ring-white dark:ring-background-dark`} />
                                     <div className="bg-white dark:bg-slate-900 rounded-lg p-3 border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md transition-shadow">
                                         <div className="flex justify-between items-start mb-2">
-                                            <span className={`text-xs font-bold px-2 py-0.5 rounded ${colors.bg} ${colors.text}`}>{shortFocus}</span>
+                                            <span className={`text-xs font-bold px-2 py-0.5 rounded ${colors.bg} ${colors.text}`}>{session.isOneTime ? 'OTV' : shortFocus}</span>
                                             <div className="flex items-center gap-2">
                                                 <span className="text-xs font-medium text-slate-500 flex items-center gap-1">
                                                     <span className="material-symbols-outlined text-[14px]">schedule</span>
@@ -84,14 +86,15 @@ const SidePanel = ({ onClose, selectedDate, sessions = [], onEventClick }) => {
                                                     <button
                                                         onClick={() => onEventClick(session, { stopPropagation: () => {} })}
                                                         className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-primary transition-colors"
-                                                        title="Edit sesi ini"
+                                                        title={session.isOneTime ? 'One-time visit log' : 'Edit sesi ini'}
                                                     >
-                                                        <span className="material-symbols-outlined text-[16px]">edit</span>
+                                                        <span className="material-symbols-outlined text-[16px]">{session.isOneTime ? 'info' : 'edit'}</span>
                                                     </button>
                                                 )}
                                             </div>
                                         </div>
                                         <h4 className="font-semibold text-sm mb-1">{child.name}</h4>
+                                        {session.isOneTime && <p className="text-[11px] text-slate-500 mb-1">One-time visit, tidak tersimpan sebagai data anak.</p>}
                                         <div className="flex items-center gap-3 text-xs text-slate-600 dark:text-slate-400">
                                             <span className="flex items-center gap-1">
                                                 <span className="material-symbols-outlined text-[14px]">person</span>

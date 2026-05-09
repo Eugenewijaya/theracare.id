@@ -123,4 +123,11 @@ export const rescheduleService = {
 
     return this.getAll().then((all) => all.find((r) => r.id === id));
   },
+
+  async delete(id: string) {
+    const req = await db.query.rescheduleRequests.findFirst({ where: eq(rescheduleRequests.id, id) });
+    if (!req) return null;
+    await db.delete(rescheduleRequests).where(eq(rescheduleRequests.id, id));
+    return { deleted: true, id };
+  },
 };

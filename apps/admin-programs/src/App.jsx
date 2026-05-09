@@ -8,16 +8,41 @@ const normalizeProgram = (program) => ({
   goals: Array.isArray(program?.goals) ? program.goals : [],
 });
 
+const parsePricing = (settings = {}) => {
+  try {
+    const raw = settings.programPricing;
+    return typeof raw === 'string' ? JSON.parse(raw || '{}') : (raw || {});
+  } catch {
+    return {};
+  }
+};
+
+const parseMoney = (value) => {
+  const numeric = String(value || '').replace(/[^\d]/g, '');
+  return numeric ? Number(numeric) : 0;
+};
+
+const formatCurrency = (value) => {
+  const amount = Number(value || 0);
+  if (!amount) return 'Belum diset';
+  return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(amount);
+};
+
 function App() {
   const [programs, setPrograms] = useState([]);
+  const [programPricing, setProgramPricing] = useState({});
   const [search, setSearch] = useState('');
 
   useEffect(() => {
     const load = async () => {
       try {
-        const res = await adminApi.getPrograms();
+        const [res, settingsRes] = await Promise.all([
+          adminApi.getPrograms(),
+          adminApi.getSettings(),
+        ]);
         if (!res.ok) throw new Error(res.data?.error || 'Gagal memuat program');
         setPrograms((res.data?.data || []).map(normalizeProgram));
+        if (settingsRes.ok) setProgramPricing(parsePricing(settingsRes.data?.data));
       } catch (e) {
         console.error(e);
         showToast(e.message || 'Gagal memuat program', 'error');
@@ -34,7 +59,7 @@ function App() {
   const [deleteConfirm, setDeleteConfirm] = useState(null);
 
   // Form states
-  const [formData, setFormData] = useState({ name: '', code: '', target: '', duration: 45, goals: [''] });
+  const [formData, setFormData] = useState({ name: '', code: '', target: '', duration: 45, pricePerSession: '', pricePerMonth: '', goals: [''] });
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
@@ -44,14 +69,20 @@ function App() {
   // --- Handlers ---
   const handleOpenCreate = () => {
     setEditingProgram(null);
-    setFormData({ name: '', code: '', target: '', duration: 45, goals: [''] });
+    setFormData({ name: '', code: '', target: '', duration: 45, pricePerSession: '', pricePerMonth: '', goals: [''] });
     setIsModalOpen(true);
   };
 
   const handleOpenEdit = (prog) => {
     setEditingProgram(prog);
     const normalized = normalizeProgram(prog);
-    setFormData({ ...normalized, goals: [...normalized.goals] });
+    const pricing = programPricing[normalized.code] || {};
+    setFormData({
+      ...normalized,
+      pricePerSession: pricing.pricePerSession || '',
+      pricePerMonth: pricing.pricePerMonth || '',
+      goals: [...normalized.goals],
+    });
     setIsModalOpen(true);
   };
 
@@ -74,15 +105,36 @@ function App() {
       ...formData,
       goals: formData.goals.filter(g => g.trim() !== '')
     };
+    const programPayload = {
+      name: cleanedData.name,
+      code: cleanedData.code,
+      target: cleanedData.target,
+      duration: cleanedData.duration,
+      goals: cleanedData.goals,
+    };
+    const nextCode = cleanedData.code.trim().toUpperCase();
+    const nextPricing = {
+      ...programPricing,
+      [nextCode]: {
+        pricePerSession: parseMoney(cleanedData.pricePerSession),
+        pricePerMonth: parseMoney(cleanedData.pricePerMonth),
+      },
+    };
+    if (editingProgram?.code && editingProgram.code !== nextCode) {
+      delete nextPricing[editingProgram.code];
+    }
 
     try {
       let saveRes;
       if (editingProgram) {
-        saveRes = await adminApi.updateProgram(editingProgram.id, cleanedData);
+        saveRes = await adminApi.updateProgram(editingProgram.id, programPayload);
       } else {
-        saveRes = await adminApi.createProgram(cleanedData);
+        saveRes = await adminApi.createProgram(programPayload);
       }
       if (!saveRes.ok) throw new Error(saveRes.data?.error || saveRes.data?.message || 'Gagal menyimpan program');
+      const pricingRes = await adminApi.updateSettings({ programPricing: JSON.stringify(nextPricing) });
+      if (!pricingRes.ok) throw new Error(pricingRes.data?.error || 'Program tersimpan, tetapi harga gagal disimpan.');
+      setProgramPricing(nextPricing);
       showToast(
         editingProgram
           ? `Program "${cleanedData.name}" berhasil diperbarui.`
@@ -102,6 +154,10 @@ function App() {
     try {
       const deleteRes = await adminApi.deleteProgram(deleteConfirm.id);
       if (!deleteRes.ok) throw new Error(deleteRes.data?.error || deleteRes.data?.message || 'Gagal menghapus program');
+      const nextPricing = { ...programPricing };
+      delete nextPricing[deleteConfirm.code];
+      await adminApi.updateSettings({ programPricing: JSON.stringify(nextPricing) });
+      setProgramPricing(nextPricing);
       setDeleteConfirm(null);
       showToast(`Program "${name}" telah dihapus.`, 'warning');
       const res = await adminApi.getPrograms();
@@ -220,6 +276,16 @@ function App() {
                     
                     <h3 className="text-lg font-bold text-slate-900 dark:text-white leading-tight mb-1">{prog.name}</h3>
                     <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mb-4">{prog.target}</p>
+                    <div className="grid grid-cols-2 gap-2 mb-4">
+                      <div className="rounded-lg border border-emerald-100 dark:border-emerald-900/40 bg-emerald-50 dark:bg-emerald-900/20 p-2">
+                        <p className="text-[10px] font-black uppercase tracking-wide text-emerald-700 dark:text-emerald-300">Per Sesi</p>
+                        <p className="text-xs font-bold text-slate-800 dark:text-slate-100">{formatCurrency(programPricing[prog.code]?.pricePerSession)}</p>
+                      </div>
+                      <div className="rounded-lg border border-sky-100 dark:border-sky-900/40 bg-sky-50 dark:bg-sky-900/20 p-2">
+                        <p className="text-[10px] font-black uppercase tracking-wide text-sky-700 dark:text-sky-300">Per Bulan</p>
+                        <p className="text-xs font-bold text-slate-800 dark:text-slate-100">{formatCurrency(programPricing[prog.code]?.pricePerMonth)}</p>
+                      </div>
+                    </div>
                     
                     <div className="flex items-center gap-2 mb-4 text-xs font-medium text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-900/50 p-2 rounded-lg border border-slate-100 dark:border-slate-700/50">
                       <span className="material-symbols-outlined text-[16px] text-slate-400">schedule</span>
@@ -322,6 +388,31 @@ function App() {
                       min="15" max="180" step="15"
                       value={formData.duration}
                       onChange={e => setFormData({...formData, duration: parseInt(e.target.value) || 45})}
+                      className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none text-sm shadow-sm"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Harga per Sesi</label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={formData.pricePerSession}
+                      onChange={e => setFormData({...formData, pricePerSession: e.target.value})}
+                      placeholder="Contoh: 350000"
+                      className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none text-sm shadow-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Harga per Bulan</label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={formData.pricePerMonth}
+                      onChange={e => setFormData({...formData, pricePerMonth: e.target.value})}
+                      placeholder="Contoh: 2400000"
                       className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none text-sm shadow-sm"
                     />
                   </div>

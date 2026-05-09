@@ -12,6 +12,7 @@ const navGroups = [
       { path: '/scheduling', icon: 'calendar_month', label: 'Penjadwalan Tunggal' },
       { path: '/bulk-schedule', icon: 'event_repeat', label: 'Jadwal Massal' },
       { path: '/requests', icon: 'assignment', label: 'Permintaan Masuk', badgeKey: 'requests' },
+      { path: '/parent-meetings', icon: 'groups', label: 'Parent Meeting' },
     ],
   },
   {

@@ -12,6 +12,7 @@ const navItems = [
   { path: '/reports', icon: 'folder_open', label: 'Daftar Laporan' },
   { path: '/reschedule', icon: 'swap_horiz', label: 'Penjadwalan Ulang', badgeType: 'reschedule' },
   { path: '/announcements', icon: 'campaign', label: 'Pengumuman', badgeType: 'announcement' },
+  { path: '/meetings', icon: 'groups', label: 'Parent Meeting' },
   { path: '/settings', icon: 'settings', label: 'Pengaturan' },
 ];
 

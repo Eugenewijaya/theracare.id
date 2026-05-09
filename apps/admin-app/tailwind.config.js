@@ -8,6 +8,7 @@ export default {
     "../admin-scheduling/src/**/*.{js,jsx}",
     "../bulk-schedule/src/**/*.{js,jsx}",
     "../admin-requests/src/**/*.{js,jsx}",
+    "../parents-meeting/src/**/*.{js,jsx}",
     "../admin-attendance/src/**/*.{js,jsx}",
     "../monitoring-progress/src/**/*.{js,jsx}",
     "../child-management/src/**/*.{js,jsx}",

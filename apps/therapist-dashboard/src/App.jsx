@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import WelcomeFocus from './components/WelcomeFocus';
 import TimelineList from './components/TimelineList';
 import RecentActivity from './components/RecentActivity';
-import SupportWidget from './components/SupportWidget';
 
 function App() {
     const [headerSearch, setHeaderSearch] = useState('');
@@ -20,7 +19,6 @@ function App() {
                 {/* Right Column (Sidebar) */}
                 <aside className="w-full md:w-80 flex flex-col gap-6">
                     <RecentActivity />
-                    <SupportWidget />
                 </aside>
 
             </main>

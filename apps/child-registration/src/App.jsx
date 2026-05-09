@@ -154,7 +154,13 @@ function App() {
 
             const registeredChildren = [];
             for (const child of childrenList) {
-                const childRes = await childrenApi.create({ ...child, parentId });
+                const therapyProgramsList = child.program ? [{
+                    programId: child.programId || null,
+                    type: child.program,
+                    totalSessions: Number(child.totalSessions || 12),
+                    goal: child.programGoal || '',
+                }] : [];
+                const childRes = await childrenApi.create({ ...child, parentId, therapyProgramsList });
                 if (!childRes.ok || !childRes.data?.data) {
                     throw new Error(childRes.data?.error || childRes.data?.message || `Gagal mendaftarkan ${child.firstName}.`);
                 }
@@ -252,7 +258,7 @@ function App() {
         if (step === 0) return regMode !== null;
         if (step === 1) return !!parentData.name?.trim() && !!parentData.phone?.trim() && !!parentData.address?.trim();
         if (step === 2) return !!currentChild.firstName?.trim() && !!currentChild.lastName?.trim() && !!currentChild.dob;
-        if (step === 3) return !!currentChild.program;
+        if (step === 3) return !!currentChild.program && !!currentChild.therapistId;
         return true;
     })();
 

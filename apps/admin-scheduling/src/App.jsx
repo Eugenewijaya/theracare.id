@@ -6,6 +6,14 @@ import Legend from './components/Legend';
 import SidePanel from './components/SidePanel';
 import { sessionsApi, childrenApi, therapistsApi, adminApi } from '../../shared/api/client';
 
+const parseJsonSetting = (value, fallback) => {
+    try {
+        return JSON.parse(value || JSON.stringify(fallback));
+    } catch {
+        return fallback;
+    }
+};
+
 // ── Toast Notification ──────────────────────────────────────────────────────
 function Toast({ message, type = 'success', onClose }) {
     React.useEffect(() => {
@@ -35,7 +43,7 @@ function Toast({ message, type = 'success', onClose }) {
 }
 
 // ── Edit Session Modal ──────────────────────────────────────────────────────
-function EditSessionModal({ session, childrenList, therapistsList, programsList, onSave, onDelete, onClose }) {
+function EditSessionModal({ session, childrenList, therapistsList, programsList, onSave, onDelete, onMarkLeave, onClose }) {
     const [form, setForm] = useState({
         therapistId: session.therapistId || '',
         program:     session.focus || '',
@@ -147,6 +155,13 @@ function EditSessionModal({ session, childrenList, therapistsList, programsList,
                     </button>
                     <div className="flex gap-2">
                         <button
+                            onClick={() => onMarkLeave(session.id)}
+                            className="px-4 py-2 text-sm font-bold text-red-700 bg-red-50 hover:bg-red-100 rounded-lg transition-colors flex items-center gap-1.5"
+                        >
+                            <span className="material-symbols-outlined text-[16px]">event_busy</span>
+                            Cuti Terapis
+                        </button>
+                        <button
                             onClick={onClose}
                             className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors"
                         >
@@ -185,6 +200,7 @@ function App() {
 
     // Data state
     const [allSessions, setAllSessions] = useState([]);
+    const [oneTimeVisits, setOneTimeVisits] = useState([]);
     const [childrenList, setChildrenList] = useState([]);
     const [therapistsList, setTherapistsList] = useState([]);
     const [programsList, setProgramsList] = useState([]);
@@ -192,16 +208,18 @@ function App() {
     useEffect(() => {
         const loadDb = async () => {
             try {
-                const [sessRes, childRes, therRes, progRes] = await Promise.all([
+                const [sessRes, childRes, therRes, progRes, settingsRes] = await Promise.all([
                     sessionsApi.getAll(),
                     childrenApi.getAll(),
                     therapistsApi.getAll(),
-                    adminApi.getPrograms()
+                    adminApi.getPrograms(),
+                    adminApi.getSettings()
                 ]);
                 setAllSessions(sessRes.data?.data || []);
                 setChildrenList(childRes.data?.data || []);
                 setTherapistsList(therRes.data?.data || []);
                 setProgramsList(progRes.data?.data || []);
+                setOneTimeVisits(parseJsonSetting(settingsRes.data?.data?.oneTimeVisitLog, []));
             } catch (e) {
                 console.error(e);
             }
@@ -209,12 +227,25 @@ function App() {
         loadDb();
     }, []);
 
+    const calendarSessions = React.useMemo(() => [
+        ...allSessions,
+        ...oneTimeVisits.map((visit) => ({
+            ...visit,
+            isOneTime: true,
+            childId: '',
+            child: { name: visit.visitorName },
+            focus: visit.program,
+            status: 'one_time_visit',
+        })),
+    ], [allSessions, oneTimeVisits]);
+
     const filteredSessions = React.useMemo(() => {
-        return allSessions.filter(s => {
+        return calendarSessions.filter(s => {
             if (filters.therapist !== 'All Therapists') {
                 const tr = therapistsList.find(t => t.id === s.therapistId);
                 if (!tr || tr.name !== filters.therapist) return false;
             }
+            if (s.isOneTime && filters.child !== 'All Children') return false;
             if (filters.child !== 'All Children') {
                 const ch = childrenList.find(c => c.id === s.childId);
                 if (!ch || ch.name !== filters.child) return false;
@@ -222,11 +253,13 @@ function App() {
             if (filters.program !== 'All Programs' && s.focus !== filters.program) return false;
             return true;
         });
-    }, [allSessions, filters, childrenList]);
+    }, [calendarSessions, filters, childrenList, therapistsList]);
 
     // New session form state
     const [newSession, setNewSession] = useState({
+        sessionKind: 'regular',
         child: '',
+        visitorName: '',
         therapistId: '',
         program: '',
         startTime: '09:00',
@@ -248,12 +281,16 @@ function App() {
     const handleDateClick = (dateObj) => {
         setSelectedDate(dateObj);
         setIsAddModalOpen(true);
-        setNewSession({ child: '', startTime: '09:00', duration: '60', therapistId: '', program: '' });
+        setNewSession({ sessionKind: 'regular', child: '', visitorName: '', startTime: '09:00', duration: '60', therapistId: '', program: '' });
     };
 
     // Called from CalendarGrid when clicking on an event pill
     const handleEventClick = (session, e) => {
         e.stopPropagation();
+        if (session.isOneTime) {
+            showToast('One-time visit tersimpan sebagai log dan tidak mengubah data anak.', 'info');
+            return;
+        }
         setEditSession(session);
     };
 
@@ -276,7 +313,12 @@ function App() {
     };
 
     const handleSaveSession = async () => {
-        if (!newSession.child) {
+        if (newSession.sessionKind === 'one_time') {
+            if (!newSession.visitorName.trim() || !newSession.therapistId || !newSession.program) {
+                showToast('Isi nama calon client, terapis, dan program one-time visit.', 'error');
+                return;
+            }
+        } else if (!newSession.child) {
             showToast('Pilih anak/pasien terlebih dahulu', 'error');
             return;
         }
@@ -287,6 +329,30 @@ function App() {
             const m = String(selectedDate.getMonth() + 1).padStart(2, '0');
             const d = String(selectedDate.getDate()).padStart(2, '0');
             dateStr = `${y}-${m}-${d}`;
+        }
+
+        if (newSession.sessionKind === 'one_time') {
+            const visit = {
+                id: `OTV-${Date.now().toString(36).toUpperCase()}`,
+                visitorName: newSession.visitorName.trim(),
+                therapistId: newSession.therapistId,
+                program: newSession.program,
+                date: dateStr,
+                startTime: newSession.startTime,
+                duration: `${newSession.duration} mins`,
+                notes: 'One-time visit log. Tidak membuat data anak.',
+                createdAt: new Date().toISOString(),
+            };
+            const nextVisits = [...oneTimeVisits, visit];
+            const res = await adminApi.updateSettings({ oneTimeVisitLog: JSON.stringify(nextVisits) });
+            if (!res.ok) {
+                showToast(res.data?.error || 'Gagal menyimpan log one-time visit', 'error');
+                return;
+            }
+            setOneTimeVisits(nextVisits);
+            setIsAddModalOpen(false);
+            showToast('One-time visit berhasil dicatat di kalender.');
+            return;
         }
 
         const sessionObj = {
@@ -344,6 +410,19 @@ function App() {
             setAllSessions(res.data?.data || []);
         } catch (e) {
             showToast('Gagal menghapus sesi', 'error');
+        }
+    };
+
+    const handleMarkTherapistLeave = async (sessionId) => {
+        if (!window.confirm('Tandai sesi ini merah karena terapis cuti? Orang tua perlu diarahkan ke reschedule atau terapis pendamping.')) return;
+        try {
+            await sessionsApi.updateStatus(sessionId, 'cancelled', 'Terapis cuti - sarankan reschedule atau jadwalkan dengan terapis pendamping.');
+            setEditSession(null);
+            showToast('Sesi ditandai sebagai cuti terapis.', 'info');
+            const res = await sessionsApi.getAll();
+            setAllSessions(res.data?.data || []);
+        } catch (e) {
+            showToast('Gagal menandai cuti terapis', 'error');
         }
     };
 
@@ -423,19 +502,47 @@ function App() {
                                 </div>
                             </div>
 
-                            <div className="flex flex-col gap-2">
-                                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Anak / Pasien <span className="text-red-500">*</span></label>
-                                <select
-                                    value={newSession.child}
-                                    onChange={handleChildChange}
-                                    className="w-full h-11 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary appearance-none cursor-pointer"
-                                >
-                                    <option value="">Pilih anak...</option>
-                                    {childrenList.map((ch) => (
-                                        <option key={ch.id} value={ch.id}>{ch.name}</option>
-                                    ))}
-                                </select>
+                            <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-100 dark:bg-slate-800 p-1">
+                                {[
+                                    { key: 'regular', label: 'Sesi Anak' },
+                                    { key: 'one_time', label: 'One-time Visit' },
+                                ].map(option => (
+                                    <button
+                                        key={option.key}
+                                        onClick={() => setNewSession(p => ({ ...p, sessionKind: option.key }))}
+                                        className={`h-10 rounded-lg text-sm font-black transition-colors ${newSession.sessionKind === option.key ? 'bg-white dark:bg-slate-900 text-primary shadow-sm' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}
+                                    >
+                                        {option.label}
+                                    </button>
+                                ))}
                             </div>
+
+                            {newSession.sessionKind === 'regular' ? (
+                                <div className="flex flex-col gap-2">
+                                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Anak / Pasien <span className="text-red-500">*</span></label>
+                                    <select
+                                        value={newSession.child}
+                                        onChange={handleChildChange}
+                                        className="w-full h-11 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary appearance-none cursor-pointer"
+                                    >
+                                        <option value="">Pilih anak...</option>
+                                        {childrenList.map((ch) => (
+                                            <option key={ch.id} value={ch.id}>{ch.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            ) : (
+                                <div className="flex flex-col gap-2">
+                                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Nama calon client <span className="text-red-500">*</span></label>
+                                    <input
+                                        value={newSession.visitorName}
+                                        onChange={e => setNewSession(p => ({ ...p, visitorName: e.target.value }))}
+                                        placeholder="Contoh: Calon Client - konsultasi awal"
+                                        className="w-full h-11 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary"
+                                    />
+                                    <p className="text-xs text-slate-500">Nama ini hanya masuk log one-time visit dan tidak membuat data anak baru.</p>
+                                </div>
+                            )}
 
                             <div className="flex flex-col gap-2">
                                 <label className="text-sm font-medium text-slate-700 dark:text-slate-300 flex justify-between">
@@ -485,10 +592,11 @@ function App() {
                                         onChange={e => setNewSession(p => ({ ...p, duration: e.target.value }))}
                                         className="w-full h-11 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary appearance-none cursor-pointer"
                                     >
+                                        <option value="15">15 menit</option>
                                         <option value="30">30 menit</option>
                                         <option value="45">45 menit</option>
                                         <option value="60">60 menit</option>
-                                        <option value="90">90 menit</option>
+                                        {newSession.sessionKind === 'regular' && <option value="90">90 menit</option>}
                                     </select>
                                 </div>
                             </div>
@@ -524,6 +632,7 @@ function App() {
                     programsList={programsList}
                     onSave={handleEditSave}
                     onDelete={handleEditDelete}
+                    onMarkLeave={handleMarkTherapistLeave}
                     onClose={() => setEditSession(null)}
                 />
             )}
