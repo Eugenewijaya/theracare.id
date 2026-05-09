@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { applyPlatformFavicon, platformLogoUrl } from '../platformBrand';
+import { useClinicSettings } from '../clinicSettings';
 
 const UPDATED_AT = '8 Mei 2026';
 
@@ -117,10 +118,11 @@ const NAV_ITEMS = [
 
 export default function LegalPage({ type = 'privacy', portalName = 'TheraCare' }) {
   const content = CONTENT[type] || CONTENT.privacy;
+  const { settings } = useClinicSettings();
 
   useEffect(() => {
-    applyPlatformFavicon();
-  }, []);
+    applyPlatformFavicon(settings.faviconUrl || settings.logoUrl);
+  }, [settings.faviconUrl, settings.logoUrl]);
 
   return (
     <main className="min-h-screen bg-slate-50 px-5 py-8 text-slate-950 sm:py-12">

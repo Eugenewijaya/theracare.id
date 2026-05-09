@@ -84,7 +84,7 @@ export function applyClinicTheme(settings) {
   document.documentElement.style.setProperty('--clinic-primary', normalized.primaryColor);
   document.documentElement.style.setProperty('--clinic-secondary', normalized.secondaryColor);
   document.title = `${normalized.clinicName} Admin`;
-  applyPlatformFavicon();
+  applyPlatformFavicon(normalized.faviconUrl || normalized.logoUrl);
 }
 
 export function useClinicSettings() {
@@ -126,15 +126,22 @@ export function useClinicSettings() {
         onSettings({});
       }
     };
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') refresh();
+    };
 
     window.addEventListener(CLINIC_SETTINGS_EVENT, onSettings);
     window.addEventListener('storage', onStorage);
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', onVisibility);
     return () => {
       mounted = false;
       window.removeEventListener(CLINIC_SETTINGS_EVENT, onSettings);
       window.removeEventListener('storage', onStorage);
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, []);
+  }, [refresh]);
 
   return {
     ...settings,

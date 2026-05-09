@@ -69,8 +69,8 @@ export default function LoginExperience({
   });
 
   useEffect(() => {
-    applyPlatformFavicon();
-  }, []);
+    applyPlatformFavicon(settings.faviconUrl || settings.logoUrl);
+  }, [settings.faviconUrl, settings.logoUrl]);
 
   useEffect(() => {
     if (started) {
