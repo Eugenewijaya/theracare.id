@@ -71,8 +71,14 @@ export default function UserManagementPage() {
             : await therapistsApi.delete(user.id);
 
         if (res.ok) {
+            if (type === 'parents') {
+                setParents(prev => prev.filter(item => item.id !== user.id));
+            } else {
+                setTherapists(prev => prev.filter(item => item.id !== user.id));
+            }
             load();
-            showToast(`${user.name} berhasil dihapus.`);
+            const archived = res.data?.data?.archived;
+            showToast(`${user.name} berhasil ${archived ? 'diarsipkan dan disembunyikan' : 'dihapus'}.`);
         } else {
             showToast(`Gagal menghapus: ${res.data?.error || res.data?.message || 'Error'}`, 'error');
         }

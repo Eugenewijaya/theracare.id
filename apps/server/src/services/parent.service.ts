@@ -1,5 +1,5 @@
 import { db } from "../db/index.js";
-import { account, authSession, children, notificationReads, parents, rescheduleRequests, sessionRatings, user } from "../db/schema.js";
+import { account, authSession, children, notificationReads, notifications, parents, rescheduleRequests, sessionRatings, user } from "../db/schema.js";
 import { eq } from "drizzle-orm";
 import { auth } from "../auth.js";
 import { generateTempPassword, generateSeqId } from "../utils/id-generators.js";
@@ -27,12 +27,32 @@ function formatParent(parent: any) {
   };
 }
 
+async function archiveUser(userId: string, reason: string) {
+  await db.update(user)
+    .set({
+      status: "deleted",
+      banned: true,
+      banReason: reason,
+      updatedAt: new Date(),
+    })
+    .where(eq(user.id, userId));
+  await db.delete(authSession).where(eq(authSession.userId, userId));
+}
+
+async function deleteAuthUser(userId: string) {
+  await db.delete(notificationReads).where(eq(notificationReads.userId, userId));
+  await db.delete(notifications).where(eq(notifications.targetUserId, userId));
+  await db.delete(authSession).where(eq(authSession.userId, userId));
+  await db.delete(account).where(eq(account.userId, userId));
+  await db.delete(user).where(eq(user.id, userId));
+}
+
 export const parentService = {
   async getAll() {
     const rows = await db.query.parents.findMany({
       with: { user: true, children: true },
     });
-    return rows.map(formatParent);
+    return rows.filter((row) => row.user?.status !== "deleted").map(formatParent);
   },
 
   async getById(id: string) {
@@ -56,7 +76,7 @@ export const parentService = {
     if (!wanted) return null;
     const all = await db.query.parents.findMany({ with: { user: true, children: true } });
     const parent = all.find((p) => normalizePhone(p.user?.phone || "") === wanted);
-    if (!parent || parent.user?.status === "suspended") return null;
+    if (!parent || parent.user?.status !== "active") return null;
     return {
       parentId: parent.id,
       email: parent.user?.email,
@@ -139,24 +159,24 @@ export const parentService = {
 
     const child = await db.query.children.findFirst({ where: eq(children.parentId, id) });
     if (child) {
-      return { blocked: true, reason: "Orang tua masih memiliki data anak. Hapus atau pindahkan data anak terlebih dahulu." };
+      await archiveUser(parent.userId, "Parent account archived by admin while child records still exist.");
+      return { deleted: true, archived: true, id, reason: "Akun orang tua diarsipkan karena masih memiliki data anak." };
     }
 
     const reschedule = await db.query.rescheduleRequests.findFirst({ where: eq(rescheduleRequests.parentId, id) });
     if (reschedule) {
-      return { blocked: true, reason: "Orang tua masih memiliki permintaan reschedule." };
+      await archiveUser(parent.userId, "Parent account archived by admin while reschedule requests still exist.");
+      return { deleted: true, archived: true, id, reason: "Akun orang tua diarsipkan karena masih memiliki permintaan reschedule." };
     }
 
     const rating = await db.query.sessionRatings.findFirst({ where: eq(sessionRatings.parentId, id) });
     if (rating) {
-      return { blocked: true, reason: "Orang tua masih memiliki rating sesi." };
+      await archiveUser(parent.userId, "Parent account archived by admin while session ratings still exist.");
+      return { deleted: true, archived: true, id, reason: "Akun orang tua diarsipkan karena masih memiliki rating sesi." };
     }
 
     await db.delete(parents).where(eq(parents.id, id));
-    await db.delete(notificationReads).where(eq(notificationReads.userId, parent.userId));
-    await db.delete(authSession).where(eq(authSession.userId, parent.userId));
-    await db.delete(account).where(eq(account.userId, parent.userId));
-    await db.delete(user).where(eq(user.id, parent.userId));
+    await deleteAuthUser(parent.userId);
     return { deleted: true, id };
   },
 

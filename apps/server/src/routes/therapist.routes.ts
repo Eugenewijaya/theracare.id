@@ -79,7 +79,7 @@ router.delete("/:id", requireAuth, requireRole("admin"), async (req, res, next) 
   try {
     const result = await therapistService.delete(req.params.id as string);
     if (!result) return notFound(res);
-    if ("blocked" in result && result.blocked) return conflict(res, result.reason, result);
+    if ("blocked" in result && result.blocked) return conflict(res, result.reason || "Akun tidak dapat dihapus", result);
     ok(res, result);
   } catch (e) { next(e); }
 });

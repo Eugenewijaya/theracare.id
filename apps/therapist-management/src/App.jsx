@@ -12,6 +12,12 @@ function App() {
     const [therapists, setTherapists] = useState([]);
     const [programs, setPrograms] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [toast, setToast] = useState(null);
+
+    const showToast = (message, type = 'success') => {
+        setToast({ message, type });
+        setTimeout(() => setToast(null), 3500);
+    };
 
     const loadData = async () => {
         try {
@@ -54,8 +60,32 @@ function App() {
         return matchesSearch && matchesSpec && matchesStatus;
     });
 
+    const handleDeleteTherapist = async (therapist) => {
+        if (!therapist?.id) return;
+        const confirmed = window.confirm(`Hapus terapis ${therapist.name}? Jika sudah punya sesi/laporan, akun akan diarsipkan agar histori klinis tetap aman.`);
+        if (!confirmed) return;
+
+        const res = await therapistsApi.delete(therapist.id);
+        if (res.ok) {
+            setTherapists(prev => prev.filter(item => item.id !== therapist.id));
+            const archived = res.data?.data?.archived;
+            showToast(`${therapist.name} berhasil ${archived ? 'diarsipkan dan disembunyikan' : 'dihapus'}.`);
+            return;
+        }
+        showToast(`Gagal menghapus terapis: ${res.data?.error || res.data?.message || 'Error'}`, 'error');
+    };
+
     return (
         <>
+            {toast && (
+                <div className={`fixed bottom-6 right-6 z-[500] rounded-2xl border px-5 py-3 text-sm font-bold shadow-xl ${
+                    toast.type === 'error'
+                        ? 'border-red-200 bg-red-50 text-red-700'
+                        : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                }`}>
+                    {toast.message}
+                </div>
+            )}
             <Header searchValue={searchQuery} onSearchChange={setSearchQuery} />
             <main className="px-4 sm:px-10 flex flex-1 justify-center py-6 sm:py-8">
                 <div className="layout-content-container flex flex-col max-w-[1200px] flex-1 w-full">
@@ -113,7 +143,13 @@ function App() {
                     ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                             {filteredTherapists.map((t) => (
-                                <TherapistCard key={t.id} {...t} />
+                                <TherapistCard
+                                    key={t.id}
+                                    {...t}
+                                    onDelete={handleDeleteTherapist}
+                                    onView={() => navigate('/users')}
+                                    onEdit={() => navigate('/users')}
+                                />
                             ))}
                         </div>
                     )}

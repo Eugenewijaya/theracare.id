@@ -1,5 +1,5 @@
 import { db } from "../db/index.js";
-import { account, authSession, notificationReads, reports, therapists, therapySessions, user } from "../db/schema.js";
+import { account, authSession, notificationReads, notifications, reports, therapists, therapySessions, user } from "../db/schema.js";
 import { eq } from "drizzle-orm";
 import { auth } from "../auth.js";
 import { generateTempPassword, generateNIT } from "../utils/id-generators.js";
@@ -96,10 +96,30 @@ function formatTherapist(therapist: any) {
   };
 }
 
+async function archiveUser(userId: string, reason: string) {
+  await db.update(user)
+    .set({
+      status: "deleted",
+      banned: true,
+      banReason: reason,
+      updatedAt: new Date(),
+    })
+    .where(eq(user.id, userId));
+  await db.delete(authSession).where(eq(authSession.userId, userId));
+}
+
+async function deleteAuthUser(userId: string) {
+  await db.delete(notificationReads).where(eq(notificationReads.userId, userId));
+  await db.delete(notifications).where(eq(notifications.targetUserId, userId));
+  await db.delete(authSession).where(eq(authSession.userId, userId));
+  await db.delete(account).where(eq(account.userId, userId));
+  await db.delete(user).where(eq(user.id, userId));
+}
+
 export const therapistService = {
   async getAll() {
     const rows = await db.query.therapists.findMany({ with: { user: true } });
-    return rows.map(formatTherapist);
+    return rows.filter((row) => row.user?.status !== "deleted").map(formatTherapist);
   },
 
   async getById(id: string) {
@@ -125,7 +145,7 @@ export const therapistService = {
       where: eq(therapists.nit, id),
       with: { user: true },
     });
-    if (!therapist || therapist.user?.status === "suspended") return null;
+    if (!therapist || therapist.user?.status !== "active") return null;
     return {
       therapistId: therapist.id,
       nit: therapist.nit,
@@ -212,19 +232,18 @@ export const therapistService = {
 
     const session = await db.query.therapySessions.findFirst({ where: eq(therapySessions.therapistId, id) });
     if (session) {
-      return { blocked: true, reason: "Terapis masih memiliki sesi terapi." };
+      await archiveUser(therapist.userId, "Therapist account archived by admin while therapy sessions still exist.");
+      return { deleted: true, archived: true, id, reason: "Akun terapis diarsipkan karena masih memiliki sesi terapi." };
     }
 
     const report = await db.query.reports.findFirst({ where: eq(reports.therapistId, id) });
     if (report) {
-      return { blocked: true, reason: "Terapis masih memiliki laporan terapi." };
+      await archiveUser(therapist.userId, "Therapist account archived by admin while therapy reports still exist.");
+      return { deleted: true, archived: true, id, reason: "Akun terapis diarsipkan karena masih memiliki laporan terapi." };
     }
 
     await db.delete(therapists).where(eq(therapists.id, id));
-    await db.delete(notificationReads).where(eq(notificationReads.userId, therapist.userId));
-    await db.delete(authSession).where(eq(authSession.userId, therapist.userId));
-    await db.delete(account).where(eq(account.userId, therapist.userId));
-    await db.delete(user).where(eq(user.id, therapist.userId));
+    await deleteAuthUser(therapist.userId);
     return { deleted: true, id };
   },
 

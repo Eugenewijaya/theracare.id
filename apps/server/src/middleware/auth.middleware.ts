@@ -34,7 +34,7 @@ export const requireAuth = async (
       return res.status(401).json({ error: "Unauthorized — silakan login terlebih dahulu" });
     }
     const u = session.user as any;
-    if (u.status === "suspended") {
+    if (u.status === "suspended" || u.status === "deleted" || u.banned) {
       return res.status(403).json({ error: "Akun Anda ditangguhkan" });
     }
     req.user = {
