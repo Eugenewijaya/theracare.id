@@ -54,6 +54,10 @@ export const authApi = {
   
   /** Logout */
   signOut: () => request('POST', '/auth/sign-out'),
+
+  /** Change password for the current signed-in user */
+  changePassword: (currentPassword, newPassword, revokeOtherSessions = true) =>
+    request('POST', '/auth/change-password', { currentPassword, newPassword, revokeOtherSessions }),
 };
 
 // ── Parents API ──────────────────────────────────────────────────

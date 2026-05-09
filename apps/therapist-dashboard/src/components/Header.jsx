@@ -1,14 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import ProfileModal from './ProfileModal';
-import { notificationsApi } from '../../../shared/api/client';
+import { authApi, notificationsApi } from '../../../shared/api/client';
+import PortalProfileMenu from '../../../shared/ui/PortalProfileMenu';
 
 // Dashboard header search: navigates to /child-progress with a ?q= param
 // so the child-progress page can pre-filter on mount.
 const Header = ({ searchValue = '', onSearchChange }) => {
     const navigate = useNavigate();
     const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
-    const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
     const [currentUser, setCurrentUser] = useState(null);
     const [unreadCount, setUnreadCount] = useState(0);
 
@@ -39,6 +38,15 @@ const Header = ({ searchValue = '', onSearchChange }) => {
         if (e.key === 'Enter' && searchValue.trim()) {
             navigate(`/child-progress?q=${encodeURIComponent(searchValue.trim())}`);
         }
+    };
+
+    const handleLogout = async () => {
+        try {
+            await authApi.signOut();
+        } catch {}
+        sessionStorage.removeItem('therapist_user');
+        localStorage.removeItem('therapist_user');
+        navigate('/login');
     };
 
     return (
@@ -110,32 +118,17 @@ const Header = ({ searchValue = '', onSearchChange }) => {
                                 </span>
                             )}
                         </button>
-                        <button
-                            type="button"
-                            onClick={() => setIsProfileModalOpen(true)}
-                            className="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-8 sm:size-10 border-2 border-primary/20 cursor-pointer hover:border-primary transition-colors shadow-sm bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 font-black flex items-center justify-center overflow-hidden"
-                            title={currentUser?.name || 'Therapist Profile'}
-                            style={currentUser?.avatar ? { backgroundImage: `url("${currentUser.avatar}")` } : {}}
-                        >
-                            {!currentUser?.avatar && (currentUser?.name?.charAt(0)?.toUpperCase() || 'T')}
-                        </button>
+                        <PortalProfileMenu
+                            user={currentUser}
+                            role="therapist"
+                            onLogout={handleLogout}
+                            onNavigateProfile={() => navigate('/performance')}
+                            onNavigateAnnouncements={() => navigate('/announcements')}
+                            onNavigateSettings={() => navigate('/performance')}
+                        />
                     </div>
                 </div>
             </div>
-
-            <ProfileModal
-                isOpen={isProfileModalOpen}
-                user={currentUser}
-                onClose={() => setIsProfileModalOpen(false)}
-                onEditProfile={() => {
-                    setIsProfileModalOpen(false);
-                    navigate('/performance');
-                }}
-                onOpenNotifications={() => {
-                    setIsProfileModalOpen(false);
-                    navigate('/announcements');
-                }}
-            />
 
             {/* Mobile Search Bar (expandable) */}
             {mobileSearchOpen && (

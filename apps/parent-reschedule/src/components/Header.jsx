@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { parentsApi, adminApi } from '../../../shared/api/client';
+import { authApi, childrenApi, adminApi } from '../../../shared/api/client';
+import PortalProfileMenu from '../../../shared/ui/PortalProfileMenu';
 
 const Header = ({ title = "Reschedule" }) => {
     const [children, setChildren] = useState([]);
@@ -8,6 +9,7 @@ const Header = ({ title = "Reschedule" }) => {
     const [showNotif, setShowNotif] = useState(false);
     const [notifications, setNotifications] = useState([]);
     const [readIds, setReadIds] = useState([]);
+    const [parentUser, setParentUser] = useState(null);
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -15,10 +17,11 @@ const Header = ({ title = "Reschedule" }) => {
             const saved = sessionStorage.getItem('parent_user');
             if (!saved) return;
             const user = JSON.parse(saved);
+            setParentUser(user);
             const parentId = user.parentId;
             if (parentId) {
                 try {
-                    const res = await parentsApi.getChildren(parentId);
+                    const res = await childrenApi.getByParent(parentId);
                     const list = res.data?.data || [];
                     setChildren(list);
                     if (list.length > 0 && !user.childId) {
@@ -30,7 +33,7 @@ const Header = ({ title = "Reschedule" }) => {
             }
             
             try {
-                const aRes = await adminApi.getAnnouncements({ audience: 'parent' });
+                const aRes = await adminApi.getAnnouncementsForRole('parent');
                 const anns = (aRes.data?.data || []).slice(0, 5);
                 setNotifications(anns);
             } catch(e){}
@@ -70,6 +73,16 @@ const Header = ({ title = "Reschedule" }) => {
         }
     };
 
+    const handleLogout = async () => {
+        try {
+            await authApi.signOut();
+        } catch {}
+        sessionStorage.removeItem('parent_user');
+        localStorage.removeItem('parent_user');
+        sessionStorage.removeItem('read_notifs');
+        navigate('/login');
+    };
+
     return (
         <header className="flex flex-col sm:flex-row items-center justify-between border-b border-border-light dark:border-border-dark bg-surface-light dark:bg-surface-dark px-6 py-4 flex-shrink-0 gap-4 mb-4 rounded-b-xl lg:rounded-none">
             <div className="flex items-center gap-3 text-primary">
@@ -97,20 +110,15 @@ const Header = ({ title = "Reschedule" }) => {
 
                 {/* Navigasi Atas (Profile, Settings, Notifications) */}
                 <div className="flex items-center gap-1.5 border-l border-border-light dark:border-border-dark pl-4 ml-2 shrink-0 relative">
-                    <button 
-                        onClick={() => navigate('/profile')} 
-                        className="text-slate-500 hover:text-primary hover:bg-primary/10 transition-colors flex items-center justify-center p-2 rounded-lg" 
-                        title="Profil Anak"
-                    >
-                        <span className="material-symbols-outlined text-[20px]">account_circle</span>
-                    </button>
-                    <button 
-                        onClick={() => navigate('/settings')} 
-                        className="text-slate-500 hover:text-primary hover:bg-primary/10 transition-colors flex items-center justify-center p-2 rounded-lg" 
-                        title="Settings"
-                    >
-                        <span className="material-symbols-outlined text-[20px]">settings</span>
-                    </button>
+                    <PortalProfileMenu
+                        user={parentUser}
+                        role="parent"
+                        childrenCount={children.length}
+                        onLogout={handleLogout}
+                        onNavigateProfile={() => navigate('/profile')}
+                        onNavigateAnnouncements={() => navigate('/announcements')}
+                        onNavigateSettings={() => navigate('/settings')}
+                    />
                     
                     {/* Notifications Dropdown */}
                     <div className="relative">

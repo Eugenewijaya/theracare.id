@@ -1,19 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { childrenApi, adminApi } from '../../../shared/api/client';
+import { authApi, childrenApi, adminApi } from '../../../shared/api/client';
+import PortalProfileMenu from '../../../shared/ui/PortalProfileMenu';
 
 const Header = ({ title = "Dashboard" }) => {
     const [children, setChildren]           = useState([]);
     const [activeChildId, setActiveChildId] = useState('');
     const [showNotif, setShowNotif]         = useState(false);
-    const [showProfile, setShowProfile]     = useState(false);
     const [notifications, setNotifications] = useState([]);
     const [readIds, setReadIds]             = useState([]);
     const [parentUser, setParentUser]       = useState(null);
 
     const navigate    = useNavigate();
     const notifRef    = useRef(null);
-    const profileRef  = useRef(null);
 
     useEffect(() => {
         const load = async () => {
@@ -50,9 +49,6 @@ const Header = ({ title = "Dashboard" }) => {
             if (notifRef.current && !notifRef.current.contains(e.target)) {
                 setShowNotif(false);
             }
-            if (profileRef.current && !profileRef.current.contains(e.target)) {
-                setShowProfile(false);
-            }
         };
         document.addEventListener('mousedown', handleOutsideClick);
         return () => document.removeEventListener('mousedown', handleOutsideClick);
@@ -86,16 +82,17 @@ const Header = ({ title = "Dashboard" }) => {
         }
     };
 
-    const handleLogout = () => {
+    const handleLogout = async () => {
+        try {
+            await authApi.signOut();
+        } catch {}
         sessionStorage.removeItem('parent_user');
+        localStorage.removeItem('parent_user');
         sessionStorage.removeItem('read_notifs');
         navigate('/login');
     };
 
     const unreadCount = notifications.filter(n => !readIds.includes(n.id)).length;
-    const userInitial = (parentUser?.name || parentUser?.parentName || 'P').charAt(0).toUpperCase();
-    const userName    = parentUser?.name || parentUser?.parentName || 'Parent';
-    const userEmail   = parentUser?.email || 'parent@theracare.id';
 
     return (
         <header className="flex flex-col sm:flex-row items-center justify-between border-b border-border-light dark:border-border-dark bg-surface-light dark:bg-surface-dark px-6 py-4 flex-shrink-0 gap-4 mb-4">
@@ -131,7 +128,7 @@ const Header = ({ title = "Dashboard" }) => {
                     <div className="relative" ref={notifRef}>
                         <button
                             id="parent-header-bell"
-                            onClick={() => { setShowProfile(false); setShowNotif(v => !v); }}
+                            onClick={() => { setShowNotif(v => !v); }}
                             className="relative flex items-center justify-center w-10 h-10 rounded-xl text-slate-500 dark:text-slate-400 hover:text-sky-600 hover:bg-sky-50 dark:hover:bg-sky-900/20 transition-all"
                             title="Notifikasi"
                         >
@@ -207,97 +204,15 @@ const Header = ({ title = "Dashboard" }) => {
                     </div>
 
                     {/* ── Profile Dropdown ──────────────────────────────── */}
-                    <div className="relative" ref={profileRef}>
-                        <button
-                            id="parent-header-profile"
-                            onClick={() => { setShowNotif(false); setShowProfile(v => !v); }}
-                            className="flex items-center gap-2 pl-1 pr-2.5 py-1 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-all"
-                            title="Profil & Pengaturan"
-                        >
-                            {/* Avatar */}
-                            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-sky-400 to-cyan-500 flex items-center justify-center text-white font-extrabold text-sm shadow-sm select-none">
-                                {userInitial}
-                            </div>
-                            <span className="hidden sm:block text-sm font-semibold text-slate-700 dark:text-slate-200 max-w-[100px] truncate">
-                                {userName.split(' ')[0]}
-                            </span>
-                            <span className="material-symbols-outlined text-slate-400 text-[16px]">expand_more</span>
-                        </button>
-
-                        {showProfile && (
-                            <div
-                                className="absolute right-0 top-[calc(100%+8px)] w-64 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden z-[200]"
-                                style={{ animation: 'dropIn 0.18s ease-out' }}
-                            >
-                                {/* User info */}
-                                <div className="px-4 py-4 bg-gradient-to-br from-sky-500 to-cyan-600 flex items-center gap-3">
-                                    <div className="w-11 h-11 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center text-white font-extrabold text-lg shrink-0 select-none">
-                                        {userInitial}
-                                    </div>
-                                    <div className="min-w-0">
-                                        <p className="text-white font-bold text-sm truncate">{userName}</p>
-                                        <p className="text-sky-100 text-xs truncate">{userEmail}</p>
-                                        <span className="mt-1 inline-block bg-white/20 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">Parent / Guardian</span>
-                                    </div>
-                                </div>
-
-                                {/* Menu Items */}
-                                <div className="p-2">
-                                    <button
-                                        onClick={() => { setShowProfile(false); navigate('/profile'); }}
-                                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/60 transition-colors text-left"
-                                    >
-                                        <div className="w-8 h-8 rounded-lg bg-sky-100 dark:bg-sky-900/30 flex items-center justify-center shrink-0">
-                                            <span className="material-symbols-outlined text-sky-600 dark:text-sky-400 text-[18px]" style={{ fontVariationSettings: "'FILL' 1" }}>account_circle</span>
-                                        </div>
-                                        <div>
-                                            <p className="font-semibold text-sm">Profil Anak</p>
-                                            <p className="text-xs text-slate-400">Lihat & edit data anak</p>
-                                        </div>
-                                    </button>
-
-                                    <button
-                                        onClick={() => { setShowProfile(false); navigate('/announcements'); }}
-                                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/60 transition-colors text-left"
-                                    >
-                                        <div className="w-8 h-8 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center shrink-0">
-                                            <span className="material-symbols-outlined text-amber-600 dark:text-amber-400 text-[18px]" style={{ fontVariationSettings: "'FILL' 1" }}>campaign</span>
-                                        </div>
-                                        <div>
-                                            <p className="font-semibold text-sm">Pengumuman</p>
-                                            <p className="text-xs text-slate-400">Info terbaru dari klinik</p>
-                                        </div>
-                                    </button>
-
-                                    <button
-                                        onClick={() => { setShowProfile(false); navigate('/settings'); }}
-                                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/60 transition-colors text-left"
-                                    >
-                                        <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center shrink-0">
-                                            <span className="material-symbols-outlined text-slate-600 dark:text-slate-300 text-[18px]" style={{ fontVariationSettings: "'FILL' 1" }}>settings</span>
-                                        </div>
-                                        <div>
-                                            <p className="font-semibold text-sm">Pengaturan</p>
-                                            <p className="text-xs text-slate-400">Akun, tema, notifikasi</p>
-                                        </div>
-                                    </button>
-                                </div>
-
-                                {/* Divider + Logout */}
-                                <div className="p-2 border-t border-slate-100 dark:border-slate-700">
-                                    <button
-                                        onClick={handleLogout}
-                                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-left"
-                                    >
-                                        <div className="w-8 h-8 rounded-lg bg-red-100 dark:bg-red-900/30 flex items-center justify-center shrink-0">
-                                            <span className="material-symbols-outlined text-red-600 dark:text-red-400 text-[18px]">logout</span>
-                                        </div>
-                                        <p className="font-semibold text-sm">Keluar</p>
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-                    </div>
+                    <PortalProfileMenu
+                        user={parentUser}
+                        role="parent"
+                        childrenCount={children.length}
+                        onLogout={handleLogout}
+                        onNavigateProfile={() => navigate('/profile')}
+                        onNavigateAnnouncements={() => navigate('/announcements')}
+                        onNavigateSettings={() => navigate('/settings')}
+                    />
                 </div>
             </div>
 

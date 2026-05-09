@@ -1,17 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { notificationsApi } from '../../../shared/api/client';
+import { authApi, notificationsApi } from '../../../shared/api/client';
+import PortalProfileMenu from '../../../shared/ui/PortalProfileMenu';
 
 const Header = ({ searchValue, onSearchChange, user, onSettingsClick }) => {
     const navigate = useNavigate();
     const [unreadCount, setUnreadCount] = useState(0);
-    const initials = (user?.name || 'Therapist')
-        .split(' ')
-        .filter(Boolean)
-        .slice(0, 2)
-        .map(part => part[0])
-        .join('')
-        .toUpperCase() || 'T';
 
     useEffect(() => {
         const loadUnread = async () => {
@@ -26,6 +20,15 @@ const Header = ({ searchValue, onSearchChange, user, onSettingsClick }) => {
         window.addEventListener('notificationsUpdated', loadUnread);
         return () => window.removeEventListener('notificationsUpdated', loadUnread);
     }, []);
+
+    const handleLogout = async () => {
+        try {
+            await authApi.signOut();
+        } catch {}
+        sessionStorage.removeItem('therapist_user');
+        localStorage.removeItem('therapist_user');
+        navigate('/login');
+    };
 
     return (
         <header className="hidden lg:flex flex-wrap sm:flex-nowrap items-center justify-between border-b border-solid border-b-slate-200 dark:border-b-primary/20 px-4 sm:px-10 py-3 gap-4">
@@ -70,15 +73,14 @@ const Header = ({ searchValue, onSearchChange, user, onSettingsClick }) => {
                         <span className="material-symbols-outlined text-xl">settings</span>
                     </button>
                 </div>
-                <button
-                    type="button"
-                    onClick={() => navigate('/performance')}
-                    className="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10 cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all shrink-0 bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 font-black flex items-center justify-center overflow-hidden"
-                    title={user?.name || 'Therapist profile'}
-                    style={user?.avatar ? { backgroundImage: `url("${user.avatar}")` } : {}}
-                >
-                    {!user?.avatar && initials}
-                </button>
+                <PortalProfileMenu
+                    user={user}
+                    role="therapist"
+                    onLogout={handleLogout}
+                    onNavigateProfile={onSettingsClick}
+                    onNavigateAnnouncements={() => navigate('/announcements')}
+                    onNavigateSettings={onSettingsClick}
+                />
             </div>
         </header>
     );

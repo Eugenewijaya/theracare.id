@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { sessionsApi } from '../../shared/api/client';
+import { authApi, sessionsApi } from '../../shared/api/client';
+import PortalProfileMenu from '../../shared/ui/PortalProfileMenu';
 
 const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -162,6 +163,15 @@ function App() {
 
     const activeInSchedule = sessions.some(s => s.status === 'active');
 
+    const handleLogout = async () => {
+        try {
+            await authApi.signOut();
+        } catch {}
+        sessionStorage.removeItem('therapist_user');
+        localStorage.removeItem('therapist_user');
+        navigate('/login');
+    };
+
     const openFinish = (s) => setFinishModal(s);
     const confirmFinish = async () => {
         if (!finishModal) return;
@@ -200,14 +210,14 @@ function App() {
                             <span className="text-base font-bold">{currentUser?.name || 'Therapist'}</span>
                             <span className="text-sm text-slate-500">{currentUser?.specialty || 'Clinical Team'}</span>
                         </div>
-                        <div
-                            onClick={() => navigate('/performance')}
-                            className="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10 sm:size-12 shadow-sm ring-2 ring-primary/20 cursor-pointer hover:ring-4 hover:ring-primary/40 transition-all flex items-center justify-center font-bold text-slate-500 bg-slate-100"
-                            title={currentUser?.name || "Profile"}
-                            style={currentUser?.avatar ? { backgroundImage: `url("${currentUser.avatar}")` } : {}}
-                        >
-                            {!currentUser?.avatar && (currentUser?.name?.charAt(0) || 'T')}
-                        </div>
+                        <PortalProfileMenu
+                            user={currentUser}
+                            role="therapist"
+                            onLogout={handleLogout}
+                            onNavigateProfile={() => navigate('/performance')}
+                            onNavigateAnnouncements={() => navigate('/announcements')}
+                            onNavigateSettings={() => navigate('/performance')}
+                        />
                     </div>
                 </header>
 
