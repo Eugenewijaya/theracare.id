@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import photoSrc from '../assets/login-photo.svg';
 import { applyPlatformFavicon, platformLogoUrl } from '../platformBrand';
+import { useClinicSettings } from '../clinicSettings';
 
 const TONES = {
   admin: {
@@ -56,6 +57,8 @@ export default function LoginExperience({
   children,
 }) {
   const tone = TONES[portalKey] || TONES.admin;
+  const { settings } = useClinicSettings();
+  const centerPhotoSrc = settings.centerPhotoUrl || photoSrc;
   const startedKey = `theracare.login.started.${portalKey}`;
   const [started, setStarted] = useState(() => {
     try {
@@ -80,7 +83,7 @@ export default function LoginExperience({
       <div className="grid min-h-screen lg:grid-cols-[minmax(390px,0.9fr)_minmax(460px,1.1fr)]">
         <section className="relative flex min-h-[420px] flex-col justify-between overflow-hidden bg-slate-900 px-6 py-7 text-white sm:px-10 lg:min-h-screen">
           <img
-            src={photoSrc}
+            src={centerPhotoSrc}
             alt="Temporary special needs center welcome visual"
             className="login-photo-motion absolute inset-0 h-full w-full object-cover opacity-95"
           />

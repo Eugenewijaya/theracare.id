@@ -4,6 +4,52 @@ import Sidebar from './components/Sidebar';
 import { adminApi } from '../../shared/api/client';
 import { useClinicSettings } from '../../shared/clinicSettings';
 
+const ASSET_ACCEPT = 'image/png,image/jpeg,image/webp,image/svg+xml,image/gif,image/x-icon,image/vnd.microsoft.icon,.ico';
+const MAX_ASSET_SIZE = 5 * 1024 * 1024;
+
+function inferContentType(file) {
+    if (file.type) return file.type;
+    if (file.name.toLowerCase().endsWith('.ico')) return 'image/x-icon';
+    return 'application/octet-stream';
+}
+
+function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            const result = String(reader.result || '');
+            resolve(result.includes(',') ? result.split(',')[1] : result);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+}
+
+function AssetUploadButton({ id, label, uploading, onFile }) {
+    return (
+        <div>
+            <input
+                id={id}
+                type="file"
+                accept={ASSET_ACCEPT}
+                className="sr-only"
+                onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = '';
+                    if (file) onFile(file);
+                }}
+            />
+            <label
+                htmlFor={id}
+                className={`inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-slate-300 dark:border-slate-700 px-3 py-2 text-xs font-black text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 ${uploading ? 'pointer-events-none opacity-60' : ''}`}
+            >
+                <span className="material-symbols-outlined text-[16px]">{uploading ? 'progress_activity' : 'upload_file'}</span>
+                {uploading ? 'Uploading...' : label}
+            </label>
+        </div>
+    );
+}
+
 function App() {
     const [activeSection, setActiveSection] = useState('branding');
     const { settings, save, refresh } = useClinicSettings();
@@ -19,7 +65,9 @@ function App() {
     const [secondaryColor, setSecondaryColor] = useState(settings.secondaryColor);
     const [logoUrl, setLogoUrl] = useState(settings.logoUrl);
     const [faviconUrl, setFaviconUrl] = useState(settings.faviconUrl);
+    const [centerPhotoUrl, setCenterPhotoUrl] = useState(settings.centerPhotoUrl);
     const [adminWhatsApp, setAdminWhatsApp] = useState('');
+    const [uploadingAsset, setUploadingAsset] = useState('');
     const [toast, setToast] = useState(null);
 
     useEffect(() => {
@@ -48,6 +96,7 @@ function App() {
         setSecondaryColor(settings.secondaryColor);
         setLogoUrl(settings.logoUrl);
         setFaviconUrl(settings.faviconUrl);
+        setCenterPhotoUrl(settings.centerPhotoUrl);
     }, [
         settings.clinicName,
         settings.centerSubtitle,
@@ -60,12 +109,50 @@ function App() {
         settings.primaryColor,
         settings.secondaryColor,
         settings.logoUrl,
-        settings.faviconUrl
+        settings.faviconUrl,
+        settings.centerPhotoUrl
     ]);
 
     const showToast = (msg, type = 'success') => {
         setToast({ msg, type });
         setTimeout(() => setToast(null), 3500);
+    };
+
+    const handleAssetUpload = async (kind, file) => {
+        if (file.size > MAX_ASSET_SIZE) {
+            showToast('Ukuran file maksimal 5MB.', 'error');
+            return;
+        }
+
+        const contentType = inferContentType(file);
+        if (!ASSET_ACCEPT.includes(contentType) && contentType !== 'image/x-icon') {
+            showToast('Format file tidak didukung. Gunakan PNG, JPG, WebP, SVG, GIF, atau ICO.', 'error');
+            return;
+        }
+
+        try {
+            setUploadingAsset(kind);
+            const dataBase64 = await fileToBase64(file);
+            const res = await adminApi.uploadBrandAsset({
+                kind,
+                fileName: file.name,
+                contentType,
+                dataBase64,
+            });
+            if (!res.ok) {
+                throw new Error(res.data?.error || res.data?.message || 'Upload gagal');
+            }
+            const url = res.data?.data?.url;
+            if (!url) throw new Error('Storage tidak mengembalikan URL file.');
+            if (kind === 'logo') setLogoUrl(url);
+            if (kind === 'favicon') setFaviconUrl(url);
+            if (kind === 'photo') setCenterPhotoUrl(url);
+            showToast('File berhasil diupload. Klik Save Changes untuk menyimpan branding.');
+        } catch (e) {
+            showToast(e.message || 'Gagal upload file ke storage bucket.', 'error');
+        } finally {
+            setUploadingAsset('');
+        }
     };
 
     const handleSave = async () => {
@@ -86,7 +173,8 @@ function App() {
                 primaryColor,
                 secondaryColor,
                 logoUrl,
-                faviconUrl
+                faviconUrl,
+                centerPhotoUrl
             });
             await adminApi.updateSettings({ adminWhatsApp });
             showToast(`Pengaturan berhasil disimpan!`);
@@ -109,6 +197,7 @@ function App() {
         setSecondaryColor(latest.secondaryColor);
         setLogoUrl(latest.logoUrl);
         setFaviconUrl(latest.faviconUrl);
+        setCenterPhotoUrl(latest.centerPhotoUrl);
         try {
             const res = await adminApi.getSettings();
             const settings = res.data?.data || {};
@@ -189,21 +278,24 @@ function App() {
                             {/* Logos Section */}
                             <section className="flex flex-col gap-4">
                                 <h3 className="text-lg font-bold border-b border-slate-200 dark:border-slate-700 pb-2">Logos & Iconography</h3>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                                     <div className="flex flex-col gap-4 rounded-xl bg-white dark:bg-slate-900 p-6 shadow-sm border border-slate-100 dark:border-slate-800">
                                         <div className="flex justify-between items-start">
                                             <div>
                                                 <p className="text-base font-bold leading-tight mb-1">Center Logo</p>
                                                 <p className="text-slate-500 dark:text-slate-400 text-xs">Used on main navigation, portals, and PDF reports.</p>
-                                                <p className="text-slate-500 dark:text-slate-400 text-xs mt-1">Use a hosted PNG/SVG URL from your CDN or storage bucket.</p>
+                                                <p className="text-slate-500 dark:text-slate-400 text-xs mt-1">Upload to CDN storage bucket or paste a hosted PNG/SVG URL.</p>
                                             </div>
                                         </div>
-                                        <input
-                                            value={logoUrl}
-                                            onChange={(e) => setLogoUrl(e.target.value)}
-                                            placeholder="https://cdn.example.com/logo.svg"
-                                            className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm px-3 py-2 outline-none text-slate-900 dark:text-white"
-                                        />
+                                        <div className="flex flex-col gap-2">
+                                            <input
+                                                value={logoUrl}
+                                                onChange={(e) => setLogoUrl(e.target.value)}
+                                                placeholder="https://cdn.example.com/logo.svg"
+                                                className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm px-3 py-2 outline-none text-slate-900 dark:text-white"
+                                            />
+                                            <AssetUploadButton id="upload-center-logo" label="Upload Logo" uploading={uploadingAsset === 'logo'} onFile={(file) => handleAssetUpload('logo', file)} />
+                                        </div>
                                         <div className="w-full bg-slate-50 dark:bg-slate-800/50 aspect-[3/1] rounded-lg flex items-center justify-center border-2 border-dashed border-slate-200 dark:border-slate-700 overflow-hidden relative">
                                             {logoUrl ? (
                                                 <img src={logoUrl} alt={`${clinicName} logo`} className="max-h-20 max-w-[80%] object-contain" />
@@ -218,15 +310,18 @@ function App() {
                                             <div>
                                                 <p className="text-base font-bold leading-tight mb-1">Favicon</p>
                                                 <p className="text-slate-500 dark:text-slate-400 text-xs">Shown in browser tabs.</p>
-                                                <p className="text-slate-500 dark:text-slate-400 text-xs mt-1">Use a hosted PNG/ICO URL, 32x32px or 64x64px.</p>
+                                                <p className="text-slate-500 dark:text-slate-400 text-xs mt-1">Upload PNG/ICO, 32x32px or 64x64px.</p>
                                             </div>
                                         </div>
-                                        <input
-                                            value={faviconUrl}
-                                            onChange={(e) => setFaviconUrl(e.target.value)}
-                                            placeholder="https://cdn.example.com/favicon.png"
-                                            className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm px-3 py-2 outline-none text-slate-900 dark:text-white"
-                                        />
+                                        <div className="flex flex-col gap-2">
+                                            <input
+                                                value={faviconUrl}
+                                                onChange={(e) => setFaviconUrl(e.target.value)}
+                                                placeholder="https://cdn.example.com/favicon.png"
+                                                className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm px-3 py-2 outline-none text-slate-900 dark:text-white"
+                                            />
+                                            <AssetUploadButton id="upload-center-favicon" label="Upload Favicon" uploading={uploadingAsset === 'favicon'} onFile={(file) => handleAssetUpload('favicon', file)} />
+                                        </div>
                                         <div className="w-full bg-slate-50 dark:bg-slate-800/50 aspect-[3/1] rounded-lg flex items-center justify-center border-2 border-dashed border-slate-200 dark:border-slate-700">
                                             <div className="size-16 bg-white dark:bg-slate-900 shadow-sm rounded-lg flex items-center justify-center p-2 text-primary">
                                                 {faviconUrl ? (
@@ -235,6 +330,32 @@ function App() {
                                                     <span className="material-symbols-outlined text-[32px]">health_and_safety</span>
                                                 )}
                                             </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex flex-col gap-4 rounded-xl bg-white dark:bg-slate-900 p-6 shadow-sm border border-slate-100 dark:border-slate-800">
+                                        <div className="flex justify-between items-start">
+                                            <div>
+                                                <p className="text-base font-bold leading-tight mb-1">Center Photo</p>
+                                                <p className="text-slate-500 dark:text-slate-400 text-xs">Used as the welcome visual on portal login pages.</p>
+                                                <p className="text-slate-500 dark:text-slate-400 text-xs mt-1">Upload a landscape JPG/PNG/WebP from your storage bucket.</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex flex-col gap-2">
+                                            <input
+                                                value={centerPhotoUrl}
+                                                onChange={(e) => setCenterPhotoUrl(e.target.value)}
+                                                placeholder="https://cdn.example.com/center-photo.jpg"
+                                                className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm px-3 py-2 outline-none text-slate-900 dark:text-white"
+                                            />
+                                            <AssetUploadButton id="upload-center-photo" label="Upload Photo" uploading={uploadingAsset === 'photo'} onFile={(file) => handleAssetUpload('photo', file)} />
+                                        </div>
+                                        <div className="w-full bg-slate-50 dark:bg-slate-800/50 aspect-[3/1] rounded-lg flex items-center justify-center border-2 border-dashed border-slate-200 dark:border-slate-700 overflow-hidden relative">
+                                            {centerPhotoUrl ? (
+                                                <img src={centerPhotoUrl} alt={`${clinicName} center`} className="h-full w-full object-cover" />
+                                            ) : (
+                                                <span className="material-symbols-outlined text-[40px] text-slate-300 dark:text-slate-600">add_photo_alternate</span>
+                                            )}
                                         </div>
                                     </div>
                                 </div>

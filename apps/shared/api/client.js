@@ -159,6 +159,7 @@ export const adminApi = {
   getSettings: () => api.get('/admin/settings'),
   getPublicSettings: () => api.get('/admin/public-settings'),
   updateSettings: (data) => api.patch('/admin/settings', data),
+  uploadBrandAsset: (data) => api.post('/admin/uploads/branding', data),
   // Rooms
   getRooms: () => api.get('/admin/rooms'),
   createRoom: (data) => api.post('/admin/rooms', data),

@@ -2,6 +2,7 @@ import { Router } from "express";
 import { requireAuth, requireRole } from "../middleware/auth.middleware.js";
 import { announcementService } from "../services/announcement.service.js";
 import { adminService } from "../services/admin.service.js";
+import { storageService } from "../services/storage.service.js";
 import { ok, created, notFound, badRequest, conflict } from "../utils/response.js";
 
 const router = Router();
@@ -84,6 +85,17 @@ router.get("/settings", requireAuth, requireRole("admin"), async (req, res, next
 });
 router.patch("/settings", requireAuth, requireRole("admin"), async (req, res, next) => {
   try { await adminService.updateSettings(req.body); ok(res, { updated: true }); } catch (e) { next(e); }
+});
+router.post("/uploads/branding", requireAuth, requireRole("admin"), async (req, res, next) => {
+  try {
+    const { kind, fileName, contentType, dataBase64 } = req.body || {};
+    if (!kind || !fileName || !contentType || !dataBase64) {
+      return badRequest(res, "kind, fileName, contentType, dan dataBase64 wajib diisi");
+    }
+    created(res, await storageService.uploadBrandingAsset({ kind, fileName, contentType, dataBase64 }));
+  } catch (e) {
+    return badRequest(res, e instanceof Error ? e.message : "Upload branding gagal");
+  }
 });
 router.get("/stats", requireAuth, requireRole("admin"), async (req, res, next) => {
   try { ok(res, await adminService.getDashboardStats()); } catch (e) { next(e); }

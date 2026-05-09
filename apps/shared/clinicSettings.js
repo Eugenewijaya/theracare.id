@@ -19,6 +19,7 @@ export const DEFAULT_CLINIC_SETTINGS = {
   secondaryColor: '#4e7f97',
   logoUrl: '',
   faviconUrl: '',
+  centerPhotoUrl: '',
 };
 
 const PUBLIC_KEYS = Object.keys(DEFAULT_CLINIC_SETTINGS);

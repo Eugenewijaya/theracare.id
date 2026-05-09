@@ -120,6 +120,7 @@ export const adminService = {
       "secondaryColor",
       "logoUrl",
       "faviconUrl",
+      "centerPhotoUrl",
     ];
     const settings = await this.getSettings();
     return Object.fromEntries(safeKeys.map((key) => [key, settings[key]]).filter(([, value]) => value));
