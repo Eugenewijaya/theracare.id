@@ -51,7 +51,7 @@ const TopNavBar = () => {
             </div>
         </header>
 
-        {/* "New Schedule" info modal - directs user to use calendar click */}
+        {/* "New Schedule" info modal - directs user to use the date detail panel */}
         {showNewSchedule && (
             <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm" onClick={() => setShowNewSchedule(false)}>
                 <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 w-full max-w-sm p-6 text-center" onClick={e => e.stopPropagation()}>
@@ -60,7 +60,7 @@ const TopNavBar = () => {
                     </div>
                     <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">Tambah Jadwal Baru</h3>
                     <p className="text-sm text-slate-500 dark:text-slate-400 mb-5">
-                        Klik pada tanggal di kalender untuk menambahkan sesi baru pada tanggal tersebut.
+                        Klik tanggal di kalender untuk membuka detail sesi di panel kanan, lalu gunakan tombol Tambah Jadwal di panel tersebut.
                     </p>
                     <button onClick={() => setShowNewSchedule(false)} className="px-6 py-2.5 rounded-xl bg-primary text-white font-bold text-sm hover:bg-primary/90 transition-colors">
                         Mengerti

@@ -72,9 +72,9 @@ function EditSessionModal({ session, childrenList, therapistsList, programsList,
     const hasReplacementNote = String(session.cancelReason || session.notes || '').toLowerCase().includes('pengganti');
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-3 sm:items-center sm:p-4 bg-slate-900/50 backdrop-blur-sm">
             <div
-                className="bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 w-full max-w-md overflow-hidden"
+                className="my-auto bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 w-full max-w-2xl max-h-[calc(100vh-1.5rem)] overflow-hidden flex flex-col"
                 style={{ animation: 'scaleIn 0.2s ease-out' }}
             >
                 {/* Header */}
@@ -89,7 +89,7 @@ function EditSessionModal({ session, childrenList, therapistsList, programsList,
                 </div>
 
                 {/* Body */}
-                <div className="p-6 flex flex-col gap-4">
+                <div className="p-4 sm:p-6 flex flex-col gap-4 overflow-y-auto">
                     {/* Read-only info */}
                     <div className="bg-slate-50 dark:bg-slate-800 rounded-lg px-4 py-3 flex items-start gap-3">
                         <span className="material-symbols-outlined text-primary text-[20px]">calendar_today</span>
@@ -140,7 +140,7 @@ function EditSessionModal({ session, childrenList, therapistsList, programsList,
                     </div>
 
                     {/* Time & Duration */}
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                         <div className="flex flex-col gap-2">
                             <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Jam Mulai</label>
                             <input
@@ -167,38 +167,38 @@ function EditSessionModal({ session, childrenList, therapistsList, programsList,
                 </div>
 
                 {/* Footer */}
-                <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-800 flex justify-between gap-3">
+                <div className="px-4 py-4 sm:px-6 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-800 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <button
                         onClick={() => onDelete(session.id)}
-                        className="px-4 py-2 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors flex items-center gap-1.5"
+                        className="inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20 sm:justify-start"
                     >
                         <span className="material-symbols-outlined text-[16px]">delete</span>
                         Hapus
                     </button>
-                    <div className="flex gap-2">
+                    <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:justify-end">
                         <button
                             onClick={() => onMarkLeave(session.id)}
-                            className="px-4 py-2 text-sm font-bold text-red-700 bg-red-50 hover:bg-red-100 rounded-lg transition-colors flex items-center gap-1.5"
+                            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-red-50 px-3 py-2 text-sm font-bold text-red-700 transition-colors hover:bg-red-100 sm:px-4"
                         >
                             <span className="material-symbols-outlined text-[16px]">event_busy</span>
                             Cuti Terapis
                         </button>
                         <button
                             onClick={() => onAssignSubstitute(session)}
-                            className="px-4 py-2 text-sm font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors flex items-center gap-1.5"
+                            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-blue-50 px-3 py-2 text-sm font-bold text-blue-700 transition-colors hover:bg-blue-100 sm:px-4"
                         >
                             <span className="material-symbols-outlined text-[16px]">person_add</span>
                             Atur Pengganti
                         </button>
                         <button
                             onClick={onClose}
-                            className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors"
+                            className="inline-flex items-center justify-center rounded-lg px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-200 dark:text-slate-300 dark:hover:bg-slate-700 sm:px-4"
                         >
                             Batal
                         </button>
                         <button
                             onClick={() => onSave(session.id, form)}
-                            className="px-5 py-2 text-sm font-semibold text-white bg-primary hover:bg-primary/90 rounded-lg shadow-sm transition-colors flex items-center gap-2"
+                            className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary/90 sm:px-5"
                         >
                             <span className="material-symbols-outlined text-[16px]">save</span>
                             Simpan
@@ -416,6 +416,10 @@ function App() {
         duration: '60',
     });
 
+    const resetNewSession = () => {
+        setNewSession({ sessionKind: 'regular', child: '', visitorName: '', startTime: '09:00', duration: '60', therapistId: '', program: '' });
+    };
+
     const handleChildChange = (e) => {
         const childId = e.target.value;
         const child = childrenList.find(c => c.id === childId);
@@ -427,21 +431,38 @@ function App() {
         }));
     };
 
-    // Called from CalendarGrid when clicking on a blank date
-    const handleDateClick = (dateObj) => {
-        setSelectedDate(dateObj);
-        setIsAddModalOpen(true);
-        setNewSession({ sessionKind: 'regular', child: '', visitorName: '', startTime: '09:00', duration: '60', therapistId: '', program: '' });
+    const toDateObject = (dateStr) => {
+        if (!dateStr) return new Date();
+        const [year, month, day] = dateStr.split('-').map(Number);
+        return new Date(year, month - 1, day);
     };
 
-    // Called from CalendarGrid when clicking on an event pill
-    const handleEventClick = (session, e) => {
-        e.stopPropagation();
+    // Called from CalendarGrid when clicking a date cell.
+    const handleDateClick = (dateObj) => {
+        setSelectedDate(dateObj);
+        setIsSidePanelOpen(true);
+    };
+
+    const handleOpenAddSession = (dateObj = selectedDate) => {
+        setSelectedDate(dateObj || new Date());
+        setIsSidePanelOpen(true);
+        resetNewSession();
+        setIsAddModalOpen(true);
+    };
+
+    const openEditSession = (session) => {
         if (session.isOneTime) {
             showToast('One-time visit tersimpan sebagai log dan tidak mengubah data anak.', 'info');
             return;
         }
         setEditSession(session);
+    };
+
+    // Called from CalendarGrid when clicking an event pill. Editing stays in the side panel.
+    const handleEventClick = (session, e) => {
+        e?.stopPropagation?.();
+        setSelectedDate(toDateObject(session.date));
+        setIsSidePanelOpen(true);
     };
 
     const handlePrevMonth = () => {
@@ -634,9 +655,9 @@ function App() {
             {/* Top Navigation Bar */}
             <TopNavBar />
 
-            <div className="flex flex-1 overflow-hidden relative">
+            <div className="relative flex min-w-0 flex-1 overflow-hidden">
                 {/* Main Content Area */}
-                <main className="flex-1 flex flex-col overflow-hidden">
+                <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
                     <CalendarHeader
                         currentView={currentView}
                         setCurrentView={setCurrentView}
@@ -658,6 +679,7 @@ function App() {
                             selectedMonth={currentMonth}
                             selectedYear={currentYear}
                             sessions={filteredSessions}
+                            childrenList={childrenList}
                         />
                         <Legend />
                     </div>
@@ -665,7 +687,15 @@ function App() {
 
                 {/* Side Panel */}
                 {isSidePanelOpen ? (
-                    <SidePanel onClose={() => setIsSidePanelOpen(false)} selectedDate={selectedDate} sessions={filteredSessions} onEventClick={handleEventClick} />
+                    <SidePanel
+                        onClose={() => setIsSidePanelOpen(false)}
+                        selectedDate={selectedDate}
+                        sessions={filteredSessions}
+                        childrenList={childrenList}
+                        therapistsList={therapistsList}
+                        onAddSession={handleOpenAddSession}
+                        onEditSession={openEditSession}
+                    />
                 ) : (
                     <div className="fixed bottom-5 right-4 z-30 md:absolute md:bottom-auto md:right-0 md:top-1/2 md:-translate-y-1/2">
                         <button
