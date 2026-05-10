@@ -16,6 +16,8 @@ export default {
     "../therapist-management/src/**/*.{js,jsx}",
     "../therapist-registration/src/**/*.{js,jsx}",
     "../admin-reports/src/**/*.{js,jsx}",
+    "../admin-rooms/src/**/*.{js,jsx}",
+    "../admin-programs/src/**/*.{js,jsx}",
     "../notification-center/src/**/*.{js,jsx}",
     "../clinic-branding-settings/src/**/*.{js,jsx}"
   ],

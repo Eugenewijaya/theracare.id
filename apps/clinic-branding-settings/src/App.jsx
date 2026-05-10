@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import { adminApi } from '../../shared/api/client';
-import { useClinicSettings } from '../../shared/clinicSettings';
+import { DEFAULT_CLINIC_SETTINGS, useClinicSettings } from '../../shared/clinicSettings';
 
 const ASSET_ACCEPT = 'image/png,image/jpeg,image/webp,image/svg+xml,image/gif,image/x-icon,image/vnd.microsoft.icon,.ico';
 const MAX_ASSET_SIZE = 5 * 1024 * 1024;
@@ -206,6 +206,30 @@ function App() {
             }
         } catch(e){}
         showToast('Pengaturan dikembalikan ke nilai terakhir yang disimpan.', 'info');
+    };
+
+    const handleResetDefault = async () => {
+        const confirmed = window.confirm('Atur semula branding ke bawaan Special Needs Center? Logo, favicon, foto, nama, warna, dan informasi publik akan dikembalikan.');
+        if (!confirmed) return;
+        try {
+            const next = await save(DEFAULT_CLINIC_SETTINGS);
+            setClinicName(next.clinicName);
+            setCenterSubtitle(next.centerSubtitle);
+            setCenterAddress(next.centerAddress);
+            setCenterPhone(next.centerPhone);
+            setCenterEmail(next.centerEmail);
+            setCenterWebsite(next.centerWebsite);
+            setOperatingHoursWeekday(next.operatingHoursWeekday);
+            setOperatingHoursWeekend(next.operatingHoursWeekend);
+            setPrimaryColor(next.primaryColor);
+            setSecondaryColor(next.secondaryColor);
+            setLogoUrl(next.logoUrl);
+            setFaviconUrl(next.faviconUrl);
+            setCenterPhotoUrl(next.centerPhotoUrl);
+            showToast('Branding sudah diatur semula ke bawaan.');
+        } catch (e) {
+            showToast(e.message || 'Gagal mengatur semula branding', 'error');
+        }
     };
 
     return (
@@ -479,7 +503,14 @@ function App() {
 
             {/* Sticky Footer */}
             <div className="fixed bottom-0 left-0 right-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 p-4 z-40 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-                <div className="max-w-[1200px] mx-auto flex justify-end gap-4 px-4 md:px-8">
+                <div className="max-w-[1200px] mx-auto flex flex-col justify-end gap-3 px-4 sm:flex-row md:px-8">
+                    <button
+                        onClick={handleResetDefault}
+                        className="inline-flex items-center justify-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm font-bold text-amber-800 transition-colors hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200"
+                    >
+                        <span className="material-symbols-outlined text-[18px]">restart_alt</span>
+                        Atur Semula
+                    </button>
                     <button
                         onClick={handleCancel}
                         className="px-6 py-2.5 rounded-lg text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"

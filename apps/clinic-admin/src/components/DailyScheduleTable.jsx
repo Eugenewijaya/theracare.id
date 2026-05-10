@@ -44,8 +44,14 @@ export default function DailyScheduleTable() {
             .sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
     }, [sessions, selectedDate]);
 
+    const renderStatus = (session) => (
+        <span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-black ${statusClass(session)}`}>
+            {session.status === 'cancelled' && (session.cancelReason || '').toLowerCase().includes('cuti') ? 'Cuti Terapis' : statusLabel[session.status] || session.status}
+        </span>
+    );
+
     return (
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
             <div className="px-6 py-4 border-b border-slate-100 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
                 <div>
                     <h2 className="text-lg font-bold text-slate-900">Tabel Jadwal Harian</h2>
@@ -58,16 +64,53 @@ export default function DailyScheduleTable() {
                     className="h-10 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                 />
             </div>
-            <div className="w-full overflow-x-auto">
-                <table className="min-w-[760px] text-sm">
+            <div className="block sm:hidden">
+                {loading ? (
+                    <div className="space-y-3 p-4">
+                        {[1, 2, 3].map(i => <div key={i} className="h-24 rounded-xl bg-slate-100 animate-pulse" />)}
+                    </div>
+                ) : rows.length === 0 ? (
+                    <div className="px-5 py-10 text-center text-sm font-semibold text-slate-400">Tidak ada jadwal pada tanggal ini.</div>
+                ) : (
+                    <div className="divide-y divide-slate-100">
+                        {rows.map(session => (
+                            <article key={session.id} className="p-4">
+                                <div className="mb-3 flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <p className="text-sm font-black text-slate-900">{session.startTime || '-'}</p>
+                                        <p className="break-words text-base font-bold text-slate-800">{session.child?.name || session.childId || '-'}</p>
+                                    </div>
+                                    {renderStatus(session)}
+                                </div>
+                                <dl className="grid grid-cols-1 gap-2 text-sm text-slate-600">
+                                    <div>
+                                        <dt className="text-[11px] font-black uppercase tracking-wide text-slate-400">Terapis</dt>
+                                        <dd className="break-words">{session.therapist?.user?.name || session.therapist?.name || session.therapistId || '-'}</dd>
+                                    </div>
+                                    <div>
+                                        <dt className="text-[11px] font-black uppercase tracking-wide text-slate-400">Program</dt>
+                                        <dd className="break-words">{session.focus || '-'}</dd>
+                                    </div>
+                                    <div>
+                                        <dt className="text-[11px] font-black uppercase tracking-wide text-slate-400">Ruang</dt>
+                                        <dd className="break-words">{session.room?.name || '-'}</dd>
+                                    </div>
+                                </dl>
+                            </article>
+                        ))}
+                    </div>
+                )}
+            </div>
+            <div className="hidden w-full max-w-full overflow-x-auto sm:block">
+                <table className="w-full min-w-[680px] table-fixed text-sm">
                     <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                         <tr>
-                            <th className="whitespace-nowrap px-5 py-3 text-left font-black">Jam</th>
-                            <th className="whitespace-nowrap px-5 py-3 text-left font-black">Anak</th>
-                            <th className="whitespace-nowrap px-5 py-3 text-left font-black">Terapis</th>
-                            <th className="whitespace-nowrap px-5 py-3 text-left font-black">Program</th>
-                            <th className="whitespace-nowrap px-5 py-3 text-left font-black">Ruang</th>
-                            <th className="whitespace-nowrap px-5 py-3 text-left font-black">Status</th>
+                            <th className="w-24 whitespace-nowrap px-5 py-3 text-left font-black">Jam</th>
+                            <th className="px-5 py-3 text-left font-black">Anak</th>
+                            <th className="px-5 py-3 text-left font-black">Terapis</th>
+                            <th className="px-5 py-3 text-left font-black">Program</th>
+                            <th className="w-24 px-5 py-3 text-left font-black">Ruang</th>
+                            <th className="w-32 whitespace-nowrap px-5 py-3 text-left font-black">Status</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -84,16 +127,20 @@ export default function DailyScheduleTable() {
                         ) : rows.map(session => (
                             <tr key={session.id} className="hover:bg-slate-50/80">
                                 <td className="px-5 py-4 font-black text-slate-900 whitespace-nowrap">{session.startTime}</td>
-                                <td className="px-5 py-4 text-slate-700">{session.child?.name || session.childId}</td>
-                                <td className="px-5 py-4 text-slate-700">{session.therapist?.user?.name || session.therapist?.name || session.therapistId}</td>
-                                <td className="max-w-[220px] px-5 py-4 text-slate-700">
+                                <td className="px-5 py-4 text-slate-700">
+                                    <span className="block truncate" title={session.child?.name || session.childId || '-'}>{session.child?.name || session.childId}</span>
+                                </td>
+                                <td className="px-5 py-4 text-slate-700">
+                                    <span className="block truncate" title={session.therapist?.user?.name || session.therapist?.name || session.therapistId || '-'}>{session.therapist?.user?.name || session.therapist?.name || session.therapistId}</span>
+                                </td>
+                                <td className="px-5 py-4 text-slate-700">
                                     <span className="block truncate" title={session.focus || '-'}>{session.focus || '-'}</span>
                                 </td>
-                                <td className="px-5 py-4 text-slate-700">{session.room?.name || '-'}</td>
+                                <td className="px-5 py-4 text-slate-700">
+                                    <span className="block truncate" title={session.room?.name || '-'}>{session.room?.name || '-'}</span>
+                                </td>
                                 <td className="px-5 py-4">
-                                    <span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-black ${statusClass(session)}`}>
-                                        {session.status === 'cancelled' && (session.cancelReason || '').toLowerCase().includes('cuti') ? 'Cuti Terapis' : statusLabel[session.status] || session.status}
-                                    </span>
+                                    {renderStatus(session)}
                                 </td>
                             </tr>
                         ))}

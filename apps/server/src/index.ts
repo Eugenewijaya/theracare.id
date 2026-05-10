@@ -1,7 +1,7 @@
 import "dotenv/config";
 import express from "express";
 import cors, { type CorsOptions } from "cors";
-import { toNodeHandler } from "better-auth/node";
+import { fromNodeHeaders, toNodeHandler } from "better-auth/node";
 import { auth } from "./auth.js";
 import { ensureProductionSchema } from "./db/production-schema.js";
 import { errorHandler } from "./middleware/error.middleware.js";
@@ -49,9 +49,54 @@ const corsOptions: CorsOptions = {
 
 await ensureProductionSchema();
 
+async function sendAuthResponse(res: express.Response, response: Response) {
+  response.headers.forEach((value, key) => {
+    if (key.toLowerCase() !== "set-cookie") res.setHeader(key, value);
+  });
+
+  const setCookies = (response.headers as any).getSetCookie?.() || [];
+  if (setCookies.length > 0) {
+    res.setHeader("set-cookie", setCookies);
+  } else {
+    const setCookie = response.headers.get("set-cookie");
+    if (setCookie) res.setHeader("set-cookie", setCookie);
+  }
+
+  const body = Buffer.from(await response.arrayBuffer());
+  res.status(response.status).send(body);
+}
+
 // ── Middleware ──────────────────────────────────────────
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
+
+// Railway's Node adapter can fail before Better Auth parses JSON bodies.
+// Keep explicit JSON routes for credential auth endpoints that the portals use.
+app.post("/api/auth/sign-in/email", express.json({ limit: "1mb" }), async (req, res, next) => {
+  try {
+    const response = await auth.api.signInEmail({
+      body: req.body,
+      headers: fromNodeHeaders(req.headers),
+      asResponse: true,
+    });
+    await sendAuthResponse(res, response);
+  } catch (e) {
+    next(e);
+  }
+});
+
+app.post("/api/auth/change-password", express.json({ limit: "1mb" }), async (req, res, next) => {
+  try {
+    const response = await auth.api.changePassword({
+      body: req.body,
+      headers: fromNodeHeaders(req.headers),
+      asResponse: true,
+    });
+    await sendAuthResponse(res, response);
+  } catch (e) {
+    next(e);
+  }
+});
 
 // Better Auth handler MUST be before express.json() for its own body parsing
 app.all("/api/auth/*", toNodeHandler(auth));

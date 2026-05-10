@@ -37,6 +37,13 @@ const ChildrenPerMonth = ({ store }) => {
     const maxVal = Math.max(...data.map(d => d.value), 1);
     const total  = data.reduce((a, d) => a + d.value, 0);
     const avg    = (total / data.length).toFixed(1);
+    const chartPoints = data.map((d, i) => {
+        const x = data.length === 1 ? 360 : 24 + (i * (672 / (data.length - 1)));
+        const y = 172 - ((d.value / maxVal) * 132);
+        return { ...d, x, y };
+    });
+    const polyline = chartPoints.map(p => `${p.x},${p.y}`).join(' ');
+    const area = chartPoints.length > 0 ? `M ${chartPoints[0].x},184 L ${polyline} L ${chartPoints[chartPoints.length - 1].x},184 Z` : '';
 
     return (
         <div className="bg-surface-light dark:bg-surface-dark rounded-xl border border-border-light dark:border-border-dark p-6">
@@ -61,28 +68,22 @@ const ChildrenPerMonth = ({ store }) => {
                 </div>
             </div>
 
-            {/* Bar Chart */}
-            <div className="flex items-end justify-between gap-3 h-48 mt-2 mb-3 border-b border-border-light dark:border-border-dark pb-px">
-                {data.map((d, i) => {
-                    const pct = maxVal > 0 ? (d.value / maxVal) * 100 : 0;
-                    const isLatest = i === data.length - 1;
-                    return (
-                        <div key={d.label} className="flex flex-col items-center gap-1 flex-1 h-full justify-end group">
-                            <span className={`text-xs font-bold transition-all duration-200 ${isLatest ? 'text-primary opacity-100' : 'text-text-light-secondary dark:text-text-dark-secondary opacity-0 group-hover:opacity-100'}`}>
-                                {d.value}
-                            </span>
-                            <div
-                                className={`w-full rounded-t-md transition-all duration-500 cursor-pointer ${
-                                    isLatest
-                                        ? 'bg-primary'
-                                        : 'bg-primary/40 hover:bg-primary/70 dark:bg-primary/30 dark:hover:bg-primary/60'
-                                }`}
-                                style={{ height: `${Math.max(pct, d.value > 0 ? 5 : 0)}%` }}
-                                title={`${d.label}: ${d.value} anak`}
-                            />
-                        </div>
-                    );
-                })}
+            {/* Line Chart */}
+            <div className="relative mt-2 mb-3 h-52 border-b border-border-light dark:border-border-dark">
+                <svg viewBox="0 0 720 200" className="h-full w-full overflow-visible" role="img" aria-label="Tren pendaftaran anak per bulan">
+                    <path d={area} fill="rgba(19, 236, 91, 0.12)" />
+                    <polyline points={polyline} fill="none" stroke="currentColor" className="text-primary" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
+                    {chartPoints.map((p, i) => (
+                        <g key={p.label}>
+                            <circle cx={p.x} cy={p.y} r={i === chartPoints.length - 1 ? 7 : 5} fill="currentColor" className="text-primary" stroke="white" strokeWidth="3">
+                                <title>{`${p.label}: ${p.value} anak`}</title>
+                            </circle>
+                            <text x={p.x} y={Math.max(18, p.y - 14)} textAnchor="middle" className="fill-text-light-secondary text-[11px] font-bold dark:fill-text-dark-secondary">
+                                {p.value}
+                            </text>
+                        </g>
+                    ))}
+                </svg>
             </div>
 
             {/* Labels */}

@@ -165,17 +165,64 @@ function App() {
         </div>
 
         {/* Data Table */}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-8">
-          <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
-            <div className="w-full overflow-x-auto">
-            <table className="w-full min-w-[800px] text-left border-collapse">
+        <div className="flex-1 min-w-0 overflow-y-auto p-4 sm:p-8">
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
+            <div className="block divide-y divide-slate-100 dark:divide-slate-700/50 sm:hidden">
+              {filteredRooms.length === 0 ? (
+                <div className="p-8 text-center text-slate-400">
+                  <span className="material-symbols-outlined mb-2 text-4xl opacity-50">search_off</span>
+                  <p>No rooms found matching "{search}"</p>
+                </div>
+              ) : filteredRooms.map(room => (
+                <article key={room.id} className="p-4">
+                  <div className="mb-3 flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h3 className="break-words text-base font-bold text-slate-900 dark:text-slate-100">{room.name}</h3>
+                      <p className="break-words text-sm text-slate-500 dark:text-slate-400">{room.type || 'General'}</p>
+                    </div>
+                    <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold ${
+                      room.status === 'active'
+                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                        : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                    }`}>
+                      <span className="material-symbols-outlined text-[14px]">
+                        {room.status === 'active' ? 'check_circle' : 'build'}
+                      </span>
+                      {room.status === 'active' ? 'Active' : 'Maintenance'}
+                    </span>
+                  </div>
+                  <div className="mb-4 flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm dark:bg-slate-900/50">
+                    <span className="font-semibold text-slate-500 dark:text-slate-400">Capacity</span>
+                    <span className="font-black text-slate-900 dark:text-slate-100">{room.capacity}</span>
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <button
+                      onClick={() => handleOpenEdit(room)}
+                      className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-3 py-2 text-sm font-bold text-blue-700 transition-colors hover:bg-blue-100 dark:bg-blue-900/20 dark:text-blue-300"
+                    >
+                      <span className="material-symbols-outlined text-[18px]">edit</span>
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => setDeleteConfirm(room)}
+                      className="inline-flex items-center gap-1 rounded-lg bg-red-50 px-3 py-2 text-sm font-bold text-red-700 transition-colors hover:bg-red-100 dark:bg-red-900/20 dark:text-red-300"
+                    >
+                      <span className="material-symbols-outlined text-[18px]">delete</span>
+                      Delete
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+            <div className="hidden w-full max-w-full overflow-x-auto sm:block">
+            <table className="w-full min-w-[680px] table-fixed text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-700 text-xs uppercase tracking-wider font-bold text-slate-500 dark:text-slate-400">
-                  <th className="p-4 pl-6">Room Name</th>
-                  <th className="p-4">Status</th>
-                  <th className="p-4 text-center">Capacity</th>
+                  <th className="w-[30%] p-4 pl-6">Room Name</th>
+                  <th className="w-36 p-4">Status</th>
+                  <th className="w-28 p-4 text-center">Capacity</th>
                   <th className="p-4">Room Type</th>
-                  <th className="p-4 text-right pr-6">Actions</th>
+                  <th className="w-28 p-4 text-right pr-6">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
@@ -189,7 +236,7 @@ function App() {
                 ) : filteredRooms.map(room => (
                   <tr key={room.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-700/20 transition-colors">
                     <td className="p-4 pl-6 font-semibold text-slate-900 dark:text-slate-100">
-                      {room.name}
+                      <span className="block truncate" title={room.name}>{room.name}</span>
                     </td>
                     <td className="p-4">
                       <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${
@@ -209,7 +256,7 @@ function App() {
                       </span>
                     </td>
                     <td className="p-4">
-                      <span className="text-sm font-medium text-slate-600 dark:text-slate-300">{room.type || 'General'}</span>
+                      <span className="block truncate text-sm font-medium text-slate-600 dark:text-slate-300" title={room.type || 'General'}>{room.type || 'General'}</span>
                     </td>
                     <td className="p-4 pr-6 text-right">
                       <div className="flex items-center justify-end gap-2">

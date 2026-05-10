@@ -26,8 +26,8 @@ function App() {
 
                         {/* Pending Attendance + Schedule Requests side by side */}
                         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                            <PendingAttendance />
-                            <ScheduleRequests />
+                            <div className="min-w-0"><PendingAttendance /></div>
+                            <div className="min-w-0"><ScheduleRequests /></div>
                         </div>
 
                         {/* Timeline full width under the cards */}
@@ -36,7 +36,7 @@ function App() {
                     </div>
 
                     {/* ── Right Column (sidebar) ── */}
-                    <aside className="w-full lg:w-72 xl:w-80 flex flex-col gap-5 shrink-0">
+                    <aside className="w-full min-w-0 lg:w-72 xl:w-80 flex flex-col gap-5 shrink-0">
                         <QuickActions />
                         <ChildrenMonthChart />
                         <MiniCalendar />
