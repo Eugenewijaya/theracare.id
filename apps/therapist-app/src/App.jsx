@@ -14,6 +14,7 @@ const ParentsMeeting = lazy(() => import('../../parents-meeting/src/App'));
 const ChildProgress = lazy(() => import('../../child-progress/src/App'));
 import Announcements from './pages/Announcements';
 import ScheduleUpdates from './pages/ScheduleUpdates';
+import LeaveRequests from './pages/LeaveRequests';
 import { useClinicSettings } from '../../shared/clinicSettings';
 import LegalPage from '../../shared/ui/LegalPage';
 import ClinicLogoMark from '../../shared/ui/ClinicLogoMark';
@@ -85,6 +86,7 @@ function DashboardLayout() {
               <Route path="child-progress" element={<ChildProgress />} />
               <Route path="announcements" element={<Announcements />} />
               <Route path="schedule-updates" element={<ScheduleUpdates />} />
+              <Route path="leave-requests" element={<LeaveRequests />} />
             </Routes>
           </Suspense>
         </div>

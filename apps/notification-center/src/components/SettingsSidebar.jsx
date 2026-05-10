@@ -7,9 +7,11 @@ const deliveryGroups = [
 ];
 
 const ChannelBadge = ({ icon, label, tone = 'primary' }) => {
-    const toneClass = tone === 'primary'
-        ? 'bg-primary/10 text-primary ring-primary/20'
-        : 'bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-900';
+    const toneClass = {
+        primary: 'bg-primary/10 text-primary ring-primary/20',
+        success: 'bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-900',
+        muted: 'bg-slate-100 text-slate-500 ring-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:ring-slate-700',
+    }[tone] || 'bg-primary/10 text-primary ring-primary/20';
 
     return (
         <span className={`inline-flex min-w-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold ring-1 ${toneClass}`}>
@@ -28,7 +30,7 @@ const SettingsSidebar = () => {
                     <h3 className="min-w-0 text-lg font-bold leading-tight">Delivery Channels</h3>
                 </div>
                 <p className="mb-6 text-sm leading-relaxed text-slate-500 dark:text-slate-400">
-                    Pengumuman selalu tersimpan sebagai notifikasi in-app. Email template center akan terkirim otomatis jika backend Railway sudah memiliki konfigurasi Resend.
+                    Pengumuman saat ini dikirim sebagai notifikasi in-app. Email template center sedang dalam pengembangan dan akan diaktifkan setelah domain pengirim resmi siap.
                 </p>
 
                 <div className="flex flex-col gap-5">
@@ -39,7 +41,7 @@ const SettingsSidebar = () => {
                                 <h4 className="text-sm font-semibold leading-tight">{group}</h4>
                                 <div className="flex flex-wrap gap-2">
                                     <ChannelBadge icon="notifications_active" label="In-App Aktif" />
-                                    <ChannelBadge icon="mail" label="Email via Resend" tone="success" />
+                                    <ChannelBadge icon="mail" label="Email Dalam Pengembangan" tone="muted" />
                                 </div>
                             </div>
                         </React.Fragment>
@@ -47,7 +49,7 @@ const SettingsSidebar = () => {
                 </div>
 
                 <div className="mt-6 rounded-lg bg-slate-50 p-4 text-xs leading-relaxed text-slate-500 ring-1 ring-slate-200 dark:bg-slate-950/40 dark:text-slate-400 dark:ring-slate-800">
-                    SMS tidak digunakan. Jika penerima belum punya email asli, notifikasi tetap muncul di portal masing-masing.
+                    SMS tidak digunakan. Email juga dimatikan sementara, jadi semua penerima tetap mendapatkan notifikasi melalui portal masing-masing.
                 </div>
             </div>
         </aside>

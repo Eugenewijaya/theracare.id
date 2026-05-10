@@ -38,7 +38,8 @@ const CalendarGrid = ({ currentView, onDateClick, onEventClick, selectedMonth, s
 
     if (currentView === 'Week') {
         return (
-            <div className="grid grid-cols-7 gap-px bg-slate-200 dark:bg-slate-800 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-800 flex-1 min-h-[500px]">
+            <div className="w-full overflow-x-auto pb-2">
+            <div className="grid min-w-[620px] grid-cols-7 gap-px bg-slate-200 dark:bg-slate-800 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-800 flex-1 min-h-[500px]">
                 {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, i) => {
                     const isToday = new Date().getDay() === i;
                     return (
@@ -50,6 +51,7 @@ const CalendarGrid = ({ currentView, onDateClick, onEventClick, selectedMonth, s
                 {Array.from({ length: 7 }).map((_, i) => (
                     <div key={`w-${i}`} className="bg-white dark:bg-background-dark p-2 flex flex-col gap-2" />
                 ))}
+            </div>
             </div>
         );
     }
@@ -79,7 +81,8 @@ const CalendarGrid = ({ currentView, onDateClick, onEventClick, selectedMonth, s
 
     // Default: Month View
     return (
-        <div className="grid grid-cols-7 gap-px bg-slate-200 dark:bg-slate-800 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 flex-1 shadow-sm">
+        <div className="w-full overflow-x-auto pb-2">
+        <div className="grid min-w-[620px] grid-cols-7 gap-px bg-slate-200 dark:bg-slate-800 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 flex-1 shadow-sm">
             {/* Days Header */}
             {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
                 <div key={day} className="bg-slate-50 dark:bg-slate-900 py-2.5 text-center text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200 dark:border-slate-800">
@@ -145,6 +148,7 @@ const CalendarGrid = ({ currentView, onDateClick, onEventClick, selectedMonth, s
                     </div>
                 );
             })}
+        </div>
         </div>
     );
 };

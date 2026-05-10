@@ -14,7 +14,7 @@ type NotificationEmailInput = {
 const RESEND_ENDPOINT = "https://api.resend.com/emails";
 
 function isEmailEnabled() {
-  return Boolean(process.env.RESEND_API_KEY) && process.env.EMAIL_ENABLED !== "false";
+  return Boolean(process.env.RESEND_API_KEY) && process.env.EMAIL_ENABLED === "true";
 }
 
 function escapeHtml(value: unknown) {

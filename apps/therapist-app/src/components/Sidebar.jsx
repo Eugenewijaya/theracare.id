@@ -9,6 +9,7 @@ const navItems = [
   { path: '/', icon: 'space_dashboard', label: 'Dasbor', end: true },
   { path: '/schedule', icon: 'calendar_today', label: 'Jadwal Terapi' },
   { path: '/schedule-updates', icon: 'event_repeat', label: 'Pembaruan Jadwal', badgeType: 'schedule' },
+  { path: '/leave-requests', icon: 'event_busy', label: 'Pengajuan Cuti' },
   { path: '/availability', icon: 'date_range', label: 'Ketersediaan' },
   { path: '/reports', icon: 'description', label: 'Laporan Anak' },
   { path: '/performance', icon: 'insights', label: 'Kinerja' },

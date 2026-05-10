@@ -137,6 +137,13 @@ export const rescheduleApi = {
   delete: (id) => api.delete(`/reschedule/${id}`),
 };
 
+export const leaveRequestsApi = {
+  getAll: () => api.get('/leave-requests'),
+  getMine: () => api.get('/leave-requests/therapist/me'),
+  create: (data) => api.post('/leave-requests', data),
+  updateStatus: (id, status, reviewNote) => api.patch(`/leave-requests/${id}`, { status, reviewNote }),
+};
+
 export const meetingsApi = {
   getAll: () => api.get('/meetings'),
   getForTherapist: () => api.get('/meetings/therapist/me'),

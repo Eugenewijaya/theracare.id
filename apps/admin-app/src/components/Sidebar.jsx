@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAdmin } from '../context/AdminContext';
-import { rescheduleApi, notificationsApi } from '../../../shared/api/client';
+import { rescheduleApi, notificationsApi, leaveRequestsApi } from '../../../shared/api/client';
 import ClinicLogoMark from '../../../shared/ui/ClinicLogoMark';
 
 const navGroups = [
@@ -14,6 +14,7 @@ const navGroups = [
       { path: '/bulk-schedule', icon: 'event_repeat', label: 'Jadwal Massal' },
       { path: '/requests', icon: 'assignment', label: 'Permintaan Masuk', badgeKey: 'requests' },
       { path: '/parent-meetings', icon: 'groups', label: 'Parent Meeting' },
+      { path: '/therapist-leave-requests', icon: 'event_busy', label: 'Cuti Terapis', badgeKey: 'leaveRequests' },
     ],
   },
   {
@@ -50,19 +51,24 @@ export default function Sidebar({ isOpen, onClose }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { clinicName, brandColor, logoUrl, adminProfile, sidebarCollapsed, setSidebarCollapsed } = useAdmin();
-  const [badgeCounts, setBadgeCounts] = useState({ requests: 0, notifications: 0 });
+  const [badgeCounts, setBadgeCounts] = useState({ requests: 0, notifications: 0, leaveRequests: 0 });
 
   // Compute notification badges from API
   useEffect(() => {
     const computeBadges = async () => {
       try {
-        const [reqRes, unreadRes] = await Promise.all([
+        const [reqResult, unreadResult, leaveResult] = await Promise.allSettled([
           rescheduleApi.getAll(),
           notificationsApi.getUnreadCount(),
+          leaveRequestsApi.getAll(),
         ]);
+        const reqRes = reqResult.status === 'fulfilled' ? reqResult.value : { data: { data: [] } };
+        const unreadRes = unreadResult.status === 'fulfilled' ? unreadResult.value : { data: { data: { count: 0 } } };
+        const leaveRes = leaveResult.status === 'fulfilled' ? leaveResult.value : { data: { data: [] } };
         const pendingCount = (reqRes.data?.data || []).filter(r => r.status === 'pending').length;
         const unreadNotifs = unreadRes.data?.data?.count || 0;
-        setBadgeCounts({ requests: pendingCount, notifications: unreadNotifs });
+        const pendingLeave = (leaveRes.data?.data || []).filter(r => r.status === 'pending').length;
+        setBadgeCounts({ requests: pendingCount, notifications: unreadNotifs, leaveRequests: pendingLeave });
       } catch {}
     };
     computeBadges();

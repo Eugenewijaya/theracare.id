@@ -165,8 +165,9 @@ function App() {
         </div>
 
         {/* Data Table */}
-        <div className="flex-1 overflow-auto p-4 sm:p-8">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-8">
           <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
+            <div className="w-full overflow-x-auto">
             <table className="w-full min-w-[800px] text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-700 text-xs uppercase tracking-wider font-bold text-slate-500 dark:text-slate-400">
@@ -232,6 +233,7 @@ function App() {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         </div>
       </main>

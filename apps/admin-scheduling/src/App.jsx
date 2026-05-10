@@ -6,6 +6,20 @@ import Legend from './components/Legend';
 import SidePanel from './components/SidePanel';
 import { sessionsApi, childrenApi, therapistsApi, adminApi } from '../../shared/api/client';
 
+const LEAVE_REASONS = [
+    { value: 'cuti', label: 'Cuti' },
+    { value: 'sakit', label: 'Sakit' },
+    { value: 'unpaid_leave', label: 'Unpaid Leave' },
+];
+
+const getLeaveLabel = (value) => LEAVE_REASONS.find(item => item.value === value)?.label || 'Off';
+
+const getTherapistName = (therapistsList, therapistId) =>
+    therapistsList.find(item => item.id === therapistId)?.name || therapistId || 'Terapis';
+
+const getChildName = (childrenList, childId) =>
+    childrenList.find(item => item.id === childId)?.name || childId || 'Anak';
+
 const parseJsonSetting = (value, fallback) => {
     try {
         return JSON.parse(value || JSON.stringify(fallback));
@@ -43,7 +57,7 @@ function Toast({ message, type = 'success', onClose }) {
 }
 
 // ── Edit Session Modal ──────────────────────────────────────────────────────
-function EditSessionModal({ session, childrenList, therapistsList, programsList, onSave, onDelete, onMarkLeave, onClose }) {
+function EditSessionModal({ session, childrenList, therapistsList, programsList, onSave, onDelete, onMarkLeave, onAssignSubstitute, onClose }) {
     const [form, setForm] = useState({
         therapistId: session.therapistId || '',
         program:     session.focus || '',
@@ -53,7 +67,9 @@ function EditSessionModal({ session, childrenList, therapistsList, programsList,
 
     const update = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
-    const childName = childrenList.find(c => c.id === session.childId)?.name || session.childId;
+    const childName = getChildName(childrenList, session.childId);
+    const currentTherapistName = getTherapistName(therapistsList, session.therapistId);
+    const hasReplacementNote = String(session.cancelReason || session.notes || '').toLowerCase().includes('pengganti');
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
@@ -86,6 +102,12 @@ function EditSessionModal({ session, childrenList, therapistsList, programsList,
                             </p>
                         </div>
                     </div>
+
+                    {hasReplacementNote && (
+                        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-800">
+                            Sesi ini memiliki catatan pergantian terapis. Terapis bertugas saat ini: {currentTherapistName}.
+                        </div>
+                    )}
 
                     {/* Terapis */}
                     <div className="flex flex-col gap-2">
@@ -162,6 +184,13 @@ function EditSessionModal({ session, childrenList, therapistsList, programsList,
                             Cuti Terapis
                         </button>
                         <button
+                            onClick={() => onAssignSubstitute(session)}
+                            className="px-4 py-2 text-sm font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors flex items-center gap-1.5"
+                        >
+                            <span className="material-symbols-outlined text-[16px]">person_add</span>
+                            Atur Pengganti
+                        </button>
+                        <button
                             onClick={onClose}
                             className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors"
                         >
@@ -182,13 +211,134 @@ function EditSessionModal({ session, childrenList, therapistsList, programsList,
     );
 }
 
+function SubstituteTherapistModal({ session, childrenList, therapistsList, onSubmit, onClose }) {
+    const [leaveType, setLeaveType] = useState('cuti');
+    const [substituteTherapistId, setSubstituteTherapistId] = useState('');
+    const [note, setNote] = useState('');
+    const [confirmedContact, setConfirmedContact] = useState(false);
+
+    const childName = getChildName(childrenList, session.childId);
+    const originalTherapistName = getTherapistName(therapistsList, session.therapistId);
+    const substituteOptions = therapistsList.filter(t => t.id !== session.therapistId && (t.status || 'active') === 'active');
+    const canSubmit = leaveType && substituteTherapistId && confirmedContact;
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        if (!canSubmit) return;
+        onSubmit(session.id, { leaveType, substituteTherapistId, note: note.trim() });
+    };
+
+    return (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm">
+            <form
+                onSubmit={handleSubmit}
+                className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-lg overflow-hidden"
+                style={{ animation: 'scaleIn 0.2s ease-out' }}
+            >
+                <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 flex items-start justify-between gap-4">
+                    <div>
+                        <h3 className="font-black text-lg text-slate-900 dark:text-white flex items-center gap-2">
+                            <span className="material-symbols-outlined text-primary">supervisor_account</span>
+                            Atur Terapis Pengganti
+                        </h3>
+                        <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                            {childName} - {session.date} pukul {session.startTime}
+                        </p>
+                    </div>
+                    <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                        <span className="material-symbols-outlined">close</span>
+                    </button>
+                </div>
+
+                <div className="p-6 flex flex-col gap-4">
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                        <p className="font-black">Pastikan kamu sudah menghubungi terapis terkait untuk aksi ini.</p>
+                        <p className="mt-1 text-xs font-semibold">Terapis utama saat ini: {originalTherapistName}. Setelah disimpan, sesi akan masuk ke jadwal terapis pengganti dan daily report diisi oleh terapis yang bertugas.</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="flex flex-col gap-2">
+                            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Status Terapis Utama</label>
+                            <select
+                                value={leaveType}
+                                onChange={e => setLeaveType(e.target.value)}
+                                className="w-full h-11 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary/50"
+                            >
+                                {LEAVE_REASONS.map(reason => (
+                                    <option key={reason.value} value={reason.value}>{reason.label}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div className="flex flex-col gap-2">
+                            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Terapis Pengganti</label>
+                            <select
+                                value={substituteTherapistId}
+                                onChange={e => setSubstituteTherapistId(e.target.value)}
+                                className="w-full h-11 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary/50"
+                            >
+                                <option value="">Pilih terapis...</option>
+                                {substituteOptions.map(t => (
+                                    <option key={t.id} value={t.id}>{t.name} ({t.specialty || t.specialization || 'Terapis'})</option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                        <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Catatan Admin</label>
+                        <textarea
+                            value={note}
+                            onChange={e => setNote(e.target.value)}
+                            rows={3}
+                            placeholder="Contoh: Terapis utama sudah konfirmasi via WhatsApp, pengganti mengambil sesi hari ini."
+                            className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary/50 resize-y"
+                        />
+                    </div>
+
+                    <label className="flex items-start gap-3 rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-3 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/60">
+                        <input
+                            type="checkbox"
+                            checked={confirmedContact}
+                            onChange={e => setConfirmedContact(e.target.checked)}
+                            className="mt-1 h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary"
+                        />
+                        <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                            Saya sudah menghubungi terapis utama dan terapis pengganti terkait perubahan tugas ini.
+                        </span>
+                    </label>
+                </div>
+
+                <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-3">
+                    <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors">
+                        Batal
+                    </button>
+                    <button
+                        type="submit"
+                        disabled={!canSubmit}
+                        className="px-5 py-2 text-sm font-black text-white bg-primary hover:bg-primary/90 disabled:opacity-45 disabled:cursor-not-allowed rounded-lg shadow-sm transition-colors flex items-center gap-2"
+                    >
+                        <span className="material-symbols-outlined text-[16px]">check_circle</span>
+                        Simpan Pengganti
+                    </button>
+                </div>
+            </form>
+            <style>{`@keyframes scaleIn { from { opacity:0; transform:scale(0.93) translateY(8px); } to { opacity:1; transform:scale(1) translateY(0); } }`}</style>
+        </div>
+    );
+}
+
 function App() {
     const today = new Date();
     const [currentView, setCurrentView] = useState('Month');
-    const [isSidePanelOpen, setIsSidePanelOpen] = useState(true);
+    const [isSidePanelOpen, setIsSidePanelOpen] = useState(() => {
+        if (typeof window === 'undefined') return true;
+        return window.matchMedia('(min-width: 768px)').matches;
+    });
     const [selectedDate, setSelectedDate] = useState(null);
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [editSession, setEditSession] = useState(null); // session object being edited
+    const [replacementSession, setReplacementSession] = useState(null);
     const [currentMonth, setCurrentMonth] = useState(today.getMonth());
     const [currentYear, setCurrentYear] = useState(today.getFullYear());
     const [filters, setFilters] = useState({
@@ -306,6 +456,13 @@ function App() {
             if (m === 11) { setCurrentYear(y => y + 1); return 0; }
             return m + 1;
         });
+    };
+
+    const handleToday = () => {
+        const now = new Date();
+        setCurrentMonth(now.getMonth());
+        setCurrentYear(now.getFullYear());
+        setSelectedDate(now);
     };
 
     const showToast = (message, type = 'success') => {
@@ -426,6 +583,52 @@ function App() {
         }
     };
 
+    const handleOpenSubstitute = (session) => {
+        if (session.status === 'done' || session.status === 'active') {
+            showToast('Pergantian terapis hanya bisa dilakukan sebelum sesi berjalan atau setelah sesi dibuka ulang.', 'error');
+            return;
+        }
+        setReplacementSession(session);
+    };
+
+    const handleAssignSubstitute = async (sessionId, { leaveType, substituteTherapistId, note }) => {
+        const session = allSessions.find(item => item.id === sessionId) || replacementSession;
+        if (!session) return;
+
+        const originalTherapistName = getTherapistName(therapistsList, session.therapistId);
+        const substituteTherapistName = getTherapistName(therapistsList, substituteTherapistId);
+        const leaveLabel = getLeaveLabel(leaveType);
+        const replacementLine = [
+            `[Pengganti Terapis] Terapis utama ${originalTherapistName} status ${leaveLabel}.`,
+            `Terapis bertugas: ${substituteTherapistName}.`,
+            'Admin sudah menghubungi terapis terkait untuk aksi ini.',
+            note,
+        ].filter(Boolean).join(' ');
+        const existingNotes = String(session.notes || '').trim();
+
+        try {
+            const res = await sessionsApi.update(sessionId, {
+                therapistId: substituteTherapistId,
+                status: 'upcoming',
+                notes: existingNotes ? `${existingNotes}\n${replacementLine}` : replacementLine,
+                cancelReason: `Terapis utama ${originalTherapistName} ${leaveLabel}; pengganti ${substituteTherapistName}. Pastikan kamu sudah menghubungi terapis terkait untuk aksi ini.`,
+            });
+            if (!res.ok) {
+                showToast(res.data?.error || 'Gagal menyimpan terapis pengganti.', 'error');
+                return;
+            }
+            setReplacementSession(null);
+            setEditSession(null);
+            showToast('Terapis pengganti berhasil ditugaskan. Daily report akan masuk ke terapis bertugas.', 'success');
+            const refreshed = await sessionsApi.getAll();
+            setAllSessions(refreshed.data?.data || []);
+            window.dispatchEvent(new Event('sessionUpdated'));
+        } catch (e) {
+            console.error(e);
+            showToast('Gagal menyimpan terapis pengganti.', 'error');
+        }
+    };
+
     return (
         <>
             {/* Top Navigation Bar */}
@@ -441,12 +644,13 @@ function App() {
                         currentYear={currentYear}
                         onPrev={handlePrevMonth}
                         onNext={handleNextMonth}
+                        onToday={handleToday}
                         filters={filters}
                         setFilters={setFilters}
                     />
 
                     {/* Calendar Grid */}
-                    <div className="flex-1 overflow-auto p-6 flex flex-col">
+                    <div className="flex-1 overflow-auto p-4 sm:p-6 flex flex-col">
                         <CalendarGrid
                             currentView={currentView}
                             onDateClick={handleDateClick}
@@ -463,7 +667,7 @@ function App() {
                 {isSidePanelOpen ? (
                     <SidePanel onClose={() => setIsSidePanelOpen(false)} selectedDate={selectedDate} sessions={filteredSessions} onEventClick={handleEventClick} />
                 ) : (
-                    <div className="absolute right-0 top-1/2 -translate-y-1/2 z-10">
+                    <div className="absolute right-0 top-1/2 z-10 hidden -translate-y-1/2 md:block">
                         <button
                             onClick={() => setIsSidePanelOpen(true)}
                             className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-md rounded-l-lg py-4 px-1 hover:bg-slate-50 dark:hover:bg-slate-700 transition"
@@ -633,7 +837,18 @@ function App() {
                     onSave={handleEditSave}
                     onDelete={handleEditDelete}
                     onMarkLeave={handleMarkTherapistLeave}
+                    onAssignSubstitute={handleOpenSubstitute}
                     onClose={() => setEditSession(null)}
+                />
+            )}
+
+            {replacementSession && (
+                <SubstituteTherapistModal
+                    session={replacementSession}
+                    childrenList={childrenList}
+                    therapistsList={therapistsList}
+                    onSubmit={handleAssignSubstitute}
+                    onClose={() => setReplacementSession(null)}
                 />
             )}
 

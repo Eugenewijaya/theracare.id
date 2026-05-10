@@ -1,6 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { parentsApi, therapistsApi } from '../../../shared/api/client';
 
+const USER_MANAGEMENT_PASSWORD = 'Awasdi omelinEvid';
+const USER_MANAGEMENT_UNLOCK_KEY = 'admin_user_management_unlocked';
+
+const getInitialUnlockState = () => {
+    try {
+        return sessionStorage.getItem(USER_MANAGEMENT_UNLOCK_KEY) === 'true';
+    } catch {
+        return false;
+    }
+};
+
 export default function UserManagementPage() {
     const [activeTab, setActiveTab]   = useState('parents');
     const [parents, setParents]       = useState([]);
@@ -10,8 +21,12 @@ export default function UserManagementPage() {
     const [toast, setToast]           = useState(null);
     const [showPass, setShowPass]     = useState({});
     const [loading, setLoading]       = useState(true);
+    const [isUnlocked, setIsUnlocked] = useState(getInitialUnlockState);
+    const [gatePassword, setGatePassword] = useState('');
+    const [gateError, setGateError] = useState('');
 
     const load = async () => {
+        setLoading(true);
         try {
             const [pRes, tRes] = await Promise.all([
                 parentsApi.getAll(),
@@ -21,17 +36,35 @@ export default function UserManagementPage() {
             setTherapists(tRes.data?.data || []);
         } catch (e) {
             console.error("Failed to load users", e);
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
     };
 
     useEffect(() => {
+        if (!isUnlocked) return;
         load();
-    }, []);
+    }, [isUnlocked]);
 
     const showToast = (msg, type = 'success') => {
         setToast({ msg, type });
         setTimeout(() => setToast(null), 3500);
+    };
+
+    const handleUnlock = (e) => {
+        e.preventDefault();
+        if (gatePassword !== USER_MANAGEMENT_PASSWORD) {
+            setGateError('Password super admin salah.');
+            return;
+        }
+
+        try {
+            sessionStorage.setItem(USER_MANAGEMENT_UNLOCK_KEY, 'true');
+        } catch {}
+        setIsUnlocked(true);
+        setGatePassword('');
+        setGateError('');
+        showToast('Akses User Management dibuka.');
     };
 
     const handleReset = async (user, type) => {
@@ -115,6 +148,59 @@ export default function UserManagementPage() {
                 </div>
             )}
 
+            {!isUnlocked && (
+                <div className="fixed inset-0 z-[900] flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4">
+                    <form
+                        onSubmit={handleUnlock}
+                        className="w-full max-w-md rounded-2xl border border-slate-200 dark:border-primary/20 bg-white dark:bg-slate-900 shadow-2xl p-6"
+                    >
+                        <div className="flex items-start gap-4">
+                            <div className="h-12 w-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                                <span className="material-symbols-outlined text-[26px]">lock</span>
+                            </div>
+                            <div>
+                                <h2 className="text-lg font-black text-slate-900 dark:text-white">User Management Terkunci</h2>
+                                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                                    Masukkan password super admin untuk membuka halaman ini.
+                                </p>
+                            </div>
+                        </div>
+
+                        <label htmlFor="user-management-gate-password" className="block text-xs font-bold uppercase tracking-wider text-slate-500 mt-6 mb-2">
+                            Password Super Admin
+                        </label>
+                        <div className="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-primary/20 bg-slate-50 dark:bg-slate-950 px-3 h-12 focus-within:ring-2 focus-within:ring-primary/40">
+                            <span className="material-symbols-outlined text-slate-400 text-[20px]">key</span>
+                            <input
+                                id="user-management-gate-password"
+                                type="password"
+                                autoFocus
+                                value={gatePassword}
+                                onChange={(e) => {
+                                    setGatePassword(e.target.value);
+                                    if (gateError) setGateError('');
+                                }}
+                                autoComplete="off"
+                                className="flex-1 bg-transparent outline-none text-sm font-semibold text-slate-900 dark:text-white placeholder:text-slate-400"
+                                placeholder="Masukkan password"
+                            />
+                        </div>
+                        {gateError && (
+                            <p className="mt-3 text-sm font-semibold text-red-600 dark:text-red-400">{gateError}</p>
+                        )}
+
+                        <button
+                            type="submit"
+                            disabled={!gatePassword.trim()}
+                            className="mt-6 w-full h-11 rounded-xl bg-primary text-white text-sm font-black hover:bg-primary/90 disabled:opacity-45 disabled:cursor-not-allowed transition-colors"
+                        >
+                            Buka User Management
+                        </button>
+                    </form>
+                </div>
+            )}
+
+            {isUnlocked && (
             <main className="px-6 md:px-10 flex flex-1 justify-center py-8">
                 <div className="layout-content-container flex flex-col max-w-[1200px] flex-1 w-full gap-6">
 
@@ -277,6 +363,7 @@ export default function UserManagementPage() {
                     </div>
                 </div>
             </main>
+            )}
         </div>
     );
 }

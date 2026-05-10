@@ -24,6 +24,7 @@ const ClinicBranding = lazy(() => import('../../clinic-branding-settings/src/App
 const AdminRooms = lazy(() => import('../../admin-rooms/src/App'));
 const AdminPrograms = lazy(() => import('../../admin-programs/src/App'));
 const UserManagement = lazy(() => import('./pages/UserManagementPage'));
+const TherapistLeaveRequests = lazy(() => import('./pages/TherapistLeaveRequestsPage'));
 import AnnouncementsPage from './pages/AnnouncementsPage';
 
 function Loading() {
@@ -100,6 +101,7 @@ function DashboardLayout() {
               <Route path="notifications" element={<NotificationCenter />} />
               <Route path="settings/branding" element={<ClinicBranding />} />
               <Route path="users" element={<UserManagement />} />
+              <Route path="therapist-leave-requests" element={<TherapistLeaveRequests />} />
               <Route path="announcements" element={<AnnouncementsPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
