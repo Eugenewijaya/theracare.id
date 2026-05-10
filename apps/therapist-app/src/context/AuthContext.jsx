@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { authApi, therapistsApi } from '../../../shared/api/client';
 
 const AuthContext = createContext(null);
@@ -35,6 +35,7 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(readStoredUser);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const authRunRef = useRef(0);
 
   const applyTherapist = (therapist, remember = true) => {
     const userData = {
@@ -69,12 +70,14 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     let cancelled = false;
+    const runId = ++authRunRef.current;
     (async () => {
       try {
         const sessionRes = await authApi.getSession();
-        if (cancelled) return;
+        if (cancelled || runId !== authRunRef.current) return;
         if (sessionRes.ok && sessionRes.data?.user?.role === 'therapist') {
           const profileRes = await therapistsApi.getMe();
+          if (cancelled || runId !== authRunRef.current) return;
           if (profileRes.ok && profileRes.data?.data) {
             applyTherapist(profileRes.data.data);
           }
@@ -83,18 +86,21 @@ export function AuthProvider({ children }) {
           clearStoredUser();
         }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled && runId === authRunRef.current) setLoading(false);
       }
     })();
     return () => { cancelled = true; };
   }, []);
 
   const login = async (nit, password, rememberMe = true) => {
+    const runId = ++authRunRef.current;
     setError('');
+    setLoading(true);
     try {
       const identityRes = await therapistsApi.getLoginIdentity(nit);
       if (!identityRes.ok || !identityRes.data?.data?.email) {
         setError(identityRes.data?.error || 'NIT belum terdaftar');
+        if (runId === authRunRef.current) setLoading(false);
         return false;
       }
 
@@ -103,23 +109,28 @@ export function AuthProvider({ children }) {
         const profileRes = await therapistsApi.getMe();
         if (profileRes.ok && profileRes.data?.data) {
           applyTherapist(profileRes.data.data, rememberMe);
+          if (runId === authRunRef.current) setLoading(false);
           return true;
         }
       }
       setError(res.data?.error || res.data?.message || 'NIT atau password tidak valid');
+      if (runId === authRunRef.current) setLoading(false);
       return false;
     } catch (e) {
       console.error('Login error:', e);
       setError('Gagal terhubung ke server');
+      if (runId === authRunRef.current) setLoading(false);
       return false;
     }
   };
 
   const logout = async () => {
+    ++authRunRef.current;
     try {
       await authApi.signOut();
     } catch {}
     setUser(null);
+    setLoading(false);
     clearStoredUser();
   };
 

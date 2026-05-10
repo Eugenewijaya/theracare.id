@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { authApi, parentsApi } from '../../../shared/api/client';
 
 const AuthContext = createContext(null);
@@ -35,6 +35,7 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(readStoredUser);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const authRunRef = useRef(0);
 
   const applyParent = (parent, remember = true) => {
     const userData = {
@@ -55,12 +56,14 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     let cancelled = false;
+    const runId = ++authRunRef.current;
     (async () => {
       try {
         const sessionRes = await authApi.getSession();
-        if (cancelled) return;
+        if (cancelled || runId !== authRunRef.current) return;
         if (sessionRes.ok && sessionRes.data?.user?.role === 'parent') {
           const profileRes = await parentsApi.getMe();
+          if (cancelled || runId !== authRunRef.current) return;
           if (profileRes.ok && profileRes.data?.data) {
             applyParent(profileRes.data.data);
           }
@@ -69,7 +72,7 @@ export function AuthProvider({ children }) {
           clearStoredUser();
         }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled && runId === authRunRef.current) setLoading(false);
       }
     })();
     return () => { cancelled = true; };
@@ -83,12 +86,15 @@ export function AuthProvider({ children }) {
    */
   const login = async (phone, password, rememberMe = true) => {
     const normalizedPhone = (phone || '').replace(/\D/g, '');
+    const runId = ++authRunRef.current;
     setError('');
+    setLoading(true);
 
     try {
       const identityRes = await parentsApi.getLoginIdentity(normalizedPhone);
       if (!identityRes.ok || !identityRes.data?.data?.email) {
         setError(identityRes.data?.error || 'Nomor HP belum terdaftar');
+        if (runId === authRunRef.current) setLoading(false);
         return false;
       }
 
@@ -97,23 +103,28 @@ export function AuthProvider({ children }) {
         const profileRes = await parentsApi.getMe();
         if (profileRes.ok && profileRes.data?.data) {
           applyParent(profileRes.data.data, rememberMe);
+          if (runId === authRunRef.current) setLoading(false);
           return true;
         }
       }
       setError(res.data?.error || res.data?.message || 'Nomor HP atau password tidak valid');
+      if (runId === authRunRef.current) setLoading(false);
       return false;
     } catch (err) {
       console.error(err);
       setError('Gagal terhubung ke server');
+      if (runId === authRunRef.current) setLoading(false);
       return false;
     }
   };
 
   const logout = async () => {
+    ++authRunRef.current;
     try {
       await authApi.signOut();
     } catch(e) {}
     setUser(null);
+    setLoading(false);
     clearStoredUser();
   };
 

@@ -4,6 +4,7 @@
  */
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+const REQUEST_TIMEOUT_MS = 20000;
 
 /**
  * Make an API request with automatic session cookie handling.
@@ -14,10 +15,15 @@ const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
  */
 async function request(method, path, body = null) {
   const url = `${API_BASE}${path}`;
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timeoutId = controller
+    ? globalThis.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+    : null;
   const options = {
     method,
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include', // Send cookies for Better Auth session
+    ...(controller ? { signal: controller.signal } : {}),
   };
   if (body && method !== 'GET') {
     options.body = JSON.stringify(body);
@@ -32,7 +38,12 @@ async function request(method, path, body = null) {
     return { ok: res.ok, status: res.status, data };
   } catch (err) {
     console.error(`[API] ${method} ${path} failed:`, err);
-    return { ok: false, status: 0, data: { error: err.message } };
+    const message = err?.name === 'AbortError'
+      ? 'Koneksi ke server terlalu lama. Coba refresh atau login ulang.'
+      : err.message;
+    return { ok: false, status: 0, data: { error: message } };
+  } finally {
+    if (timeoutId) globalThis.clearTimeout(timeoutId);
   }
 }
 

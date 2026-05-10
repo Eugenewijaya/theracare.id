@@ -1,7 +1,7 @@
 /**
  * Shared auth hook backed by Better Auth.
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { authApi } from './client.js';
 
 function getStorageKey(role) {
@@ -47,13 +47,16 @@ export function useAuthSession(requiredRole = null) {
   const [user, setUser] = useState(() => readStoredUser(requiredRole));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const authRunRef = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
+    const runId = ++authRunRef.current;
     (async () => {
       try {
         const res = await authApi.getSession();
-        if (!cancelled && res.ok && res.data?.session?.userId) {
+        if (cancelled || runId !== authRunRef.current) return;
+        if (res.ok && res.data?.session?.userId) {
           const nextUser = res.data.user;
           if (requiredRole && nextUser.role !== requiredRole) {
             setUser(null);
@@ -63,20 +66,21 @@ export function useAuthSession(requiredRole = null) {
             setUser(nextUser);
             storeUser(requiredRole, nextUser, true);
           }
-        } else if (!cancelled) {
+        } else {
           setUser(null);
           clearStoredUser(requiredRole);
         }
       } catch {
         // No active session.
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled && runId === authRunRef.current) setLoading(false);
       }
     })();
     return () => { cancelled = true; };
   }, [requiredRole]);
 
   const login = useCallback(async (email, password, rememberMe = true) => {
+    const runId = ++authRunRef.current;
     setError('');
     setLoading(true);
     try {
@@ -85,27 +89,29 @@ export function useAuthSession(requiredRole = null) {
         const nextUser = res.data.user;
         if (requiredRole && nextUser.role !== requiredRole) {
           setError(`Akses ditolak - akun ini bukan ${requiredRole}`);
-          setLoading(false);
+          if (runId === authRunRef.current) setLoading(false);
           return false;
         }
         setUser(nextUser);
         storeUser(requiredRole, nextUser, rememberMe);
-        setLoading(false);
+        if (runId === authRunRef.current) setLoading(false);
         return true;
       }
       setError(res.data?.error || res.data?.message || 'Email atau password salah');
-      setLoading(false);
+      if (runId === authRunRef.current) setLoading(false);
       return false;
     } catch {
       setError('Gagal terhubung ke server');
-      setLoading(false);
+      if (runId === authRunRef.current) setLoading(false);
       return false;
     }
   }, [requiredRole]);
 
   const logout = useCallback(async () => {
+    ++authRunRef.current;
     try { await authApi.signOut(); } catch {}
     setUser(null);
+    setLoading(false);
     clearStoredUser(requiredRole);
   }, [requiredRole]);
 
