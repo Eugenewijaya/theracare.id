@@ -2,7 +2,7 @@ import { db } from "../db/index.js";
 import { account, authSession, notificationReads, notifications, reports, therapists, therapySessions, user } from "../db/schema.js";
 import { eq } from "drizzle-orm";
 import { auth } from "../auth.js";
-import { generateTempPassword, generateNIT } from "../utils/id-generators.js";
+import { generatePortalResetPassword, generateTempPassword, generateNIT } from "../utils/id-generators.js";
 import { setCredentialPassword } from "./auth-password.service.js";
 
 type TherapistProfileInput = {
@@ -222,7 +222,7 @@ export const therapistService = {
   async resetPassword(id: string) {
     const therapist = await db.query.therapists.findFirst({ where: eq(therapists.id, id) });
     if (!therapist) return null;
-    const tempPassword = generateTempPassword();
+    const tempPassword = generatePortalResetPassword();
     await setCredentialPassword(therapist.userId, tempPassword);
     return { id, tempPassword };
   },

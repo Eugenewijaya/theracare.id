@@ -37,6 +37,13 @@ export function generateTempPassword(): string {
 }
 
 /**
+ * Fixed temporary password for admin reset during MVP testing.
+ */
+export function generatePortalResetPassword(): string {
+  return process.env.PORTAL_RESET_PASSWORD?.trim() || "Klinik@2211";
+}
+
+/**
  * Generate unique ID with prefix
  */
 export function generateId(prefix: string): string {

@@ -2,11 +2,14 @@ import { db } from "../db/index.js";
 import { account, authSession, children, notificationReads, notifications, parents, rescheduleRequests, sessionRatings, user } from "../db/schema.js";
 import { eq } from "drizzle-orm";
 import { auth } from "../auth.js";
-import { generateTempPassword, generateSeqId } from "../utils/id-generators.js";
+import { generatePortalResetPassword, generateTempPassword, generateSeqId } from "../utils/id-generators.js";
 import { setCredentialPassword } from "./auth-password.service.js";
 
 function normalizePhone(phone?: string) {
-  return (phone || "").replace(/\D/g, "");
+  const digits = (phone || "").replace(/\D/g, "");
+  if (digits.startsWith("62")) return `0${digits.slice(2)}`;
+  if (digits.startsWith("8")) return `0${digits}`;
+  return digits;
 }
 
 function parentLoginEmail(phone?: string, email?: string) {
@@ -149,7 +152,7 @@ export const parentService = {
   async resetPassword(id: string) {
     const parent = await db.query.parents.findFirst({ where: eq(parents.id, id) });
     if (!parent) return null;
-    const tempPassword = generateTempPassword();
+    const tempPassword = generatePortalResetPassword();
     await setCredentialPassword(parent.userId, tempPassword);
     return { id, tempPassword };
   },
