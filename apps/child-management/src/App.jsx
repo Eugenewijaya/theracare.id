@@ -52,8 +52,8 @@ function App() {
 
     return (
         <div className="layout-container flex h-full grow flex-col bg-background-light dark:bg-background-dark">
-            <div className="px-4 md:px-10 lg:px-40 flex flex-1 justify-center py-5">
-                <div className="layout-content-container flex flex-col w-full max-w-[1200px] flex-1">
+            <div className="px-4 md:px-8 xl:px-10 flex flex-1 justify-center py-5">
+                <div className="layout-content-container flex flex-col w-full max-w-[1500px] flex-1">
                     <Header />
                     <main className="flex flex-col gap-6 px-4 md:px-0">
                         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
