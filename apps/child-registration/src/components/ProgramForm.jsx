@@ -27,6 +27,18 @@ const DEFAULT_PROGRAM_COLORS = {
     'SI': 'blue'
 };
 
+const DAY_OPTIONS = [
+    { value: 'Monday', label: 'Senin' },
+    { value: 'Tuesday', label: 'Selasa' },
+    { value: 'Wednesday', label: 'Rabu' },
+    { value: 'Thursday', label: 'Kamis' },
+    { value: 'Friday', label: 'Jumat' },
+    { value: 'Saturday', label: 'Sabtu' },
+    { value: 'Sunday', label: 'Minggu' },
+];
+
+const todayString = () => new Date().toISOString().split('T')[0];
+
 const parsePricing = (settings = {}) => {
     try {
         const raw = settings.programPricing;
@@ -66,9 +78,15 @@ const ProgramForm = ({ data, onChange, errors }) => {
         load();
     }, []);
 
+    const toggleDay = (day) => {
+        const current = Array.isArray(data.therapyDays) ? data.therapyDays : [];
+        const next = current.includes(day) ? current.filter(item => item !== day) : [...current, day];
+        onChange({ ...data, therapyDays: next });
+    };
+
     return (
         <div className="flex flex-col gap-3">
-            <p className="text-sm text-slate-500 dark:text-slate-400 -mt-2">Select the therapy program for this child. This will automatically create a monitoring plan upon registration.</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400 -mt-2">Pilih program, periode terapi, harga, dan pola jadwal awal. Data ini akan menjadi enrollment aktif anak.</p>
             {programsList.map(prog => {
                 const isSelected = selected === prog.name;
                 const colorKey = prog.color || DEFAULT_PROGRAM_COLORS[prog.code] || 'emerald';
@@ -88,6 +106,8 @@ const ProgramForm = ({ data, onChange, errors }) => {
                                 programGoal: Array.isArray(prog.goals) ? prog.goals[0] || '' : '',
                                 programPricePerSession: pricing.pricePerSession || 0,
                                 programPricePerMonth: pricing.pricePerMonth || 0,
+                                billingMode: data.billingMode || 'per_session',
+                                periodStartDate: data.periodStartDate || todayString(),
                                 totalSessions: data.totalSessions || 12,
                             })} className="sr-only" />
                         <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${c.bg}`}>
@@ -111,7 +131,121 @@ const ProgramForm = ({ data, onChange, errors }) => {
             })}
             {errors?.program && <p className="text-xs text-red-500 mt-1">{errors.program}</p>}
 
-            <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-800">
+            <div className="mt-4 grid grid-cols-1 gap-4 border-t border-slate-200 pt-4 dark:border-slate-800 sm:grid-cols-2">
+                <div>
+                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">
+                        Mulai Periode <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                        type="date"
+                        value={data.periodStartDate || ''}
+                        onChange={(e) => onChange({ ...data, periodStartDate: e.target.value })}
+                        className={`w-full h-11 px-3 rounded-lg border ${errors?.periodStartDate ? 'border-red-500 focus:ring-red-500' : 'border-slate-300 dark:border-slate-700 focus:ring-primary focus:border-primary'} bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-opacity-50`}
+                    />
+                    {errors?.periodStartDate && <p className="text-xs text-red-500 mt-1">{errors.periodStartDate}</p>}
+                </div>
+                <div>
+                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">Selesai Periode</label>
+                    <input
+                        type="date"
+                        value={data.periodEndDate || ''}
+                        onChange={(e) => onChange({ ...data, periodEndDate: e.target.value })}
+                        className="w-full h-11 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-opacity-50 focus:border-primary"
+                    />
+                </div>
+                <div>
+                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">
+                        Jumlah Sesi <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                        type="number"
+                        min="1"
+                        value={data.totalSessions || ''}
+                        onChange={(e) => onChange({ ...data, totalSessions: e.target.value })}
+                        className={`w-full h-11 px-3 rounded-lg border ${errors?.totalSessions ? 'border-red-500 focus:ring-red-500' : 'border-slate-300 dark:border-slate-700 focus:ring-primary focus:border-primary'} bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-opacity-50`}
+                        placeholder="12"
+                    />
+                    {errors?.totalSessions && <p className="text-xs text-red-500 mt-1">{errors.totalSessions}</p>}
+                </div>
+                <div>
+                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">Mode Biaya</label>
+                    <select
+                        value={data.billingMode || 'per_session'}
+                        onChange={(e) => onChange({ ...data, billingMode: e.target.value })}
+                        className="w-full h-11 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-opacity-50 focus:border-primary"
+                    >
+                        <option value="per_session">Per sesi</option>
+                        <option value="per_month">Per bulan</option>
+                        <option value="package">Paket/periode</option>
+                    </select>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/40 sm:grid-cols-2">
+                <div>
+                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">Harga per Sesi</label>
+                    <input
+                        type="number"
+                        min="0"
+                        value={data.programPricePerSession || ''}
+                        onChange={(e) => onChange({ ...data, programPricePerSession: Number(e.target.value || 0) })}
+                        className="w-full h-11 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-opacity-50 focus:border-primary"
+                    />
+                </div>
+                <div>
+                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">Harga per Bulan</label>
+                    <input
+                        type="number"
+                        min="0"
+                        value={data.programPricePerMonth || ''}
+                        onChange={(e) => onChange({ ...data, programPricePerMonth: Number(e.target.value || 0) })}
+                        className="w-full h-11 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-opacity-50 focus:border-primary"
+                    />
+                </div>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
+                <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3 block">Hari Terapi</label>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    {DAY_OPTIONS.map(day => (
+                        <button
+                            type="button"
+                            key={day.value}
+                            onClick={() => toggleDay(day.value)}
+                            className={`h-10 rounded-lg border px-3 text-sm font-bold transition-colors ${Array.isArray(data.therapyDays) && data.therapyDays.includes(day.value) ? 'border-primary bg-primary/10 text-primary' : 'border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'}`}
+                        >
+                            {day.label}
+                        </button>
+                    ))}
+                </div>
+                <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div>
+                        <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">Jam Mulai Default</label>
+                        <input
+                            type="time"
+                            value={data.sessionStartTime || '09:00'}
+                            onChange={(e) => onChange({ ...data, sessionStartTime: e.target.value })}
+                            className="w-full h-11 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-opacity-50 focus:border-primary"
+                        />
+                    </div>
+                    <div>
+                        <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">Durasi Default</label>
+                        <select
+                            value={data.sessionDuration || '60'}
+                            onChange={(e) => onChange({ ...data, sessionDuration: e.target.value })}
+                            className="w-full h-11 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-opacity-50 focus:border-primary"
+                        >
+                            <option value="30">30 menit</option>
+                            <option value="45">45 menit</option>
+                            <option value="60">60 menit</option>
+                            <option value="90">90 menit</option>
+                        </select>
+                    </div>
+                </div>
+                <p className="mt-2 text-xs text-slate-500">Jika hari terapi dipilih, sistem akan membuat jadwal sesi dari periode ini secara otomatis.</p>
+            </div>
+
+            <div className="pt-1">
                 <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">
                     Terapis Utama (Primary Therapist) <span className="text-red-500">*</span>
                 </label>

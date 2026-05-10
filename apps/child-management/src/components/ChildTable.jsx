@@ -125,6 +125,10 @@ const ChildTable = ({ children }) => {
                                             <span className="min-w-0 max-w-[160px] truncate text-slate-700 dark:text-slate-300">{child.phase || '-'}</span>
                                             <span className={`shrink-0 whitespace-nowrap ${progressTextColors[child.progressColor] || 'text-primary'}`}>{child.sessionLabel || 'Belum ada sesi'}</span>
                                         </div>
+                                        <div className="flex justify-between gap-2 text-[11px] font-semibold text-slate-400">
+                                            <span className="min-w-0 truncate">{child.periodLabel || 'Belum ada periode'}</span>
+                                            {child.financialLabel && <span className="shrink-0 whitespace-nowrap">{child.financialLabel}</span>}
+                                        </div>
                                         <div className="w-full h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
                                             <div className={`h-full ${progressColors[child.progressColor] || 'bg-primary'} rounded-full transition-all duration-500`} style={{ width: `${child.progress || 0}%` }}></div>
                                         </div>
@@ -207,9 +211,12 @@ const ChildTable = ({ children }) => {
 
                         <div className="flex flex-col gap-1.5 w-full bg-slate-50 dark:bg-slate-900 rounded-lg p-3 border border-slate-100 dark:border-slate-700">
                             <div className="flex justify-between text-[11px] font-bold uppercase tracking-wider">
-                                <span className="text-slate-500 shrink-0">{child.phase || '-'}</span>
+                                <span className="min-w-0 truncate text-slate-500">{child.periodLabel || child.phase || '-'}</span>
                                 <span className={`text-right shrink-0 ${progressTextColors[child.progressColor] || 'text-primary'}`}>{child.sessionLabel || 'Belum ada sesi'}</span>
                             </div>
+                            {child.financialLabel && (
+                                <p className="text-[11px] font-semibold text-slate-400">{child.financialLabel}</p>
+                            )}
                             <div className="w-full h-2 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden shadow-inner">
                                 <div className={`h-full ${progressColors[child.progressColor] || 'bg-primary'} rounded-full transition-all duration-500`} style={{ width: `${child.progress || 0}%` }}></div>
                             </div>

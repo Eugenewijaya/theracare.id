@@ -24,6 +24,7 @@ function pickReportValues(data: any, options: ReportUpdateOptions = { allowStatu
     ...(typeof data.type === "string" ? { type: data.type } : {}),
     ...(typeof data.childId === "string" ? { childId: data.childId } : {}),
     ...(typeof data.therapistId === "string" ? { therapistId: data.therapistId } : {}),
+    ...(typeof data.therapyPeriodId === "string" && data.therapyPeriodId ? { therapyPeriodId: data.therapyPeriodId } : {}),
     ...(typeof data.sessionId === "string" && data.sessionId ? { sessionId: data.sessionId } : {}),
     ...(options.allowStatus !== false && typeof data.status === "string" ? { status: data.status } : {}),
     ...(typeof data.date === "string" ? { date: data.date } : {}),
@@ -58,7 +59,7 @@ export const reportService = {
   async getById(id: string) {
     const report = await db.query.reports.findFirst({
       where: eq(reports.id, id),
-      with: { child: true, therapist: { with: { user: true } }, session: true },
+      with: { child: true, therapist: { with: { user: true } }, session: true, therapyPeriod: { with: { program: true } } },
     });
     return formatReport(report);
   },
@@ -68,7 +69,7 @@ export const reportService = {
     if (type) conditions.push(eq(reports.type, type));
     const rows = await db.query.reports.findMany({
       where: and(...conditions),
-      with: { child: true, session: true },
+      with: { child: true, session: true, therapyPeriod: { with: { program: true } } },
       orderBy: (r, { desc }) => [desc(r.createdAt)],
     });
     return rows.map(formatReport);
@@ -85,7 +86,7 @@ export const reportService = {
     }
     const rows = await db.query.reports.findMany({
       where: and(...conditions),
-      with: { therapist: { with: { user: true } }, session: true },
+      with: { therapist: { with: { user: true } }, session: true, therapyPeriod: { with: { program: true } } },
       orderBy: (r, { desc }) => [desc(r.createdAt)],
     });
     return rows.map(formatReport);
@@ -96,7 +97,7 @@ export const reportService = {
     if (status) conditions.push(eq(reports.status, status));
     const rows = await db.query.reports.findMany({
       where: conditions.length ? and(...conditions) : undefined,
-      with: { child: true, therapist: { with: { user: true } }, session: true },
+      with: { child: true, therapist: { with: { user: true } }, session: true, therapyPeriod: { with: { program: true } } },
       orderBy: (r, { desc }) => [desc(r.createdAt)],
     });
     return rows.map(formatReport);
@@ -105,18 +106,23 @@ export const reportService = {
   async getSessionReport(sessionId: string) {
     const report = await db.query.reports.findFirst({
       where: and(eq(reports.type, "harian"), eq(reports.sessionId, sessionId)),
-      with: { child: true, therapist: { with: { user: true } }, session: true },
+      with: { child: true, therapist: { with: { user: true } }, session: true, therapyPeriod: { with: { program: true } } },
     });
     return formatReport(report);
   },
 
   async save(data: any) {
     const now = new Date();
+    let therapyPeriodId = typeof data.therapyPeriodId === "string" ? data.therapyPeriodId : "";
+    if (!therapyPeriodId && data.sessionId) {
+      const session = await db.query.therapySessions.findFirst({ where: eq(therapySessions.id, data.sessionId) });
+      therapyPeriodId = session?.therapyPeriodId || "";
+    }
 
     // Check if updating existing report
     if (data.id) {
       const [updated] = await db.update(reports)
-        .set({ ...pickReportValues(data, { allowStatus: false }), status: "pending_review", updatedAt: now })
+        .set({ ...pickReportValues({ ...data, therapyPeriodId }, { allowStatus: false }), status: "pending_review", updatedAt: now })
         .where(eq(reports.id, data.id))
         .returning();
       return formatReport(updated);
@@ -129,7 +135,7 @@ export const reportService = {
       });
       if (existing) {
         const [updated] = await db.update(reports)
-          .set({ ...pickReportValues(data, { allowStatus: false }), status: "pending_review", updatedAt: now })
+          .set({ ...pickReportValues({ ...data, therapyPeriodId }, { allowStatus: false }), status: "pending_review", updatedAt: now })
           .where(eq(reports.id, existing.id))
           .returning();
         return formatReport(updated);
@@ -144,7 +150,7 @@ export const reportService = {
       type: data.type,
       childId: data.childId,
       therapistId: data.therapistId,
-      ...pickReportValues(data),
+      ...pickReportValues({ ...data, therapyPeriodId }),
       status: "pending_review",
       createdAt: now,
       updatedAt: now,

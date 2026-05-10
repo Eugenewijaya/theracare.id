@@ -115,6 +115,23 @@ export const sessionsApi = {
 };
 
 // ── Reports API ──────────────────────────────────────────────────
+export const therapyPeriodsApi = {
+  getAll: (filters = {}) => {
+    const params = new URLSearchParams();
+    if (filters.childId) params.set('childId', filters.childId);
+    if (filters.status) params.set('status', filters.status);
+    const query = params.toString();
+    return api.get(`/therapy-periods${query ? `?${query}` : ''}`);
+  },
+  getById: (id) => api.get(`/therapy-periods/${id}`),
+  getForChild: (childId) => api.get(`/therapy-periods/child/${childId}`),
+  create: (data) => api.post('/therapy-periods', data),
+  update: (id, data) => api.patch(`/therapy-periods/${id}`, data),
+  generateSessions: (id, data = {}) => api.post(`/therapy-periods/${id}/generate-sessions`, data),
+  complete: (id, data = {}) => api.post(`/therapy-periods/${id}/complete`, data),
+  renew: (id, data = {}) => api.post(`/therapy-periods/${id}/renew`, data),
+};
+
 export const reportsApi = {
   getById: (id) => api.get(`/reports/${id}`),
   getAll: (status) => api.get(`/reports${status ? `?status=${encodeURIComponent(status)}` : ''}`),

@@ -178,10 +178,12 @@ export default function ChildProfile() {
                                 Active Programs
                             </h3>
                             
-                            {child.therapyPrograms && child.therapyPrograms.length > 0 ? (
+                            {(child.periods?.length || child.therapyPrograms?.length) ? (
                                 <div className="space-y-6 flex-1">
-                                    {child.therapyPrograms.map((prog, i) => {
-                                        const pct = Math.min(100, Math.round((prog.sessionsCompleted / prog.totalSessions) * 100));
+                                    {(child.periods?.length ? child.periods : child.therapyPrograms).map((prog, i) => {
+                                        const completed = prog.completedSessions ?? prog.sessionsCompleted ?? 0;
+                                        const totalSessions = Number(prog.totalSessions || 0);
+                                        const pct = prog.progress ?? (totalSessions > 0 ? Math.min(100, Math.round((completed / totalSessions) * 100)) : 0);
                                         return (
                                             <div key={i} className="bg-slate-50 dark:bg-slate-900/50 rounded-2xl p-5 border border-slate-100 dark:border-slate-700/50">
                                                 <div className="flex justify-between items-start mb-3">
@@ -190,14 +192,14 @@ export default function ChildProfile() {
                                                             <span className="material-symbols-outlined text-[20px]">{prog.icon || 'star'}</span>
                                                         </div>
                                                         <div>
-                                                            <h4 className="font-bold text-slate-900 dark:text-slate-100 text-sm leading-tight">{prog.type}</h4>
-                                                            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">Target: {prog.goal}</p>
+                                                            <h4 className="font-bold text-slate-900 dark:text-slate-100 text-sm leading-tight">{prog.programName || prog.type || prog.name}</h4>
+                                                            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">{prog.name || 'Periode aktif'} - Target: {prog.goal || '-'}</p>
                                                         </div>
                                                     </div>
                                                 </div>
                                                 <div className="flex justify-between items-ends mb-1.5 px-1">
                                                     <span className="text-xs font-bold text-slate-500 dark:text-slate-400">Progress</span>
-                                                    <span className="text-xs font-bold text-slate-900 dark:text-white">{prog.sessionsCompleted} / {prog.totalSessions} Sessions</span>
+                                                    <span className="text-xs font-bold text-slate-900 dark:text-white">{completed} / {totalSessions} Sessions</span>
                                                 </div>
                                                 <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2.5 overflow-hidden">
                                                     <div className="bg-sky-500 h-full rounded-full transition-all duration-1000 ease-out" style={{ width: `${pct}%` }}></div>
@@ -236,7 +238,7 @@ export default function ChildProfile() {
                                     <div className="w-12 h-12 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-full flex items-center justify-center mb-1">
                                         <span className="material-symbols-outlined text-[24px]">workspace_premium</span>
                                     </div>
-                                    <span className="text-3xl font-extrabold text-slate-900 dark:text-white">{child.therapyPrograms?.length || 0}</span>
+                                    <span className="text-3xl font-extrabold text-slate-900 dark:text-white">{child.periods?.length || child.therapyPrograms?.length || 0}</span>
                                     <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Active Programs</span>
                                 </div>
                             </div>
@@ -244,13 +246,13 @@ export default function ChildProfile() {
                             <div className="mt-6 pt-6 border-t border-slate-100 dark:border-slate-700/50 flex flex-col gap-3">
                                 <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">Milestone Summary:</p>
                                 <ul className="space-y-2">
-                                    {child.therapyPrograms?.slice(0,2).map((p, idx) => (
+                                    {(child.periods?.length ? child.periods : child.therapyPrograms || []).slice(0,2).map((p, idx) => (
                                         <li key={idx} className="flex gap-2 items-start text-sm text-slate-600 dark:text-slate-400">
                                             <span className="material-symbols-outlined text-[18px] text-sky-500 shrink-0">check_circle</span>
-                                            <span>Focus on {p.goal} ({p.sessionsCompleted} sessions tracked)</span>
+                                            <span>Focus on {p.goal || p.programName || p.type} ({p.completedSessions ?? p.sessionsCompleted ?? 0} sessions tracked)</span>
                                         </li>
                                     ))}
-                                    {(!child.therapyPrograms || child.therapyPrograms.length === 0) && (
+                                    {(!child.periods?.length && (!child.therapyPrograms || child.therapyPrograms.length === 0)) && (
                                         <p className="text-xs italic text-slate-400">Detail milestones akan dihitung berdasarkan program yang sedang dijalani.</p>
                                     )}
                                 </ul>

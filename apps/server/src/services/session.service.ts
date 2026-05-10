@@ -8,6 +8,7 @@ type TherapySessionInsert = typeof therapySessions.$inferInsert;
 
 function pickSessionValues(data: any): Partial<TherapySessionInsert> {
   return {
+    ...(typeof data.therapyPeriodId === "string" ? { therapyPeriodId: data.therapyPeriodId } : {}),
     ...(typeof data.therapistId === "string" ? { therapistId: data.therapistId } : {}),
     ...(typeof data.childId === "string" ? { childId: data.childId } : {}),
     ...(typeof data.roomId === "string" && data.roomId ? { roomId: data.roomId } : {}),
@@ -32,7 +33,7 @@ async function enrichSessionChildren<T extends { child?: any }>(sessions: T[]) {
 export const sessionService = {
   async getAllWithDetails() {
     const sessions = await db.query.therapySessions.findMany({
-      with: { therapist: { with: { user: true } }, child: { with: { parent: true } }, room: true },
+      with: { therapist: { with: { user: true } }, child: { with: { parent: true, therapyPeriods: { with: { program: true, therapyProgram: true, sessions: true } } } }, room: true, therapyPeriod: { with: { program: true } } },
       orderBy: (s, { desc }) => [desc(s.date), desc(s.startTime)],
     });
     return enrichSessionChildren(sessions);
@@ -41,7 +42,7 @@ export const sessionService = {
   async getById(id: string) {
     const session = await db.query.therapySessions.findFirst({
       where: eq(therapySessions.id, id),
-      with: { therapist: { with: { user: true } }, child: { with: { parent: true } }, room: true },
+      with: { therapist: { with: { user: true } }, child: { with: { parent: true, therapyPeriods: { with: { program: true, therapyProgram: true, sessions: true } } } }, room: true, therapyPeriod: { with: { program: true } } },
     });
     if (!session) return null;
     const [enriched] = await enrichSessionChildren([session]);
@@ -54,7 +55,7 @@ export const sessionService = {
 
     const sessions = await db.query.therapySessions.findMany({
       where: and(...conditions),
-      with: { child: { with: { parent: true } }, room: true },
+      with: { child: { with: { parent: true, therapyPeriods: { with: { program: true, therapyProgram: true, sessions: true } } } }, room: true, therapyPeriod: { with: { program: true } } },
       orderBy: (s, { asc }) => [asc(s.date), asc(s.startTime)],
     });
     return enrichSessionChildren(sessions);
@@ -68,7 +69,7 @@ export const sessionService = {
         gte(therapySessions.date, today),
         sql`${therapySessions.status} != 'done'`
       ),
-      with: { therapist: { with: { user: true } } },
+      with: { therapist: { with: { user: true } }, therapyPeriod: { with: { program: true } } },
       orderBy: (s, { asc }) => [asc(s.date), asc(s.startTime)],
     });
   },
@@ -76,14 +77,14 @@ export const sessionService = {
   async getCompletedForChild(childId: string) {
     return db.query.therapySessions.findMany({
       where: and(eq(therapySessions.childId, childId), eq(therapySessions.status, "done")),
-      with: { therapist: { with: { user: true } } },
+      with: { therapist: { with: { user: true } }, therapyPeriod: { with: { program: true } } },
       orderBy: (s, { desc }) => [desc(s.date), desc(s.startTime)],
     });
   },
 
   async create(data: {
     therapistId: string; childId: string; date: string; startTime: string;
-    duration?: string; focus?: string; roomId?: string;
+    duration?: string; focus?: string; roomId?: string; therapyPeriodId?: string;
   }) {
     const id = `S-${Date.now().toString(36).toUpperCase()}`;
     const values: TherapySessionInsert = {
@@ -101,7 +102,7 @@ export const sessionService = {
 
   async createBulk(sessionsData: Array<{
     therapistId: string; childId: string; date: string; startTime: string;
-    duration?: string; focus?: string; roomId?: string;
+    duration?: string; focus?: string; roomId?: string; therapyPeriodId?: string;
   }>) {
     const values: TherapySessionInsert[] = sessionsData.map((s, i) => ({
       id: `S-BULK-${Date.now()}-${i}`,
@@ -145,7 +146,7 @@ export const sessionService = {
 
   // ── Session Ratings ──
   async update(id: string, updates: Partial<{
-    therapistId: string; childId: string; roomId: string | null; date: string; startTime: string;
+    therapyPeriodId: string; therapistId: string; childId: string; roomId: string | null; date: string; startTime: string;
     duration: string; focus: string; status: string; notes: string; cancelReason: string;
   }>) {
     const values: any = pickSessionValues(updates);

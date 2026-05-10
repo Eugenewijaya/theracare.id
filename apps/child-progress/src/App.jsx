@@ -56,7 +56,11 @@ function App() {
     }, []);
 
     // Build combined list: store children first
-    const allChildren = storeChildren.map(c => ({
+    const allChildren = storeChildren.map(c => {
+        const periods = Array.isArray(c.periods) && c.periods.length > 0 ? c.periods : [];
+        const legacyPrograms = Array.isArray(c.therapyPrograms) ? c.therapyPrograms : [];
+        const milestoneSource = periods.length > 0 ? periods : legacyPrograms;
+        return {
         id: c.id,
         name: c.name || `${c.firstName} ${c.lastName}`,
         age: c.dob ? (() => {
@@ -68,19 +72,20 @@ function App() {
         })() : '—',
         diagnosis: c.diagnosis || '—',
         enrolled: c.createdAt ? new Date(c.createdAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : '—',
-        photo: null,
-        therapists: (c.therapyPrograms || []).map(p => p.type?.split(' ')[0]?.slice(0, 3).toUpperCase() || 'TX'),
-        milestones: (c.therapyPrograms || []).map((p, i) => ({
+        photo: c.photoUrl || c.avatar || null,
+        therapists: c.therapist ? [c.therapist.split(' ')[0]?.slice(0, 3).toUpperCase()] : milestoneSource.map(p => (p.programName || p.type || p.name || 'TX')?.split(' ')[0]?.slice(0, 3).toUpperCase() || 'TX'),
+        milestones: milestoneSource.map((p, i) => ({
             icon: PROGRAM_ICONS[i % PROGRAM_ICONS.length],
-            name: p.type || 'Therapy',
-            tag: p.type?.split(' ')[0]?.slice(0, 3).toUpperCase() || 'TX',
-            pct: p.totalSessions > 0 ? Math.round((p.sessionsCompleted / p.totalSessions) * 100) : 0,
+            name: p.programName || p.type || p.name || 'Therapy',
+            tag: (p.programName || p.type || p.name || 'TX')?.split(' ')[0]?.slice(0, 3).toUpperCase() || 'TX',
+            pct: p.progress ?? (p.totalSessions > 0 ? Math.round(((p.completedSessions ?? p.sessionsCompleted ?? 0) / p.totalSessions) * 100) : 0),
             color: PROGRAM_COLORS[i % PROGRAM_COLORS.length],
-            target: p.goal || 'Ongoing',
+            target: p.goal || p.name || 'Ongoing',
         })),
-        chartData: [20, 35, 45, 55, 60, (c.therapyPrograms?.[0]?.sessionsCompleted || 0) * 5 || 65],
+        chartData: [20, 35, 45, 55, 60, (milestoneSource?.[0]?.progress || (milestoneSource?.[0]?.completedSessions || legacyPrograms?.[0]?.sessionsCompleted || 0) * 5 || 65)],
         radarPoints: '50,10 85,45 60,90 20,70',
-    }));
+    };
+    });
 
     const filteredChildren = allChildren.filter(c =>
         !searchQuery || c.name.toLowerCase().includes(searchQuery.toLowerCase())

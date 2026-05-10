@@ -3,6 +3,7 @@ import express from "express";
 import cors, { type CorsOptions } from "cors";
 import { toNodeHandler } from "better-auth/node";
 import { auth } from "./auth.js";
+import { ensureProductionSchema } from "./db/production-schema.js";
 import { errorHandler } from "./middleware/error.middleware.js";
 
 // Routes
@@ -12,6 +13,7 @@ import therapistRoutes from "./routes/therapist.routes.js";
 import sessionRoutes from "./routes/session.routes.js";
 import reportRoutes from "./routes/report.routes.js";
 import rescheduleRoutes from "./routes/reschedule.routes.js";
+import therapyPeriodRoutes from "./routes/therapy-period.routes.js";
 import leaveRequestRoutes from "./routes/leave-request.routes.js";
 import meetingRoutes from "./routes/meeting.routes.js";
 import notificationRoutes from "./routes/notification.routes.js";
@@ -45,6 +47,8 @@ const corsOptions: CorsOptions = {
   credentials: true,
 };
 
+await ensureProductionSchema();
+
 // ── Middleware ──────────────────────────────────────────
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
@@ -70,6 +74,7 @@ app.use("/api/therapists", therapistRoutes);
 app.use("/api/sessions", sessionRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/reschedule", rescheduleRoutes);
+app.use("/api/therapy-periods", therapyPeriodRoutes);
 app.use("/api/leave-requests", leaveRequestRoutes);
 app.use("/api/meetings", meetingRoutes);
 app.use("/api/notifications", notificationRoutes);

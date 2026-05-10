@@ -56,7 +56,7 @@ export default function ProgressSummary() {
                             ) : (
                                 children.map(child => (
                                     <React.Fragment key={child.id}>
-                                        {(!child.therapyPrograms || child.therapyPrograms.length === 0) && (
+                                        {(!child.periods || child.periods.length === 0) && (!child.therapyPrograms || child.therapyPrograms.length === 0) && (
                                             <div className="flex items-center justify-between p-4 rounded-lg bg-background-light dark:bg-background-dark border border-border-light dark:border-border-dark">
                                                 <div className="flex items-center gap-4">
                                                     <div className="w-12 h-12 rounded-full bg-slate-500/20 text-slate-500 flex items-center justify-center font-bold text-lg">
@@ -69,10 +69,10 @@ export default function ProgressSummary() {
                                                 </div>
                                             </div>
                                         )}
-                                        {child.therapyPrograms?.map((prog, idx) => {
+                                        {(child.periods?.length ? child.periods : child.therapyPrograms || []).map((prog, idx) => {
                                             const total = prog.totalSessions || 1;
-                                            const completed = prog.sessionsCompleted || 0;
-                                            const pct = Math.min(100, Math.round((completed / total) * 100));
+                                            const completed = prog.completedSessions ?? prog.sessionsCompleted ?? 0;
+                                            const pct = prog.progress ?? Math.min(100, Math.round((completed / total) * 100));
                                             
                                             // Matching identical visual styles to therapist's dashboard
                                             // Blue for regular, Red for Critical (>90% or defined so)
@@ -98,7 +98,8 @@ export default function ProgressSummary() {
                                                         </div>
                                                         <div>
                                                             <p className={`font-medium text-base ${textName}`}>{child.name}</p>
-                                                            <p className={`text-sm ${textSub}`}>{prog.type} - {completed}/{total} sessions</p>
+                                                            <p className={`text-sm ${textSub}`}>{prog.programName || prog.type || prog.name} - {completed}/{total} sessions</p>
+                                                            {prog.name && <p className={`text-xs ${textSub}`}>{prog.name}</p>}
                                                         </div>
                                                     </div>
                                                     <div className="flex flex-col items-end gap-2 w-1/3">

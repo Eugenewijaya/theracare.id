@@ -93,7 +93,7 @@ function App() {
     const nextSession    = upcomingSessions[0] || null;
     const parentName     = parentUser?.name     || 'Parent';
     const childName      = parentUser?.childName || child?.name || 'your child';
-    const therapyPrograms = child?.therapyPrograms || [];
+    const therapyPrograms = child?.periods?.length ? child.periods : child?.therapyPrograms || [];
     const recentNotes    = completedSessions.slice(0, 2);
 
     // Compute milestone chart data from completed sessions grouped by month
@@ -232,7 +232,9 @@ function App() {
                                     <div className="space-y-5">
                                         {therapyPrograms.map((prog, i) => {
                                             const style = getProgramStyle(prog.icon);
-                                            const pct   = Math.round((prog.sessionsCompleted / prog.totalSessions) * 100);
+                                            const completed = prog.completedSessions ?? prog.sessionsCompleted ?? 0;
+                                            const total = Number(prog.totalSessions || 0);
+                                            const pct = prog.progress ?? (total > 0 ? Math.round((completed / total) * 100) : 0);
                                             return (
                                                 <div key={i}>
                                                     <div className="flex justify-between items-end mb-2">
@@ -240,10 +242,10 @@ function App() {
                                                             <div className={`w-8 h-8 rounded-lg ${style.bg} ${style.text} flex items-center justify-center`}>
                                                                 <span className="material-symbols-outlined text-sm">{prog.icon}</span>
                                                             </div>
-                                                            <h3 className="font-semibold text-sm">{prog.type}</h3>
+                                                            <h3 className="font-semibold text-sm">{prog.programName || prog.type || prog.name}</h3>
                                                         </div>
                                                         <span className="text-sm font-medium text-text-secondary-light dark:text-text-secondary-dark">
-                                                            {prog.sessionsCompleted} / {prog.totalSessions} Sessions
+                                                            {completed} / {total} Sessions
                                                         </span>
                                                     </div>
                                                     <div className="w-full bg-background-light dark:bg-background-dark rounded-full h-2.5 border border-border-light dark:border-border-dark overflow-hidden">
@@ -252,7 +254,7 @@ function App() {
                                                             style={{ width: `${pct}%` }}
                                                         />
                                                     </div>
-                                                    <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-2">Goal: {prog.goal}</p>
+                                                    <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-2">{prog.name || 'Periode aktif'} - Goal: {prog.goal || '-'}</p>
                                                 </div>
                                             );
                                         })}

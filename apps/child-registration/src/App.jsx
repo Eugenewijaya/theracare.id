@@ -24,7 +24,22 @@ const STEPS_EXISTING = [
 ];
 
 const EMPTY_PARENT = { name: '', phone: '', email: '', address: '' };
-const EMPTY_CHILD  = { firstName: '', lastName: '', dob: '', gender: '', school: '', diagnosis: '', program: '' };
+const EMPTY_CHILD  = {
+    firstName: '',
+    lastName: '',
+    dob: '',
+    gender: '',
+    school: '',
+    diagnosis: '',
+    program: '',
+    totalSessions: 12,
+    periodStartDate: '',
+    periodEndDate: '',
+    therapyDays: [],
+    sessionStartTime: '09:00',
+    sessionDuration: '60',
+    billingMode: 'per_session',
+};
 
 const STEP_META = {
     0: { title: 'Jenis Pendaftaran',   subtitle: 'Pilih mode registrasi pasien baru.',                      icon: 'select_all'    },
@@ -70,6 +85,8 @@ function App() {
             const e = {};
             if (!currentChild.program) e.program = 'Please select a therapy program.';
             if (!currentChild.therapistId) e.therapistId = 'Silakan pilih terapis utama.';
+            if (!currentChild.periodStartDate) e.periodStartDate = 'Tanggal mulai periode wajib diisi.';
+            if (!Number(currentChild.totalSessions || 0)) e.totalSessions = 'Jumlah sesi wajib diisi.';
             setErrors(e);
             return !Object.keys(e).length;
         },
@@ -154,11 +171,26 @@ function App() {
 
             const registeredChildren = [];
             for (const child of childrenList) {
+                const scheduleRules = Array.isArray(child.therapyDays)
+                    ? child.therapyDays.map(day => ({
+                        day,
+                        startTime: child.sessionStartTime || '09:00',
+                        duration: `${child.sessionDuration || 60} mins`,
+                        therapistId: child.therapistId,
+                    }))
+                    : [];
                 const therapyProgramsList = child.program ? [{
                     programId: child.programId || null,
                     type: child.program,
                     totalSessions: Number(child.totalSessions || 12),
                     goal: child.programGoal || '',
+                    startDate: child.periodStartDate,
+                    endDate: child.periodEndDate || null,
+                    pricePerSession: Number(child.programPricePerSession || 0),
+                    pricePerMonth: Number(child.programPricePerMonth || 0),
+                    billingMode: child.billingMode || 'per_session',
+                    scheduleRules,
+                    generateSessions: scheduleRules.length > 0,
                 }] : [];
                 const childRes = await childrenApi.create({ ...child, parentId, therapyProgramsList });
                 if (!childRes.ok || !childRes.data?.data) {
@@ -258,7 +290,7 @@ function App() {
         if (step === 0) return regMode !== null;
         if (step === 1) return !!parentData.name?.trim() && !!parentData.phone?.trim() && !!parentData.address?.trim();
         if (step === 2) return !!currentChild.firstName?.trim() && !!currentChild.lastName?.trim() && !!currentChild.dob;
-        if (step === 3) return !!currentChild.program && !!currentChild.therapistId;
+        if (step === 3) return !!currentChild.program && !!currentChild.therapistId && !!currentChild.periodStartDate && Number(currentChild.totalSessions || 0) > 0;
         return true;
     })();
 

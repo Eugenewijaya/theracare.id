@@ -1,7 +1,8 @@
 import { db } from "../db/index.js";
-import { children, clinicSettings, programs, reports, rescheduleRequests, sessionRatings, therapyPrograms, therapySessions } from "../db/schema.js";
+import { children, clinicSettings, programs, reports, rescheduleRequests, sessionRatings, therapyPeriods, therapyPrograms, therapySessions } from "../db/schema.js";
 import { and, eq, gte, sql } from "drizzle-orm";
 import { generateNITA } from "../utils/id-generators.js";
+import { therapyPeriodService } from "./therapy-period.service.js";
 
 const CHILD_PHOTO_SETTINGS_KEY = "childPhotoUrls";
 
@@ -72,6 +73,23 @@ function normalizeTherapyProgram(enrollment: any) {
   };
 }
 
+function normalizeTherapyPeriod(period: any) {
+  if (!period) return null;
+  const sessions = Array.isArray(period.sessions) ? period.sessions : [];
+  const completedFromSessions = sessions.filter((session: any) => session.status === "done" || session.status === "completed").length;
+  const completedSessions = Math.max(Number(period.completedSessions || 0), completedFromSessions);
+  const totalSessions = Number(period.totalSessions || sessions.length || 0);
+  const programName = period.program?.name || period.therapyProgram?.type || "Program Terapi";
+  return {
+    ...period,
+    programName,
+    completedSessions,
+    totalSessions,
+    progress: totalSessions > 0 ? Math.min(100, Math.round((completedSessions / totalSessions) * 100)) : 0,
+    sessionLabel: totalSessions > 0 ? `${completedSessions}/${totalSessions} sesi` : `${completedSessions} sesi selesai`,
+  };
+}
+
 function formatChildRecord(child: any) {
   if (!child) return child;
   const name = child.name || `${child.firstName || ""} ${child.lastName || ""}`.trim() || "Anak";
@@ -81,12 +99,23 @@ function formatChildRecord(child: any) {
       ? child.programs
       : [];
   const childSessions = Array.isArray(child.sessions) ? child.sessions : [];
+  const childPeriods = Array.isArray(child.therapyPeriods)
+    ? child.therapyPeriods.map(normalizeTherapyPeriod).filter(Boolean)
+    : [];
+  const activePeriod = childPeriods.find((period: any) => ["active", "planned"].includes(period.status)) || childPeriods[0] || null;
   const activeSessions = childSessions.filter((session: any) => session.status !== "cancelled");
   const primarySession = activeSessions[0] || childSessions[0];
   const primaryTherapist = primarySession?.therapist;
   const therapistName = primaryTherapist?.user?.name || primaryTherapist?.name || "";
-  const completedSessions = childSessions.filter((session: any) => session.status === "done" || session.status === "completed").length;
-  const plannedSessions = childPrograms.reduce((sum: number, program: any) => sum + Number(program.totalSessions || 0), 0) || childSessions.length;
+  const periodSessions = activePeriod
+    ? childSessions.filter((session: any) => session.therapyPeriodId === activePeriod.id)
+    : childSessions;
+  const completedSessions = activePeriod
+    ? Number(activePeriod.completedSessions || periodSessions.filter((session: any) => session.status === "done" || session.status === "completed").length)
+    : childSessions.filter((session: any) => session.status === "done" || session.status === "completed").length;
+  const plannedSessions = activePeriod?.totalSessions
+    || childPrograms.reduce((sum: number, program: any) => sum + Number(program.totalSessions || 0), 0)
+    || childSessions.length;
   const progress = plannedSessions > 0 ? Math.min(100, Math.round((completedSessions / plannedSessions) * 100)) : 0;
   const sessionLabel = plannedSessions > 0 ? `${completedSessions}/${plannedSessions} sesi` : `${completedSessions} sesi selesai`;
   const photoUrl = child.photoUrl || "";
@@ -96,6 +125,12 @@ function formatChildRecord(child: any) {
     name,
     age: calculateAge(child.dob),
     programs: childPrograms,
+    periods: childPeriods,
+    activePeriod,
+    periodLabel: activePeriod ? `${activePeriod.name} - ${activePeriod.programName}` : "Belum ada periode",
+    financialLabel: activePeriod?.totalPrice
+      ? new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(Number(activePeriod.totalPrice || 0))
+      : "",
     program: childPrograms[0]?.name || "",
     therapistId: primarySession?.therapistId || "",
     therapist: therapistName || "Belum ditugaskan",
@@ -108,7 +143,7 @@ function formatChildRecord(child: any) {
     sessionLabel,
     progress,
     progressColor: progress >= 70 ? "emerald" : "primary",
-    phase: childPrograms[0]?.goal || childPrograms[0]?.name || "Program aktif",
+    phase: activePeriod?.name || childPrograms[0]?.goal || childPrograms[0]?.name || "Program aktif",
   };
 }
 
@@ -183,6 +218,7 @@ export const childService = {
       with: {
         parent: { with: { user: true } },
         therapyPrograms: { with: { program: true } },
+        therapyPeriods: { with: { program: true, therapyProgram: true, sessions: true } },
         sessions: { with: { therapist: { with: { user: true } } } },
       },
     });
@@ -195,6 +231,7 @@ export const childService = {
       with: {
         parent: { with: { user: true } },
         therapyPrograms: { with: { program: true } },
+        therapyPeriods: { with: { program: true, therapyProgram: true, sessions: true } },
         sessions: { with: { therapist: { with: { user: true } }, room: true } },
       },
     });
@@ -207,6 +244,7 @@ export const childService = {
       where: eq(children.parentId, parentId),
       with: {
         therapyPrograms: { with: { program: true } },
+        therapyPeriods: { with: { program: true, therapyProgram: true, sessions: true } },
         sessions: { with: { therapist: { with: { user: true } } } },
       },
     });
@@ -216,7 +254,11 @@ export const childService = {
   async create(parentId: string, data: {
     firstName: string; lastName: string; dob?: string;
     gender?: string; school?: string; diagnosis?: string;
-    therapyProgramsList?: Array<{ type: string; totalSessions: number; goal?: string; icon?: string; colorClass?: string; colorHex?: string; programId?: string }>;
+    therapyProgramsList?: Array<{
+      type: string; totalSessions: number; goal?: string; icon?: string; colorClass?: string; colorHex?: string; programId?: string;
+      startDate?: string; endDate?: string; pricePerSession?: number; pricePerMonth?: number; totalPrice?: number; billingMode?: string;
+      scheduleRules?: Array<Record<string, unknown>>; generateSessions?: boolean; createInitialPeriod?: boolean;
+    }>;
   }) {
     const lastSeq = await this.getLastSequence();
     const nita = generateNITA(lastSeq + 1);
@@ -236,7 +278,7 @@ export const childService = {
 
     // Insert therapy programs if provided
     if (data.therapyProgramsList && data.therapyProgramsList.length > 0) {
-      await db.insert(therapyPrograms).values(
+      const insertedPrograms = await db.insert(therapyPrograms).values(
         data.therapyProgramsList.map((tp) => ({
           childId: nita,
           programId: tp.programId || null,
@@ -247,7 +289,28 @@ export const childService = {
           colorClass: tp.colorClass,
           colorHex: tp.colorHex,
         }))
-      );
+      ).returning();
+
+      for (let i = 0; i < insertedPrograms.length; i += 1) {
+        const source = data.therapyProgramsList[i];
+        if (source?.createInitialPeriod === false) continue;
+        await therapyPeriodService.create({
+          childId: nita,
+          therapyProgramId: insertedPrograms[i].id,
+          programId: insertedPrograms[i].programId,
+          type: insertedPrograms[i].type,
+          totalSessions: source?.totalSessions || insertedPrograms[i].totalSessions,
+          goal: source?.goal || insertedPrograms[i].goal || "",
+          startDate: source?.startDate,
+          endDate: source?.endDate,
+          pricePerSession: source?.pricePerSession,
+          pricePerMonth: source?.pricePerMonth,
+          totalPrice: source?.totalPrice,
+          billingMode: source?.billingMode,
+          scheduleRules: source?.scheduleRules,
+          generateSessions: source?.generateSessions,
+        });
+      }
     }
 
     return child;
@@ -306,6 +369,7 @@ export const childService = {
     const rating = await db.query.sessionRatings.findFirst({ where: eq(sessionRatings.childId, id) });
     if (rating) return { blocked: true, reason: "Anak masih memiliki rating sesi." };
 
+    await db.delete(therapyPeriods).where(eq(therapyPeriods.childId, id));
     await db.delete(therapyPrograms).where(eq(therapyPrograms.childId, id));
     await db.delete(children).where(eq(children.id, id));
     return { deleted: true, id };

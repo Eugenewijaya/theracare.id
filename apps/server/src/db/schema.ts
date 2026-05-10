@@ -166,6 +166,42 @@ export const therapyPrograms = pgTable("therapy_programs", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// Therapy Periods (per-program enrollment periods / seasons)
+
+export const therapyPeriods = pgTable("therapy_periods", {
+  id: text("id").primaryKey(),
+  childId: text("child_id")
+    .notNull()
+    .references(() => children.id),
+  therapyProgramId: integer("therapy_program_id").references(() => therapyPrograms.id),
+  programId: text("program_id").references(() => programs.id),
+  periodNumber: integer("period_number").notNull().default(1),
+  name: text("name").notNull(),
+  status: text("status").notNull().default("active"), // planned | active | completed | cancelled
+  startDate: date("start_date").notNull(),
+  endDate: date("end_date"),
+  totalSessions: integer("total_sessions").notNull().default(0),
+  completedSessions: integer("completed_sessions").notNull().default(0),
+  pricePerSession: integer("price_per_session").notNull().default(0),
+  pricePerMonth: integer("price_per_month").notNull().default(0),
+  totalPrice: integer("total_price").notNull().default(0),
+  billingMode: text("billing_mode").notNull().default("per_session"), // per_session | per_month | package
+  scheduleRules: jsonb("schedule_rules").$type<Array<{
+    day: string;
+    dayOfWeek: number;
+    startTime: string;
+    duration?: string;
+    therapistId?: string;
+    roomId?: string;
+  }>>(),
+  goals: jsonb("goals").$type<string[]>(),
+  notes: text("notes"),
+  renewalOf: text("renewal_of"),
+  finalReportId: text("final_report_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
 // ── Rooms ──────────────────────────────────────────────────────────
 
 export const rooms = pgTable("rooms", {
@@ -181,6 +217,7 @@ export const rooms = pgTable("rooms", {
 
 export const therapySessions = pgTable("therapy_sessions", {
   id: text("id").primaryKey(), // S-001
+  therapyPeriodId: text("therapy_period_id").references(() => therapyPeriods.id),
   therapistId: text("therapist_id")
     .notNull()
     .references(() => therapists.id),
@@ -205,6 +242,7 @@ export const therapySessions = pgTable("therapy_sessions", {
 export const reports = pgTable("reports", {
   id: text("id").primaryKey(), // REP-0001
   type: text("type").notNull(), // harian | periodik
+  therapyPeriodId: text("therapy_period_id").references(() => therapyPeriods.id),
   childId: text("child_id")
     .notNull()
     .references(() => children.id),
@@ -360,12 +398,14 @@ export const childrenRelations = relations(children, ({ one, many }) => ({
     references: [parents.id],
   }),
   therapyPrograms: many(therapyPrograms),
+  therapyPeriods: many(therapyPeriods),
   sessions: many(therapySessions),
   reports: many(reports),
 }));
 
 export const programsRelations = relations(programs, ({ many }) => ({
   therapyPrograms: many(therapyPrograms),
+  therapyPeriods: many(therapyPeriods),
 }));
 
 export const therapyProgramsRelations = relations(therapyPrograms, ({ one }) => ({
@@ -377,6 +417,23 @@ export const therapyProgramsRelations = relations(therapyPrograms, ({ one }) => 
     fields: [therapyPrograms.programId],
     references: [programs.id],
   }),
+}));
+
+export const therapyPeriodsRelations = relations(therapyPeriods, ({ one, many }) => ({
+  child: one(children, {
+    fields: [therapyPeriods.childId],
+    references: [children.id],
+  }),
+  therapyProgram: one(therapyPrograms, {
+    fields: [therapyPeriods.therapyProgramId],
+    references: [therapyPrograms.id],
+  }),
+  program: one(programs, {
+    fields: [therapyPeriods.programId],
+    references: [programs.id],
+  }),
+  sessions: many(therapySessions),
+  reports: many(reports),
 }));
 
 export const roomsRelations = relations(rooms, ({ many }) => ({
@@ -398,6 +455,10 @@ export const therapySessionsRelations = relations(
       fields: [therapySessions.roomId],
       references: [rooms.id],
     }),
+    therapyPeriod: one(therapyPeriods, {
+      fields: [therapySessions.therapyPeriodId],
+      references: [therapyPeriods.id],
+    }),
   })
 );
 
@@ -413,6 +474,10 @@ export const reportsRelations = relations(reports, ({ one }) => ({
   session: one(therapySessions, {
     fields: [reports.sessionId],
     references: [therapySessions.id],
+  }),
+  therapyPeriod: one(therapyPeriods, {
+    fields: [reports.therapyPeriodId],
+    references: [therapyPeriods.id],
   }),
 }));
 
