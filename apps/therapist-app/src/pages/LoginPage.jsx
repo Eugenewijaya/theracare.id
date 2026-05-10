@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import LoginExperience, { LoginInput, loginInputClassName } from '../../../shared/ui/LoginExperience';
 
@@ -12,10 +12,12 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const { login, error: authError, isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const redirectTo = location.state?.from && location.state.from !== '/login' ? location.state.from : '/';
 
   useEffect(() => {
-    if (isAuthenticated) navigate('/', { replace: true });
-  }, [isAuthenticated, navigate]);
+    if (isAuthenticated) navigate(redirectTo, { replace: true });
+  }, [isAuthenticated, navigate, redirectTo]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -30,7 +32,7 @@ export default function LoginPage() {
     setIsLoading(false);
 
     if (success) {
-      navigate('/', { replace: true });
+      navigate(redirectTo, { replace: true });
     } else {
       setError(authError || 'NIT atau password tidak valid. Hubungi admin jika Anda lupa kredensial.');
     }

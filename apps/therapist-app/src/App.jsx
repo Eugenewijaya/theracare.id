@@ -1,5 +1,5 @@
 import React, { lazy, Suspense, useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import Sidebar from './components/Sidebar';
 import LoginPage from './pages/LoginPage';
@@ -32,6 +32,7 @@ function Loading() {
 
 function ProtectedRoute({ children }) {
   const { isAuthenticated, loading } = useAuth();
+  const location = useLocation();
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen bg-slate-50 dark:bg-slate-900">
@@ -42,7 +43,9 @@ function ProtectedRoute({ children }) {
       </div>
     );
   }
-  return isAuthenticated ? children : <Navigate to="/login" replace />;
+  return isAuthenticated
+    ? children
+    : <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}${location.hash}` }} />;
 }
 
 function MobileTopBar({ onMenuOpen }) {
@@ -87,6 +90,7 @@ function DashboardLayout() {
               <Route path="announcements" element={<Announcements />} />
               <Route path="schedule-updates" element={<ScheduleUpdates />} />
               <Route path="leave-requests" element={<LeaveRequests />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Suspense>
         </div>
