@@ -3,6 +3,7 @@ import { account, authSession, children, notificationReads, notifications, paren
 import { eq } from "drizzle-orm";
 import { auth } from "../auth.js";
 import { generateTempPassword, generateSeqId } from "../utils/id-generators.js";
+import { setCredentialPassword } from "./auth-password.service.js";
 
 function normalizePhone(phone?: string) {
   return (phone || "").replace(/\D/g, "");
@@ -149,7 +150,7 @@ export const parentService = {
     const parent = await db.query.parents.findFirst({ where: eq(parents.id, id) });
     if (!parent) return null;
     const tempPassword = generateTempPassword();
-    await auth.api.setPassword({ body: { userId: parent.userId, newPassword: tempPassword } } as any);
+    await setCredentialPassword(parent.userId, tempPassword);
     return { id, tempPassword };
   },
 

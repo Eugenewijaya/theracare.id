@@ -3,6 +3,7 @@ import { account, authSession, notificationReads, notifications, reports, therap
 import { eq } from "drizzle-orm";
 import { auth } from "../auth.js";
 import { generateTempPassword, generateNIT } from "../utils/id-generators.js";
+import { setCredentialPassword } from "./auth-password.service.js";
 
 type TherapistProfileInput = {
   name?: string;
@@ -222,7 +223,7 @@ export const therapistService = {
     const therapist = await db.query.therapists.findFirst({ where: eq(therapists.id, id) });
     if (!therapist) return null;
     const tempPassword = generateTempPassword();
-    await auth.api.setPassword({ body: { userId: therapist.userId, newPassword: tempPassword } } as any);
+    await setCredentialPassword(therapist.userId, tempPassword);
     return { id, tempPassword };
   },
 
