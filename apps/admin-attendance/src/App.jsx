@@ -216,16 +216,16 @@ function App() {
                         {activeTab === 'today' ? "Detail Log Masuk Hari Ini" : "Log Riwayat Kehadiran"}
                     </h2>
                     <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm overflow-hidden">
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left border-collapse">
+                        <div className="w-full overflow-x-auto">
+                            <table className="min-w-[760px] text-left border-collapse">
                                 <thead>
                                     <tr className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-900 dark:text-slate-200">
-                                        <th className="px-6 py-4">Tanggal</th>
-                                        <th className="px-6 py-4">Nama Anak</th>
-                                        <th className="px-6 py-4">Terapis</th>
-                                        <th className="px-6 py-4">Program</th>
-                                        <th className="px-6 py-4">Jam</th>
-                                        <th className="px-6 py-4">Status</th>
+                                        <th className="whitespace-nowrap px-6 py-4">Tanggal</th>
+                                        <th className="whitespace-nowrap px-6 py-4">Nama Anak</th>
+                                        <th className="whitespace-nowrap px-6 py-4">Terapis</th>
+                                        <th className="whitespace-nowrap px-6 py-4">Program</th>
+                                        <th className="whitespace-nowrap px-6 py-4">Jam</th>
+                                        <th className="whitespace-nowrap px-6 py-4">Status</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">

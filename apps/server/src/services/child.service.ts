@@ -1,6 +1,6 @@
 import { db } from "../db/index.js";
-import { children, clinicSettings, reports, rescheduleRequests, sessionRatings, therapyPrograms, therapySessions } from "../db/schema.js";
-import { eq } from "drizzle-orm";
+import { children, clinicSettings, programs, reports, rescheduleRequests, sessionRatings, therapyPrograms, therapySessions } from "../db/schema.js";
+import { and, eq, gte, sql } from "drizzle-orm";
 import { generateNITA } from "../utils/id-generators.js";
 
 const CHILD_PHOTO_SETTINGS_KEY = "childPhotoUrls";
@@ -35,13 +35,156 @@ export function attachChildPhotoUrl<T extends { id?: string | null; nita?: strin
 
 async function enrichChildList<T extends { id?: string | null; nita?: string | null }>(list: T[]) {
   const photoMap = await getChildPhotoUrlMap();
-  return list.map((child) => attachChildPhotoUrl(child, photoMap));
+  return list.map((child) => formatChildRecord(attachChildPhotoUrl(child, photoMap)));
+}
+
+function calculateAge(dob?: string | Date | null) {
+  if (!dob) return "";
+  const birthDate = new Date(dob);
+  if (Number.isNaN(birthDate.getTime())) return "";
+  const today = new Date();
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const monthDiff = today.getMonth() - birthDate.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) age -= 1;
+  return age >= 0 ? `${age} tahun` : "";
+}
+
+function initials(name?: string | null) {
+  return String(name || "A")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("") || "A";
+}
+
+function normalizeTherapyProgram(enrollment: any) {
+  const name = enrollment?.program?.name || enrollment?.type || "Program Terapi";
+  return {
+    ...enrollment,
+    name,
+    type: enrollment?.type || name,
+    code: enrollment?.program?.code || "",
+    target: enrollment?.program?.target || "",
+    color: enrollment?.colorClass || "emerald",
+    sessionsCompleted: Number(enrollment?.sessionsCompleted || 0),
+    totalSessions: Number(enrollment?.totalSessions || 0),
+  };
+}
+
+function formatChildRecord(child: any) {
+  if (!child) return child;
+  const name = child.name || `${child.firstName || ""} ${child.lastName || ""}`.trim() || "Anak";
+  const childPrograms = Array.isArray(child.therapyPrograms)
+    ? child.therapyPrograms.map(normalizeTherapyProgram)
+    : Array.isArray(child.programs)
+      ? child.programs
+      : [];
+  const childSessions = Array.isArray(child.sessions) ? child.sessions : [];
+  const activeSessions = childSessions.filter((session: any) => session.status !== "cancelled");
+  const primarySession = activeSessions[0] || childSessions[0];
+  const primaryTherapist = primarySession?.therapist;
+  const therapistName = primaryTherapist?.user?.name || primaryTherapist?.name || "";
+  const completedSessions = childSessions.filter((session: any) => session.status === "done" || session.status === "completed").length;
+  const plannedSessions = childPrograms.reduce((sum: number, program: any) => sum + Number(program.totalSessions || 0), 0) || childSessions.length;
+  const progress = plannedSessions > 0 ? Math.min(100, Math.round((completedSessions / plannedSessions) * 100)) : 0;
+  const sessionLabel = plannedSessions > 0 ? `${completedSessions}/${plannedSessions} sesi` : `${completedSessions} sesi selesai`;
+  const photoUrl = child.photoUrl || "";
+
+  return {
+    ...child,
+    name,
+    age: calculateAge(child.dob),
+    programs: childPrograms,
+    program: childPrograms[0]?.name || "",
+    therapistId: primarySession?.therapistId || "",
+    therapist: therapistName || "Belum ditugaskan",
+    therapistInitials: initials(therapistName || "Terapis"),
+    therapistAvatarType: primaryTherapist?.avatar ? "img" : "initials",
+    therapistAvatar: primaryTherapist?.avatar || "",
+    avatarType: photoUrl ? "img" : "initials",
+    avatar: photoUrl,
+    avatarInitials: initials(name),
+    sessionLabel,
+    progress,
+    progressColor: progress >= 70 ? "emerald" : "primary",
+    phase: childPrograms[0]?.goal || childPrograms[0]?.name || "Program aktif",
+  };
+}
+
+function pickChildValues(data: any) {
+  const values: Partial<typeof children.$inferInsert> = {
+    ...(typeof data.firstName === "string" ? { firstName: data.firstName.trim() } : {}),
+    ...(typeof data.lastName === "string" ? { lastName: data.lastName.trim() } : {}),
+    ...(typeof data.dob === "string" ? { dob: data.dob || null } : {}),
+    ...(typeof data.gender === "string" ? { gender: data.gender } : {}),
+    ...(typeof data.school === "string" ? { school: data.school.trim() } : {}),
+    ...(typeof data.diagnosis === "string" ? { diagnosis: data.diagnosis.trim() } : {}),
+    ...(typeof data.status === "string" ? { status: data.status } : {}),
+  };
+  if (values.firstName || values.lastName) {
+    values.name = `${values.firstName || data.currentFirstName || ""} ${values.lastName || data.currentLastName || ""}`.trim();
+  }
+  return values;
+}
+
+async function upsertPrimaryProgram(childId: string, data: any) {
+  const requestedName = typeof data.program === "string" ? data.program.trim() : "";
+  const requestedProgramId = typeof data.programId === "string" ? data.programId : "";
+  const firstProgram = Array.isArray(data.programs) ? data.programs[0] : null;
+  const programName = requestedName || firstProgram?.name || "";
+  const programId = requestedProgramId || firstProgram?.programId || "";
+  if (!programName && !programId) return;
+
+  const linkedProgram = programId
+    ? await db.query.programs.findFirst({ where: eq(programs.id, programId) })
+    : programName
+      ? await db.query.programs.findFirst({ where: eq(programs.name, programName) })
+      : null;
+  const type = linkedProgram?.name || programName || firstProgram?.type || "Program Terapi";
+  const existing = await db.query.therapyPrograms.findFirst({ where: eq(therapyPrograms.childId, childId) });
+
+  if (existing) {
+    await db.update(therapyPrograms)
+      .set({
+        programId: linkedProgram?.id || programId || existing.programId,
+        type,
+        goal: firstProgram?.goal || existing.goal,
+      })
+      .where(eq(therapyPrograms.id, existing.id));
+    return;
+  }
+
+  await db.insert(therapyPrograms).values({
+    childId,
+    programId: linkedProgram?.id || programId || null,
+    type,
+    totalSessions: Number(firstProgram?.totalSessions || 0),
+    goal: firstProgram?.goal || "",
+    colorClass: firstProgram?.color || firstProgram?.colorClass || "emerald",
+  });
+}
+
+async function updateUpcomingTherapist(childId: string, therapistId?: string) {
+  if (!therapistId) return;
+  const today = new Date().toISOString().split("T")[0];
+  await db.update(therapySessions)
+    .set({ therapistId })
+    .where(and(
+      eq(therapySessions.childId, childId),
+      gte(therapySessions.date, today),
+      sql`${therapySessions.status} != 'done'`
+    ));
 }
 
 export const childService = {
   async getAll() {
     const rows = await db.query.children.findMany({
-      with: { parent: true, therapyPrograms: true },
+      with: {
+        parent: { with: { user: true } },
+        therapyPrograms: { with: { program: true } },
+        sessions: { with: { therapist: { with: { user: true } } } },
+      },
     });
     return enrichChildList(rows);
   },
@@ -49,16 +192,23 @@ export const childService = {
   async getById(id: string) {
     const child = await db.query.children.findFirst({
       where: eq(children.id, id),
-      with: { parent: true, therapyPrograms: true, sessions: true },
+      with: {
+        parent: { with: { user: true } },
+        therapyPrograms: { with: { program: true } },
+        sessions: { with: { therapist: { with: { user: true } }, room: true } },
+      },
     });
     const photoMap = await getChildPhotoUrlMap();
-    return attachChildPhotoUrl(child, photoMap);
+    return formatChildRecord(attachChildPhotoUrl(child, photoMap));
   },
 
   async getByParent(parentId: string) {
     const rows = await db.query.children.findMany({
       where: eq(children.parentId, parentId),
-      with: { therapyPrograms: true },
+      with: {
+        therapyPrograms: { with: { program: true } },
+        sessions: { with: { therapist: { with: { user: true } } } },
+      },
     });
     return enrichChildList(rows);
   },
@@ -103,19 +253,23 @@ export const childService = {
     return child;
   },
 
-  async update(id: string, updates: Partial<{
-    firstName: string; lastName: string; dob: string;
-    gender: string; school: string; diagnosis: string; status: string;
-  }>) {
-    const name = updates.firstName || updates.lastName
-      ? `${updates.firstName || ""} ${updates.lastName || ""}`.trim()
-      : undefined;
+  async update(id: string, updates: any) {
+    const existing = await db.query.children.findFirst({ where: eq(children.id, id) });
+    if (!existing) return null;
 
-    const [updated] = await db.update(children)
-      .set({ ...updates, ...(name ? { name } : {}) })
-      .where(eq(children.id, id))
-      .returning();
-    return updated;
+    const values = pickChildValues({
+      ...updates,
+      currentFirstName: existing.firstName,
+      currentLastName: existing.lastName,
+    });
+    if (Object.keys(values).length > 0) {
+      await db.update(children)
+        .set(values)
+        .where(eq(children.id, id));
+    }
+    await upsertPrimaryProgram(id, updates);
+    await updateUpcomingTherapist(id, updates.therapistId);
+    return this.getById(id);
   },
 
   async updatePhoto(id: string, photoUrl: string) {

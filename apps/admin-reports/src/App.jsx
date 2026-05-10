@@ -4,13 +4,60 @@ import { useClinicSettings } from '../../shared/clinicSettings';
 import { openReportPdf } from '../../shared/reportPdf';
 import { adminApi, childrenApi, reportsApi, sessionsApi, therapistsApi } from '../../shared/api/client';
 
+const toDateValue = (date) => date.toISOString().split('T')[0];
+
+const buildRange = (timeframe, customRange) => {
+    const end = new Date();
+    end.setHours(23, 59, 59, 999);
+    const start = new Date(end);
+
+    if (timeframe === 'CUSTOM') {
+        const customStart = customRange.from ? new Date(`${customRange.from}T00:00:00`) : null;
+        const customEnd = customRange.to ? new Date(`${customRange.to}T23:59:59`) : null;
+        const normalizedStart = customStart && !Number.isNaN(customStart.getTime()) ? customStart : new Date(0);
+        const normalizedEnd = customEnd && !Number.isNaN(customEnd.getTime()) ? customEnd : end;
+        const startDate = normalizedStart <= normalizedEnd ? normalizedStart : normalizedEnd;
+        const endDate = normalizedStart <= normalizedEnd ? normalizedEnd : normalizedStart;
+        return {
+            startDate,
+            endDate,
+            startValue: toDateValue(startDate),
+            endValue: toDateValue(endDate),
+            label: customRange.from && customRange.to
+                ? `${toDateValue(startDate)} s/d ${toDateValue(endDate)}`
+                : 'rentang custom',
+        };
+    }
+
+    if (timeframe === '12B') {
+        start.setMonth(start.getMonth() - 12);
+        start.setDate(start.getDate() + 1);
+    } else if (timeframe === '1B') {
+        start.setMonth(start.getMonth() - 1);
+        start.setDate(start.getDate() + 1);
+    } else {
+        start.setDate(start.getDate() - 6);
+    }
+    start.setHours(0, 0, 0, 0);
+
+    return {
+        startDate: start,
+        endDate: end,
+        startValue: toDateValue(start),
+        endValue: toDateValue(end),
+        label: timeframe === '7H' ? '7 hari terakhir' : timeframe === '1B' ? '1 bulan terakhir' : '12 bulan terakhir',
+    };
+};
+
 function App() {
     const [timeframe, setTimeframe] = useState('7H'); // 7 Hari
+    const [customRange, setCustomRange] = useState({ from: '', to: '' });
     const [toast, setToast] = useState(null);
     const [data, setData] = useState({ children: [], sessions: [], therapists: [], programs: [], stats: {}, pendingReports: [] });
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const centerSettings = useClinicSettings();
+    const selectedRange = useMemo(() => buildRange(timeframe, customRange), [timeframe, customRange]);
 
     useEffect(() => {
         loadReportData();
@@ -23,15 +70,19 @@ function App() {
         setLoading(true);
         setError('');
         try {
-            const [statsRes, sessionsRes, childrenRes, therapistsRes, programsRes, pendingReportsRes] = await Promise.all([
-                adminApi.getStats(),
-                sessionsApi.getAll(),
-                childrenApi.getAll(),
-                therapistsApi.getAll(),
-                adminApi.getPrograms(),
-                reportsApi.getAll('pending_review'),
-            ]);
-            const failed = [statsRes, sessionsRes, childrenRes, therapistsRes, programsRes, pendingReportsRes].find((res) => !res.ok);
+            const requests = [
+                ['statistik', adminApi.getStats()],
+                ['jadwal', sessionsApi.getAll()],
+                ['data anak', childrenApi.getAll()],
+                ['terapis', therapistsApi.getAll()],
+                ['program', adminApi.getPrograms()],
+                ['review laporan', reportsApi.getAll('pending_review')],
+            ];
+            const results = await Promise.all(requests.map(([, request]) => request));
+            const [statsRes, sessionsRes, childrenRes, therapistsRes, programsRes, pendingReportsRes] = results;
+            const failedLabels = requests
+                .map(([label], index) => results[index]?.ok ? null : label)
+                .filter(Boolean);
             setData({
                 stats: statsRes.ok ? statsRes.data?.data || {} : {},
                 sessions: sessionsRes.ok ? sessionsRes.data?.data || [] : [],
@@ -40,8 +91,8 @@ function App() {
                 programs: programsRes.ok ? programsRes.data?.data || [] : [],
                 pendingReports: pendingReportsRes.ok ? pendingReportsRes.data?.data || [] : [],
             });
-            if (failed) {
-                setError(failed.data?.error || 'Sebagian data laporan gagal dimuat dari backend.');
+            if (failedLabels.length > 0) {
+                setError(`Sebagian data belum bisa dimuat: ${failedLabels.join(', ')}. Metrik lain tetap ditampilkan dari data yang tersedia.`);
             }
         } catch (err) {
             console.error(err);
@@ -71,14 +122,10 @@ function App() {
         const therapists = data.therapists || [];
         const programs = data.programs || [];
         const stats = data.stats || {};
-        const rangeDays = timeframe === '7H' ? 7 : timeframe === '30H' ? 30 : 365;
-        const startDate = new Date();
-        startDate.setHours(0, 0, 0, 0);
-        startDate.setDate(startDate.getDate() - (rangeDays - 1));
         const inRangeSessions = sessions.filter((session) => {
             if (!session.date) return false;
             const sessionDate = new Date(`${session.date}T00:00:00`);
-            return !Number.isNaN(sessionDate.getTime()) && sessionDate >= startDate;
+            return !Number.isNaN(sessionDate.getTime()) && sessionDate >= selectedRange.startDate && sessionDate <= selectedRange.endDate;
         });
 
         const activeChildren = Number(stats.activeChildren ?? children.filter(c => c.status !== 'inactive').length);
@@ -116,11 +163,14 @@ function App() {
         })).sort((a, b) => b.pct - a.pct);
 
         const seriesMap = new Map();
+        const rangeDays = Math.ceil((selectedRange.endDate.getTime() - selectedRange.startDate.getTime()) / 86400000);
+        const useMonthlyBuckets = timeframe === '12B' || rangeDays > 90;
+        const crossesYear = selectedRange.startDate.getFullYear() !== selectedRange.endDate.getFullYear();
         inRangeSessions.forEach((session) => {
             const date = new Date(`${session.date}T00:00:00`);
-            const key = timeframe === '12B'
+            const key = useMonthlyBuckets
                 ? date.toLocaleDateString('id-ID', { month: 'short', year: '2-digit' })
-                : date.toLocaleDateString('id-ID', { day: '2-digit', month: 'short' });
+                : date.toLocaleDateString('id-ID', crossesYear ? { day: '2-digit', month: 'short', year: '2-digit' } : { day: '2-digit', month: 'short' });
             seriesMap.set(key, (seriesMap.get(key) || 0) + 1);
         });
         const series = Array.from(seriesMap.entries()).map(([label, count]) => ({ label, count }));
@@ -134,21 +184,21 @@ function App() {
             dist,
             series,
             maxSeries,
-            rangeLabel: timeframe === '7H' ? '7 hari terakhir' : timeframe === '30H' ? '30 hari terakhir' : '12 bulan terakhir',
+            rangeLabel: selectedRange.label,
         };
-    }, [data, timeframe]);
+    }, [data, timeframe, selectedRange]);
 
     const colors = ['bg-blue-500', 'bg-emerald-500', 'bg-purple-500', 'bg-amber-500', 'bg-pink-500'];
     const handleExportPdf = () => {
         const today = new Date().toISOString().split('T')[0];
         const result = openReportPdf({
             type: 'periodik',
-            title: `Ringkasan Operasional Pusat Terapi (${timeframe})`,
+            title: `Ringkasan Operasional Pusat Terapi (${kpis.rangeLabel})`,
             childName: 'Seluruh Anak',
             therapistName: 'Admin',
             program: 'Monitoring operasional pusat terapi',
-            dateFrom: today,
-            dateTo: today,
+            dateFrom: selectedRange.startValue || today,
+            dateTo: selectedRange.endValue || today,
             summary: 'Ringkasan ini dibuat dari data dashboard admin untuk memantau aktivitas, sesi terapi, dan pemanfaatan terapis.',
             progressPoints: [
                 `Total anak aktif: ${kpis.activeChildren}`,
@@ -191,7 +241,7 @@ function App() {
         )}
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col gap-8 bg-background-light dark:bg-background-dark">
             {/* Header */}
-            <header className="flex flex-col md:flex-row items-center justify-between whitespace-nowrap border-b border-solid border-slate-200 dark:border-slate-800 pb-6 gap-4">
+            <header className="flex flex-col gap-4 border-b border-solid border-slate-200 pb-6 dark:border-slate-800 lg:flex-row lg:items-start lg:justify-between">
                 <div className="flex items-center gap-4 text-slate-900 dark:text-slate-100">
                     <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary border border-primary/20">
                         <span className="material-symbols-outlined text-2xl">analytics</span>
@@ -201,21 +251,50 @@ function App() {
                         <p className="text-sm text-slate-500 dark:text-slate-400 font-normal">Wawasan waktu nyata dan metrik kinerja.</p>
                     </div>
                 </div>
-                <div className="flex items-center gap-3">
-                    <div className="flex bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden shadow-sm">
-                        {['7H','30H','12B'].map((tf, i, arr) => (
-                            <button key={tf} onClick={() => setTimeframe(tf)} className={`px-4 py-2 text-sm font-medium transition-colors ${i < arr.length-1 ? 'border-r border-slate-200 dark:border-slate-700' : ''} ${timeframe === tf ? 'bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-white' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'}`}>
-                                {tf}
+                <div className="flex w-full flex-col gap-3 lg:w-auto lg:items-end">
+                    <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
+                        <div className="flex overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
+                            {[
+                                { value: '7H', label: '7H' },
+                                { value: '1B', label: '1B' },
+                                { value: '12B', label: '12B' },
+                                { value: 'CUSTOM', label: 'Custom' },
+                            ].map((option, i, arr) => (
+                            <button key={option.value} onClick={() => setTimeframe(option.value)} className={`px-3 py-2 text-xs font-bold transition-colors sm:px-4 sm:text-sm ${i < arr.length-1 ? 'border-r border-slate-200 dark:border-slate-700' : ''} ${timeframe === option.value ? 'bg-slate-100 text-slate-900 dark:bg-slate-700 dark:text-white' : 'bg-white text-slate-600 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'}`}>
+                                {option.label}
                             </button>
                         ))}
+                        </div>
+                        <button
+                            onClick={handleExportPdf}
+                            className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-bold text-background-dark shadow-sm transition-colors hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 dark:focus:ring-offset-slate-900"
+                        >
+                            <span className="material-symbols-outlined text-[18px]">download</span>
+                            Export PDF
+                        </button>
                     </div>
-                    <button 
-                        onClick={handleExportPdf}
-                        className="flex items-center gap-2 px-4 py-2 bg-primary text-background-dark rounded-lg font-bold text-sm hover:bg-primary/90 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 dark:focus:ring-offset-slate-900"
-                    >
-                        <span className="material-symbols-outlined text-[18px]">download</span>
-                        Export PDF
-                    </button>
+                    {timeframe === 'CUSTOM' && (
+                        <div className="grid w-full grid-cols-1 gap-2 sm:w-auto sm:grid-cols-[1fr_1fr]">
+                            <label className="flex flex-col gap-1 text-xs font-bold text-slate-500 dark:text-slate-400">
+                                Dari tanggal
+                                <input
+                                    type="date"
+                                    value={customRange.from}
+                                    onChange={(e) => setCustomRange((prev) => ({ ...prev, from: e.target.value }))}
+                                    className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-primary/30 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                                />
+                            </label>
+                            <label className="flex flex-col gap-1 text-xs font-bold text-slate-500 dark:text-slate-400">
+                                Sampai tanggal
+                                <input
+                                    type="date"
+                                    value={customRange.to}
+                                    onChange={(e) => setCustomRange((prev) => ({ ...prev, to: e.target.value }))}
+                                    className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-primary/30 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                                />
+                            </label>
+                        </div>
+                    )}
                 </div>
             </header>
 

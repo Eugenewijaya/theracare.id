@@ -667,13 +667,14 @@ function App() {
                 {isSidePanelOpen ? (
                     <SidePanel onClose={() => setIsSidePanelOpen(false)} selectedDate={selectedDate} sessions={filteredSessions} onEventClick={handleEventClick} />
                 ) : (
-                    <div className="absolute right-0 top-1/2 z-10 hidden -translate-y-1/2 md:block">
+                    <div className="fixed bottom-5 right-4 z-30 md:absolute md:bottom-auto md:right-0 md:top-1/2 md:-translate-y-1/2">
                         <button
                             onClick={() => setIsSidePanelOpen(true)}
-                            className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-md rounded-l-lg py-4 px-1 hover:bg-slate-50 dark:hover:bg-slate-700 transition"
-                            title="Buka Side Panel"
+                            className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 shadow-xl transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 md:rounded-l-xl md:rounded-r-none md:px-2 md:py-4"
+                            title="Buka info sesi tanggal ini"
                         >
-                            <span className="material-symbols-outlined text-slate-500">chevron_left</span>
+                            <span className="material-symbols-outlined text-primary">chevron_left</span>
+                            <span className="md:hidden">Info Sesi</span>
                         </button>
                     </div>
                 )}

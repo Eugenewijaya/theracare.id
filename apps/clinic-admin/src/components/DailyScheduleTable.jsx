@@ -58,16 +58,16 @@ export default function DailyScheduleTable() {
                     className="h-10 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                 />
             </div>
-            <div className="overflow-x-auto">
-                <table className="min-w-full text-sm">
+            <div className="w-full overflow-x-auto">
+                <table className="min-w-[760px] text-sm">
                     <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                         <tr>
-                            <th className="px-5 py-3 text-left font-black">Jam</th>
-                            <th className="px-5 py-3 text-left font-black">Anak</th>
-                            <th className="px-5 py-3 text-left font-black">Terapis</th>
-                            <th className="px-5 py-3 text-left font-black">Program</th>
-                            <th className="px-5 py-3 text-left font-black">Ruang</th>
-                            <th className="px-5 py-3 text-left font-black">Status</th>
+                            <th className="whitespace-nowrap px-5 py-3 text-left font-black">Jam</th>
+                            <th className="whitespace-nowrap px-5 py-3 text-left font-black">Anak</th>
+                            <th className="whitespace-nowrap px-5 py-3 text-left font-black">Terapis</th>
+                            <th className="whitespace-nowrap px-5 py-3 text-left font-black">Program</th>
+                            <th className="whitespace-nowrap px-5 py-3 text-left font-black">Ruang</th>
+                            <th className="whitespace-nowrap px-5 py-3 text-left font-black">Status</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -86,7 +86,9 @@ export default function DailyScheduleTable() {
                                 <td className="px-5 py-4 font-black text-slate-900 whitespace-nowrap">{session.startTime}</td>
                                 <td className="px-5 py-4 text-slate-700">{session.child?.name || session.childId}</td>
                                 <td className="px-5 py-4 text-slate-700">{session.therapist?.user?.name || session.therapist?.name || session.therapistId}</td>
-                                <td className="px-5 py-4 text-slate-700">{session.focus || '-'}</td>
+                                <td className="max-w-[220px] px-5 py-4 text-slate-700">
+                                    <span className="block truncate" title={session.focus || '-'}>{session.focus || '-'}</span>
+                                </td>
                                 <td className="px-5 py-4 text-slate-700">{session.room?.name || '-'}</td>
                                 <td className="px-5 py-4">
                                     <span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-black ${statusClass(session)}`}>

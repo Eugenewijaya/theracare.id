@@ -364,6 +364,25 @@ export const childrenRelations = relations(children, ({ one, many }) => ({
   reports: many(reports),
 }));
 
+export const programsRelations = relations(programs, ({ many }) => ({
+  therapyPrograms: many(therapyPrograms),
+}));
+
+export const therapyProgramsRelations = relations(therapyPrograms, ({ one }) => ({
+  child: one(children, {
+    fields: [therapyPrograms.childId],
+    references: [children.id],
+  }),
+  program: one(programs, {
+    fields: [therapyPrograms.programId],
+    references: [programs.id],
+  }),
+}));
+
+export const roomsRelations = relations(rooms, ({ many }) => ({
+  sessions: many(therapySessions),
+}));
+
 export const therapySessionsRelations = relations(
   therapySessions,
   ({ one }) => ({

@@ -12,19 +12,26 @@ function App() {
     const [allChildren, setAllChildren]     = useState([]);
     const [programs, setPrograms]           = useState([]);
     const [loading, setLoading]             = useState(true);
+    const [error, setError]                 = useState('');
 
     const loadData = async () => {
+        setLoading(true);
+        setError('');
         try {
             const [cRes, pRes] = await Promise.all([
                 childrenApi.getAll(),
                 adminApi.getPrograms()
             ]);
+            if (!cRes.ok) throw new Error(cRes.data?.error || 'Data anak gagal dimuat dari backend.');
             setAllChildren(cRes.data?.data || []);
-            setPrograms(pRes.data?.data || []);
+            setPrograms(pRes.ok ? pRes.data?.data || [] : []);
         } catch (e) {
             console.error('Failed to load child management data', e);
+            setAllChildren([]);
+            setError(e.message || 'Data anak gagal dimuat dari backend.');
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
     };
 
     useEffect(() => {
@@ -92,6 +99,10 @@ function App() {
 
                         {loading ? (
                             <div className="text-center py-10">Loading children data...</div>
+                        ) : error ? (
+                            <div className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm font-semibold text-amber-800">
+                                {error}
+                            </div>
                         ) : (
                             <ChildTable children={filtered} />
                         )}

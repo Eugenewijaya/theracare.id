@@ -83,7 +83,9 @@ const ChildTable = ({ children }) => {
                                             </div>
                                         )}
                                         <div>
-                                            <p className="text-sm font-bold text-slate-900 dark:text-slate-100 group-hover:text-primary transition-colors cursor-pointer">{child.name}</p>
+                                            <button type="button" onClick={() => setEditingChild(child)} className="text-left text-sm font-bold text-slate-900 dark:text-slate-100 group-hover:text-primary transition-colors">
+                                                {child.name}
+                                            </button>
                                             <p className="text-xs text-slate-500 font-mono tracking-wide">NITA: {child.id}</p>
                                         </div>
                                     </div>
@@ -112,7 +114,7 @@ const ChildTable = ({ children }) => {
                                     <div className="flex flex-col gap-1.5 w-full">
                                         <div className="flex justify-between text-xs font-medium">
                                             <span className="text-slate-700 dark:text-slate-300">{child.phase || '—'}</span>
-                                            <span className={progressTextColors[child.progressColor] || 'text-primary'}>{child.sessions || '—'}</span>
+                                            <span className={progressTextColors[child.progressColor] || 'text-primary'}>{child.sessionLabel || 'Belum ada sesi'}</span>
                                         </div>
                                         <div className="w-full h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
                                             <div className={`h-full ${progressColors[child.progressColor] || 'bg-primary'} rounded-full transition-all duration-500`} style={{ width: `${child.progress || 0}%` }}></div>
@@ -166,10 +168,10 @@ const ChildTable = ({ children }) => {
                                     <span className="text-rose-600 dark:text-rose-400 font-bold text-base">{child.avatarInitials}</span>
                                 </div>
                             )}
-                            <div className="flex flex-col min-w-0">
+                            <button type="button" onClick={() => setEditingChild(child)} className="flex flex-col min-w-0 text-left">
                                 <p className="text-base font-bold text-slate-900 dark:text-slate-100 truncate">{child.name}</p>
                                 <p className="text-xs text-slate-500 font-mono tracking-wide truncate">NITA: {child.id} • {child.age}</p>
-                            </div>
+                            </button>
                         </div>
                         
                         <div className="grid grid-cols-2 gap-3 mt-1">
@@ -197,7 +199,7 @@ const ChildTable = ({ children }) => {
                         <div className="flex flex-col gap-1.5 w-full bg-slate-50 dark:bg-slate-900 rounded-lg p-3 border border-slate-100 dark:border-slate-700">
                             <div className="flex justify-between text-[11px] font-bold uppercase tracking-wider">
                                 <span className="text-slate-500 shrink-0">{child.phase || '—'}</span>
-                                <span className={`text-right shrink-0 ${progressTextColors[child.progressColor] || 'text-primary'}`}>{child.sessions || '—'}</span>
+                                <span className={`text-right shrink-0 ${progressTextColors[child.progressColor] || 'text-primary'}`}>{child.sessionLabel || 'Belum ada sesi'}</span>
                             </div>
                             <div className="w-full h-2 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden shadow-inner">
                                 <div className={`h-full ${progressColors[child.progressColor] || 'bg-primary'} rounded-full transition-all duration-500`} style={{ width: `${child.progress || 0}%` }}></div>
