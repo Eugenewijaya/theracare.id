@@ -9,7 +9,7 @@ function UnnotedSessionsModal({ sessions, children, onClose }) {
     };
 
     const formatDate = (dateStr) => {
-        if (!dateStr) return '—';
+        if (!dateStr) return '-';
         try {
             return new Date(dateStr).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
         } catch { return dateStr; }
@@ -66,10 +66,10 @@ function UnnotedSessionsModal({ sessions, children, onClose }) {
                                             <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1 flex-wrap mt-0.5">
                                                 <span className="material-symbols-outlined text-[12px]">calendar_today</span>
                                                 {formatDate(s.date)}
-                                                <span className="mx-1 opacity-40">•</span>
+                                                <span className="mx-1 opacity-40">/</span>
                                                 <span className="material-symbols-outlined text-[12px]">schedule</span>
-                                                {s.startTime || '—'}
-                                                <span className="mx-1 opacity-40">•</span>
+                                                {s.startTime || '-'}
+                                                <span className="mx-1 opacity-40">/</span>
                                                 {s.focus || 'Terapi Umum'}
                                             </p>
                                         </div>
@@ -113,11 +113,8 @@ const ActionAlerts = ({ store }) => {
         return sessions.filter(s => s.status === 'done' && !s.notes);
     }, [store]);
 
-    const pendingRequests = useMemo(() => {
-        try {
-            return JSON.parse(localStorage.getItem('adminRequests_pending') || '[]');
-        } catch { return []; }
-    }, []);
+    const pendingRequests = useMemo(() => store?.pendingRequests || [], [store]);
+    const pendingReports = useMemo(() => store?.pendingReports || [], [store]);
 
     const alerts = useMemo(() => {
         const generated = [];
@@ -148,7 +145,19 @@ const ActionAlerts = ({ store }) => {
             });
         }
 
-        // If empty — all clear
+        if (pendingReports.length > 0) {
+            generated.push({
+                id: 'pending-reports',
+                level: 'yellow',
+                icon: 'rate_review',
+                title: 'Laporan Menunggu Review',
+                desc: `Ada ${pendingReports.length} laporan terapi yang perlu direview admin.`,
+                action: 'Review',
+                onAction: () => navigate('/reports'),
+            });
+        }
+
+        // If empty, all clear
         if (generated.length === 0) {
             generated.push({
                 id: 'all-clear',
@@ -161,7 +170,7 @@ const ActionAlerts = ({ store }) => {
         }
 
         return generated.filter(a => !dismissed.includes(a.id));
-    }, [store, dismissed, unnotedSessions, pendingRequests]);
+    }, [store, dismissed, unnotedSessions, pendingRequests, pendingReports, navigate]);
 
     const colorMap = {
         red: {
@@ -218,7 +227,7 @@ const ActionAlerts = ({ store }) => {
                                     <div className={`w-10 h-10 shrink-0 rounded-full flex items-center justify-center font-bold ${c.bg} ${c.title}`}>
                                         <span className="material-symbols-outlined">{alert.icon}</span>
                                     </div>
-                                    <div className="flex-1 pr-6">
+                                    <div className="min-w-0 flex-1 pr-6">
                                         <h3 className={`font-bold mb-1 ${c.title}`}>{alert.title}</h3>
                                         <p className="text-sm text-text-light-secondary dark:text-text-dark-secondary mb-3">{alert.desc}</p>
                                         {alert.action && (

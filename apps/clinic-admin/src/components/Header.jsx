@@ -56,22 +56,22 @@ const Header = () => {
 
     return (
         <header className="hidden lg:block bg-white border-b border-slate-200 sticky top-0 z-40">
-            <div className="px-6 py-4 flex items-center justify-between max-w-[1600px] mx-auto w-full">
-                <div className="flex items-center gap-8">
+            <div className="px-6 py-4 flex min-w-0 items-center justify-between gap-6 max-w-[1600px] mx-auto w-full">
+                <div className="flex min-w-0 items-center gap-8">
                     {/* Logo & Title */}
-                    <div className="flex items-center gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
                         <div
-                            className="w-10 h-10 rounded-lg flex items-center justify-center"
+                            className="w-10 h-10 shrink-0 rounded-lg flex items-center justify-center"
                             style={{ backgroundColor: `${brandColor}20`, color: brandColor }}
                         >
                             <span className="material-symbols-outlined" style={{ fontSize: '24px' }}>medical_services</span>
                         </div>
-                        <h1 className="text-xl font-bold tracking-tight text-slate-900">{clinicName || 'Clinic Dashboard'}</h1>
+                        <h1 className="min-w-0 truncate text-xl font-bold tracking-tight text-slate-900">{clinicName || 'Clinic Dashboard'}</h1>
                     </div>
                 </div>
 
                 {/* Actions & Profile */}
-                <div className="flex items-center gap-6">
+                <div className="flex shrink-0 items-center gap-6">
                     <div className="relative" ref={dropdownRef}>
                         <button
                             onClick={() => setNotifOpen(!notifOpen)}

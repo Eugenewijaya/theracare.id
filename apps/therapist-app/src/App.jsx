@@ -59,10 +59,10 @@ function MobileTopBar({ onMenuOpen }) {
       >
         <span className="material-symbols-outlined text-[22px]">menu</span>
       </button>
-      <div className="flex items-center gap-2.5">
-        <ClinicLogoMark logoUrl={logoUrl} name={clinicName} color={primaryColor} icon="psychology" className="h-8 w-8 rounded-lg" />
-        <span className="text-sm font-extrabold text-slate-900 dark:text-white tracking-tight">{clinicName}</span>
-        <span className="text-[10px] font-bold text-teal-600 dark:text-teal-400 uppercase tracking-wider">Therapist</span>
+      <div className="flex min-w-0 flex-1 items-center gap-2.5">
+        <ClinicLogoMark logoUrl={logoUrl} name={clinicName} color={primaryColor} icon="psychology" className="h-8 w-8 shrink-0 rounded-lg" />
+        <span className="min-w-0 truncate text-sm font-extrabold text-slate-900 dark:text-white tracking-tight">{clinicName}</span>
+        <span className="hidden shrink-0 text-[10px] font-bold text-teal-600 dark:text-teal-400 uppercase tracking-wider sm:inline">Therapist</span>
       </div>
     </header>
   );

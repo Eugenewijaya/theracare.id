@@ -56,12 +56,12 @@ const ProgramDistribution = ({ store }) => {
                     {/* Legend */}
                     <div className="w-full flex flex-col gap-3">
                         {dist.map(d => (
-                            <div key={d.label} className="flex justify-between items-center text-sm">
-                                <div className="flex items-center gap-2">
-                                    <span className={`w-3 h-3 rounded-full ${d.color.bg}`}></span>
-                                    <span>{d.label}</span>
+                            <div key={d.label} className="flex items-center justify-between gap-3 text-sm">
+                                <div className="flex min-w-0 items-center gap-2">
+                                    <span className={`h-3 w-3 shrink-0 rounded-full ${d.color.bg}`}></span>
+                                    <span className="min-w-0 break-words">{d.label}</span>
                                 </div>
-                                <span className="font-medium">{d.pct}% ({d.value})</span>
+                                <span className="shrink-0 font-medium">{d.pct}% ({d.value})</span>
                             </div>
                         ))}
                     </div>

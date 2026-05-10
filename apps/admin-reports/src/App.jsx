@@ -62,8 +62,14 @@ function App() {
     useEffect(() => {
         loadReportData();
         const handleUpdate = () => loadReportData();
-        window.addEventListener('clinicDataUpdated', handleUpdate);
-        return () => window.removeEventListener('clinicDataUpdated', handleUpdate);
+        window.addEventListener('childUpdated', handleUpdate);
+        window.addEventListener('sessionUpdated', handleUpdate);
+        window.addEventListener('reportUpdated', handleUpdate);
+        return () => {
+            window.removeEventListener('childUpdated', handleUpdate);
+            window.removeEventListener('sessionUpdated', handleUpdate);
+            window.removeEventListener('reportUpdated', handleUpdate);
+        };
     }, []);
 
     const loadReportData = async () => {

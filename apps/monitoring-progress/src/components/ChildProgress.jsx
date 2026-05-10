@@ -5,7 +5,6 @@ const ChildProgress = ({ store }) => {
     const children = store?.children || [];
     const sessions = store?.sessions || [];
     
-    // Default mock behavior if no data
     if (children.length === 0) {
         return (
             <div className="bg-surface-light dark:bg-surface-dark rounded-xl border border-border-light dark:border-border-dark p-6">
@@ -53,19 +52,19 @@ const ChildProgress = ({ store }) => {
                     const barColor = isCritical ? 'bg-red-500' : 'bg-primary';
 
                     return (
-                        <div key={data.id} className={`flex items-center justify-between p-4 rounded-lg border ${bgClass}`}>
-                            <div className="flex items-center gap-4">
-                                <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg ${iconBg}`}>{data.initials}</div>
-                                <div>
-                                    <p className={`font-medium text-base ${textName}`}>{data.name}</p>
-                                    <p className={`text-sm ${textSec}`}>{data.program} - {data.completed}/{data.total} sesi</p>
+                        <div key={data.id} className={`flex flex-col gap-4 p-4 rounded-lg border sm:flex-row sm:items-center sm:justify-between ${bgClass}`}>
+                            <div className="flex min-w-0 items-center gap-4">
+                                <div className={`h-12 w-12 shrink-0 rounded-full flex items-center justify-center font-bold text-lg ${iconBg}`}>{data.initials}</div>
+                                <div className="min-w-0">
+                                    <p className={`break-words font-medium text-base ${textName}`}>{data.name}</p>
+                                    <p className={`break-words text-sm ${textSec}`}>{data.program} - {data.completed}/{data.total} sesi</p>
                                 </div>
                             </div>
-                            <div className="flex flex-col items-end gap-2 w-1/3">
+                            <div className="flex w-full flex-col gap-2 sm:w-1/3 sm:items-end">
                                 <div className="w-full bg-border-light dark:bg-border-dark rounded-full h-2">
                                     <div className={`${barColor} h-2 rounded-full`} style={{ width: `${data.percentage}%` }}></div>
                                 </div>
-                                <span className={`text-sm font-medium ${textSec}`}>
+                                <span className={`text-sm font-medium sm:text-right ${textSec}`}>
                                     {data.percentage}% Selesai {isCritical && `- ${(data.total - data.completed)} Sisa`}
                                 </span>
                             </div>

@@ -34,18 +34,9 @@ const buildChartData = (children = []) => {
     return base.map(item => ({ ...item, value: counts[item.key] || 0 }));
 };
 
-const readCachedChildren = () => {
-    try {
-        const store = JSON.parse(localStorage.getItem('clinicData') || '{}');
-        return Array.isArray(store.children) ? store.children : [];
-    } catch {
-        return [];
-    }
-};
-
 const ChildrenMonthChart = () => {
     const navigate = useNavigate();
-    const [children, setChildren] = useState(readCachedChildren);
+    const [children, setChildren] = useState([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
