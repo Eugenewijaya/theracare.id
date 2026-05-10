@@ -143,8 +143,8 @@ function App() {
                             {/* Toolbar */}
                             <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
                                 <div className="min-w-0 flex flex-col gap-1">
-                                    <h1 className="text-[clamp(1.65rem,4vw,3rem)] font-bold leading-tight text-slate-900 dark:text-white">Pusat Pengumuman</h1>
-                                    <p className="max-w-2xl text-slate-500 dark:text-slate-400 text-sm leading-relaxed">Kelola peringatan dan kirim pengumuman ke portal Orang Tua dan Terapis.</p>
+                                    <h1 className="text-[clamp(1.65rem,4vw,3rem)] font-bold leading-tight text-slate-900 dark:text-white">Pengumuman & Notifikasi</h1>
+                                    <p className="max-w-2xl text-slate-500 dark:text-slate-400 text-sm leading-relaxed">Kelola inbox notifikasi dan kirim pengumuman ke portal Orang Tua dan Terapis.</p>
                                 </div>
                                 <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
                                     <select 

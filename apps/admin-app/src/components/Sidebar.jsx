@@ -37,8 +37,7 @@ const navGroups = [
   {
     label: 'Sistem',
     items: [
-      { path: '/announcements', icon: 'campaign', label: 'Papan Pengumuman' },
-      { path: '/notifications', icon: 'notifications_active', label: 'Pusat Notifikasi', badgeKey: 'notifications' },
+      { path: '/notifications', icon: 'campaign', label: 'Pengumuman & Notifikasi', badgeKey: 'notifications' },
       { path: '/users', icon: 'manage_accounts', label: 'Manajemen Pengguna' },
       { path: '/settings/branding', icon: 'palette', label: 'Pengaturan & Tampilan' },
     ],

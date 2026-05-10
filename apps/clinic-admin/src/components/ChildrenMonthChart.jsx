@@ -1,43 +1,71 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { childrenApi } from '../../../shared/api/client';
 
-const getChartData = () => {
+const getMonthKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+
+const getEmptyChartData = () => {
     const result = [];
-    try {
-        const store = JSON.parse(localStorage.getItem('clinicData') || '{}');
-        const children = store.children || [];
-        const counts = {};
-        
-        children.forEach(c => {
-            if (c.registeredAt || c.createdAt) {
-                const d = new Date(c.registeredAt || c.createdAt);
-                const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-                counts[key] = (counts[key] || 0) + 1;
-            }
+    for (let i = 5; i >= 0; i--) {
+        const d = new Date();
+        d.setMonth(d.getMonth() - i);
+        result.push({
+            key: getMonthKey(d),
+            label: d.toLocaleDateString('id-ID', { month: 'short' }),
+            value: 0,
         });
-        
-        for (let i = 5; i >= 0; i--) {
-            const d = new Date();
-            d.setMonth(d.getMonth() - i);
-            const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-            const label = d.toLocaleDateString('en-US', { month: 'short' });
-            result.push({ label, value: counts[key] || 0 });
-        }
-    } catch {
-        // Fallback to empty 6 months if error
-        for (let i = 5; i >= 0; i--) {
-            const d = new Date();
-            d.setMonth(d.getMonth() - i);
-            const label = d.toLocaleDateString('en-US', { month: 'short' });
-            result.push({ label, value: 0 });
-        }
     }
     return result;
 };
 
+const buildChartData = (children = []) => {
+    const base = getEmptyChartData();
+    const counts = {};
+
+    children.forEach(child => {
+        const rawDate = child.registeredAt || child.createdAt || child.created_at;
+        if (!rawDate) return;
+        const date = new Date(rawDate);
+        if (Number.isNaN(date.getTime())) return;
+        const key = getMonthKey(date);
+        counts[key] = (counts[key] || 0) + 1;
+    });
+
+    return base.map(item => ({ ...item, value: counts[item.key] || 0 }));
+};
+
+const readCachedChildren = () => {
+    try {
+        const store = JSON.parse(localStorage.getItem('clinicData') || '{}');
+        return Array.isArray(store.children) ? store.children : [];
+    } catch {
+        return [];
+    }
+};
+
 const ChildrenMonthChart = () => {
     const navigate = useNavigate();
-    const data = useMemo(() => getChartData(), []);
+    const [children, setChildren] = useState(readCachedChildren);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            try {
+                const res = await childrenApi.getAll();
+                if (!cancelled && res.ok) {
+                    setChildren(res.data?.data || []);
+                }
+            } catch (error) {
+                console.error('Failed to load children chart data', error);
+            } finally {
+                if (!cancelled) setLoading(false);
+            }
+        })();
+        return () => { cancelled = true; };
+    }, []);
+
+    const data = useMemo(() => buildChartData(children), [children]);
     const maxVal = Math.max(...data.map(d => d.value), 1);
     const latest = data[data.length - 1];
     const prev   = data[data.length - 2];
@@ -65,7 +93,7 @@ const ChildrenMonthChart = () => {
             <div className="flex items-center gap-3 mb-4">
                 <div className="text-3xl font-bold text-slate-900">{total}</div>
                 <div>
-                    <p className="text-xs text-slate-500">6 bulan terakhir</p>
+                    <p className="text-xs text-slate-500">{loading ? 'Memuat data...' : '6 bulan terakhir'}</p>
                     {diff !== 0 && (
                         <p className={`text-xs font-semibold flex items-center gap-0.5 ${isUp ? 'text-emerald-600' : 'text-red-500'}`}>
                             <span className="material-symbols-outlined text-[14px]">{isUp ? 'trending_up' : 'trending_down'}</span>

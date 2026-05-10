@@ -3,6 +3,7 @@ import { parentsApi, therapistsApi } from '../../../shared/api/client';
 
 const USER_MANAGEMENT_PASSWORD = 'Awasdi omelinEvid';
 const USER_MANAGEMENT_UNLOCK_KEY = 'admin_user_management_unlocked';
+const PASSWORD_INFO_MESSAGE = 'Password saat ini tersimpan aman sebagai hash dan tidak bisa ditampilkan ulang. Gunakan Reset untuk membuat password baru yang bisa diberikan ke user.';
 
 const getInitialUnlockState = () => {
     try {
@@ -92,7 +93,7 @@ export default function UserManagementPage() {
 
     const handleCopyPassword = async (user, password) => {
         if (!password) {
-            showToast('Klik Reset dulu untuk membuat password baru.', 'warning');
+            showToast('Password lama tidak dapat disalin. Gunakan Reset untuk membuat password baru.', 'warning');
             return;
         }
         try {
@@ -282,12 +283,12 @@ export default function UserManagementPage() {
                     {/* Table */}
                     <div className="bg-white dark:bg-primary/5 border border-slate-200 dark:border-primary/20 rounded-xl overflow-hidden shadow-sm">
                         <div className="overflow-x-auto">
-                            <table className="w-full min-w-[1240px] text-left">
+                            <table className="w-full min-w-[1400px] text-left">
                                 <colgroup>
                                     <col className="w-[220px]" />
                                     <col className="w-[230px]" />
                                     <col className="w-[170px]" />
-                                    <col className="w-[300px]" />
+                                    <col className="w-[360px]" />
                                     <col className="w-[120px]" />
                                     <col className="w-[300px]" />
                                 </colgroup>
@@ -296,7 +297,19 @@ export default function UserManagementPage() {
                                         <th className="px-5 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">{activeTab === 'parents' ? 'Parent' : 'Therapist'}</th>
                                         <th className="px-5 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">Contact</th>
                                         <th className="px-5 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">{activeTab === 'parents' ? 'Children' : 'Specialization'}</th>
-                                        <th className="px-5 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">Password</th>
+                                        <th className="px-5 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
+                                            <span className="inline-flex items-center gap-1.5">
+                                                Password
+                                                <button
+                                                    type="button"
+                                                    onClick={() => showToast(PASSWORD_INFO_MESSAGE, 'warning')}
+                                                    className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-slate-200 text-[11px] font-black text-slate-600 hover:bg-slate-300"
+                                                    title={PASSWORD_INFO_MESSAGE}
+                                                >
+                                                    i
+                                                </button>
+                                            </span>
+                                        </th>
                                         <th className="px-5 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">Status</th>
                                         <th className="px-5 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right whitespace-nowrap">Actions</th>
                                     </tr>
@@ -313,6 +326,9 @@ export default function UserManagementPage() {
                                         const isActive = (user.status || 'active') === 'active';
                                         const passVisible = showPass[user.id];
                                         const passwordValue = passwordOverrides[user.id] || user.tempPassword || '';
+                                        const displayPassword = passwordValue
+                                            ? (passVisible ? passwordValue : '**********')
+                                            : (passVisible ? 'Tersimpan aman' : '**********');
                                         return (
                                             <tr key={user.id} className="hover:bg-slate-50 dark:hover:bg-primary/5 transition-colors">
                                                 <td className="px-5 py-4 align-middle">
@@ -327,7 +343,7 @@ export default function UserManagementPage() {
                                                     </div>
                                                 </td>
                                                 <td className="px-5 py-4 align-middle">
-                                                    <p className="text-sm text-slate-700 dark:text-slate-300 break-words">{user.phone || '—'}</p>
+                                                    <p className="text-sm text-slate-700 dark:text-slate-300 break-words">{user.phone || '-'}</p>
                                                     {user.email && <p className="text-xs text-slate-400 break-all">{user.email}</p>}
                                                 </td>
                                                 <td className="px-5 py-4 align-middle">
@@ -351,7 +367,7 @@ export default function UserManagementPage() {
                                                 <td className="px-5 py-4 align-middle">
                                                     <div className="flex items-center gap-2 min-w-0">
                                                         <code className="min-w-[180px] max-w-[220px] rounded-lg bg-slate-100 dark:bg-slate-800 px-3 py-2 text-sm font-mono leading-5 text-slate-700 dark:text-slate-300 break-words">
-                                                            {passVisible ? (passwordValue || 'Reset untuk membuat password baru') : '••••••••••'}
+                                                            {displayPassword}
                                                         </code>
                                                         <button onClick={() => setShowPass(prev => ({ ...prev, [user.id]: !passVisible }))}
                                                             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800" title={passVisible ? 'Hide' : 'Show'}>
@@ -360,6 +376,14 @@ export default function UserManagementPage() {
                                                         <button onClick={() => handleCopyPassword(user, passwordValue)}
                                                             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800" title="Copy Password">
                                                             <span className="material-symbols-outlined text-[16px]">content_copy</span>
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => showToast(PASSWORD_INFO_MESSAGE, 'warning')}
+                                                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
+                                                            title={PASSWORD_INFO_MESSAGE}
+                                                        >
+                                                            <span className="material-symbols-outlined text-[16px]">info</span>
                                                         </button>
                                                     </div>
                                                 </td>
