@@ -83,7 +83,7 @@ function DashboardLayout() {
   }, [handlePortalLogout]);
 
   return (
-    <div className="flex h-screen w-full overflow-hidden">
+    <div className="flex h-screen w-full overflow-hidden" data-build-scope="therapist-progress-refresh">
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="flex-1 flex flex-col overflow-hidden">
         <MobileTopBar onMenuOpen={() => setSidebarOpen(true)} />
