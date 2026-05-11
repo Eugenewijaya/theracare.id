@@ -200,11 +200,12 @@ function App() {
                     reason: r.reason || r.details || 'No reason provided',
                     createdAt: r.createdAt || new Date().toISOString(),
                     submittedAgo: new Date(r.createdAt || Date.now()).toLocaleDateString(),
-                    slots: (r.proposedSlots || []).map((s, idx) => ({
+                    slots: (r.proposedSlots || []).map((s) => ({
                         date: s.date,
                         time: s.time,
                         label: `${s.date || 'Tanggal TBD'} • ${s.time || 'Jam TBD'}`,
-                        status: idx===0?'available':'conflict',
+                        status: s.status || s.availability || (s.reason ? 'conflict' : 'available'),
+                        reason: s.reason || '',
                     })),
                     status: r.status || 'pending',
                     reviewNote: r.reviewNote || '',
@@ -296,7 +297,7 @@ function App() {
 
     const confirmAction = async () => {
         if (!pendingAction) return;
-        const { type, req } = pendingAction;
+        const { type, req, selectedSlot } = pendingAction;
         
         if (type === 'reject') {
             if (req.kind === 'meeting') {
@@ -328,7 +329,13 @@ function App() {
             }, 300);
         }
         else if (type === 'approve') {
-            const chosenSlot = req.slots ? req.slots.find(s => s.status === 'available') || req.slots[0] : null;
+            const chosenSlot = selectedSlot || (req.slots ? req.slots.find(s => s.status === 'available') : null);
+            if (req.kind !== 'meeting' && (!chosenSlot || chosenSlot.status !== 'available')) {
+                setPendingAction(null);
+                setPopup(prev => ({ ...prev, showConfirm: false, isOpen: false }));
+                setTimeout(() => showPopup('Tidak ada slot available yang bisa disetujui. Pilih slot lain atau minta orang tua mengirim preferensi baru.', 'warning'), 300);
+                return;
+            }
             if (req.kind === 'meeting') {
                 await meetingsApi.adminReview(req.id, {
                     status: 'approved_by_admin',
@@ -345,6 +352,8 @@ function App() {
             patchRequestStatus(req.id, 'approved');
             await refreshData({ silent: true });
             window.dispatchEvent(new Event('incomingRequestsUpdated'));
+            window.dispatchEvent(new Event('sessionUpdated'));
+            window.dispatchEvent(new Event('notificationsUpdated'));
             setActiveTab('resolved');
             setTimeout(() => showPopup(`Request from ${req.name} has been approved.`, 'success'), 300);
         }
@@ -363,11 +372,13 @@ function App() {
         showPopup(`Do you want to move the request from ${req.name} to "Under Review"?`, 'info', true);
     };
 
-    const handleApprove = (req) => {
-        setPendingAction({ type: 'approve', req });
+    const handleApprove = (req, selectedSlot = null) => {
+        setPendingAction({ type: 'approve', req, selectedSlot });
         const message = req.kind === 'meeting'
             ? `Approve parent meeting untuk ${req.name}? Pastikan orang tua sudah dihubungi dan menyetujui jadwal melalui tatap muka, WhatsApp, telepon, atau media komunikasi lain.`
-            : `Confirm approval for ${req.name}'s request?`;
+            : selectedSlot
+                ? `Setujui reschedule ${req.name} ke ${selectedSlot.date} ${selectedSlot.time}? Slot conflict tidak bisa dipilih.`
+                : `Setujui reschedule ${req.name} ke slot available pertama? Slot conflict tidak bisa dipilih.`;
         showPopup(message, 'info', true);
     };
 
@@ -462,9 +473,10 @@ function App() {
                                         <RequestCard 
                                             key={i} 
                                             {...req} 
+                                            approveDisabled={!req.slots?.some(slot => slot.status === 'available')}
                                             onReject={() => handleReject(req)}
                                             onProcess={() => handleProcess(req)}
-                                            onApprove={() => handleApprove(req)}
+                                            onApprove={(selectedSlot) => handleApprove(req, selectedSlot)}
                                         />
                                     ))}
                                 </div>

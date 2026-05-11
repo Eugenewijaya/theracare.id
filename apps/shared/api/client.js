@@ -229,6 +229,13 @@ export const leaveRequestsApi = {
   updateStatus: (id, status, reviewNote) => api.patch(`/leave-requests/${id}`, { status, reviewNote }),
 };
 
+export const substituteRequestsApi = {
+  getAll: () => api.get('/substitute-requests'),
+  getMine: () => api.get('/substitute-requests/therapist/me'),
+  create: (data) => api.post('/substitute-requests', data),
+  therapistResponse: (id, data) => api.patch(`/substitute-requests/${id}/therapist-response`, data),
+};
+
 export const meetingsApi = {
   getAll: () => api.get('/meetings'),
   getForTherapist: () => api.get('/meetings/therapist/me'),

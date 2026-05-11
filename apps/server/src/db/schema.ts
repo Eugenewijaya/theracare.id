@@ -290,7 +290,7 @@ export const rescheduleRequests = pgTable("reschedule_requests", {
   reason: text("reason"),
   details: text("details"),
   proposedSlots: jsonb("proposed_slots").$type<
-    Array<{ date: string; time: string }>
+    Array<{ date: string; time: string; status?: string; reason?: string; kind?: string }>
   >(),
   status: text("status").notNull().default("pending"),
   reviewNote: text("review_note"),

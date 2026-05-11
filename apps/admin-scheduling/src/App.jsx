@@ -4,7 +4,7 @@ import CalendarHeader from './components/CalendarHeader';
 import CalendarGrid from './components/CalendarGrid';
 import Legend from './components/Legend';
 import SidePanel from './components/SidePanel';
-import { sessionsApi, childrenApi, therapistsApi, adminApi } from '../../shared/api/client';
+import { sessionsApi, childrenApi, therapistsApi, adminApi, substituteRequestsApi } from '../../shared/api/client';
 
 const LEAVE_REASONS = [
     { value: 'cuti', label: 'Cuti' },
@@ -211,7 +211,7 @@ function EditSessionModal({ session, childrenList, therapistsList, programsList,
     );
 }
 
-function SubstituteTherapistModal({ session, childrenList, therapistsList, onSubmit, onClose }) {
+function SubstituteTherapistModal({ session, childrenList, therapistsList, allSessions, onSubmit, onClose }) {
     const [leaveType, setLeaveType] = useState('cuti');
     const [substituteTherapistId, setSubstituteTherapistId] = useState('');
     const [note, setNote] = useState('');
@@ -219,8 +219,21 @@ function SubstituteTherapistModal({ session, childrenList, therapistsList, onSub
 
     const childName = getChildName(childrenList, session.childId);
     const originalTherapistName = getTherapistName(therapistsList, session.therapistId);
-    const substituteOptions = therapistsList.filter(t => t.id !== session.therapistId && (t.status || 'active') === 'active');
-    const canSubmit = leaveType && substituteTherapistId && confirmedContact;
+    const isTherapistBusy = (therapistId) => (allSessions || []).some(item => (
+        item.id !== session.id
+        && item.therapistId === therapistId
+        && item.date === session.date
+        && item.startTime === session.startTime
+        && !['cancelled', 'done'].includes(item.status)
+    ));
+    const substituteOptions = therapistsList
+        .filter(t => t.id !== session.therapistId && (t.status || 'active') === 'active')
+        .map(t => ({
+            ...t,
+            hasConflict: isTherapistBusy(t.id),
+        }));
+    const selectedSubstitute = substituteOptions.find(t => t.id === substituteTherapistId);
+    const canSubmit = leaveType && substituteTherapistId && confirmedContact && !selectedSubstitute?.hasConflict;
 
     const handleSubmit = (e) => {
         e.preventDefault();
@@ -253,7 +266,7 @@ function SubstituteTherapistModal({ session, childrenList, therapistsList, onSub
                 <div className="p-6 flex flex-col gap-4">
                     <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                         <p className="font-black">Pastikan kamu sudah menghubungi terapis terkait untuk aksi ini.</p>
-                        <p className="mt-1 text-xs font-semibold">Terapis utama saat ini: {originalTherapistName}. Setelah disimpan, sesi akan masuk ke jadwal terapis pengganti dan daily report diisi oleh terapis yang bertugas.</p>
+                        <p className="mt-1 text-xs font-semibold">Terapis utama saat ini: {originalTherapistName}. Sistem akan mengirim konfirmasi ke terapis utama lebih dulu. Sesi baru berpindah setelah disetujui.</p>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -279,9 +292,14 @@ function SubstituteTherapistModal({ session, childrenList, therapistsList, onSub
                             >
                                 <option value="">Pilih terapis...</option>
                                 {substituteOptions.map(t => (
-                                    <option key={t.id} value={t.id}>{t.name} ({t.specialty || t.specialization || 'Terapis'})</option>
+                                    <option key={t.id} value={t.id} disabled={t.hasConflict}>
+                                        {t.name} ({t.specialty || t.specialization || 'Terapis'}){t.hasConflict ? ' - Bentrok jadwal' : ''}
+                                    </option>
                                 ))}
                             </select>
+                            {selectedSubstitute?.hasConflict && (
+                                <p className="text-xs font-semibold text-red-600">Terapis ini sedang punya sesi pada jam yang sama.</p>
+                            )}
                         </div>
                     </div>
 
@@ -304,7 +322,7 @@ function SubstituteTherapistModal({ session, childrenList, therapistsList, onSub
                             className="mt-1 h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary"
                         />
                         <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                            Saya sudah menghubungi terapis utama dan terapis pengganti terkait perubahan tugas ini.
+                            Saya sudah menghubungi terapis terkait, dan siap mengirim permintaan konfirmasi ke terapis utama.
                         </span>
                     </label>
                 </div>
@@ -318,8 +336,8 @@ function SubstituteTherapistModal({ session, childrenList, therapistsList, onSub
                         disabled={!canSubmit}
                         className="px-5 py-2 text-sm font-black text-white bg-primary hover:bg-primary/90 disabled:opacity-45 disabled:cursor-not-allowed rounded-lg shadow-sm transition-colors flex items-center gap-2"
                     >
-                        <span className="material-symbols-outlined text-[16px]">check_circle</span>
-                        Simpan Pengganti
+                        <span className="material-symbols-outlined text-[16px]">send</span>
+                        Kirim Konfirmasi
                     </button>
                 </div>
             </form>
@@ -616,37 +634,24 @@ function App() {
         const session = allSessions.find(item => item.id === sessionId) || replacementSession;
         if (!session) return;
 
-        const originalTherapistName = getTherapistName(therapistsList, session.therapistId);
-        const substituteTherapistName = getTherapistName(therapistsList, substituteTherapistId);
-        const leaveLabel = getLeaveLabel(leaveType);
-        const replacementLine = [
-            `[Pengganti Terapis] Terapis utama ${originalTherapistName} status ${leaveLabel}.`,
-            `Terapis bertugas: ${substituteTherapistName}.`,
-            'Admin sudah menghubungi terapis terkait untuk aksi ini.',
-            note,
-        ].filter(Boolean).join(' ');
-        const existingNotes = String(session.notes || '').trim();
-
         try {
-            const res = await sessionsApi.update(sessionId, {
-                therapistId: substituteTherapistId,
-                status: 'upcoming',
-                notes: existingNotes ? `${existingNotes}\n${replacementLine}` : replacementLine,
-                cancelReason: `Terapis utama ${originalTherapistName} ${leaveLabel}; pengganti ${substituteTherapistName}. Pastikan kamu sudah menghubungi terapis terkait untuk aksi ini.`,
+            const res = await substituteRequestsApi.create({
+                sessionId,
+                leaveType,
+                substituteTherapistId,
+                note,
             });
             if (!res.ok) {
-                showToast(res.data?.error || 'Gagal menyimpan terapis pengganti.', 'error');
+                showToast(res.data?.error || 'Gagal mengirim konfirmasi terapis pengganti.', 'error');
                 return;
             }
             setReplacementSession(null);
             setEditSession(null);
-            showToast('Terapis pengganti berhasil ditugaskan. Daily report akan masuk ke terapis bertugas.', 'success');
-            const refreshed = await sessionsApi.getAll();
-            setAllSessions(refreshed.data?.data || []);
-            window.dispatchEvent(new Event('sessionUpdated'));
+            showToast('Konfirmasi sudah dikirim ke terapis utama. Sesi akan berpindah setelah disetujui.', 'success');
+            window.dispatchEvent(new Event('notificationsUpdated'));
         } catch (e) {
             console.error(e);
-            showToast('Gagal menyimpan terapis pengganti.', 'error');
+            showToast(e.message || 'Gagal mengirim konfirmasi terapis pengganti.', 'error');
         }
     };
 
@@ -878,6 +883,7 @@ function App() {
                     session={replacementSession}
                     childrenList={childrenList}
                     therapistsList={therapistsList}
+                    allSessions={allSessions}
                     onSubmit={handleAssignSubstitute}
                     onClose={() => setReplacementSession(null)}
                 />

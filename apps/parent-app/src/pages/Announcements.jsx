@@ -10,6 +10,7 @@ const formatDate = (dateStr) => {
 export default function Announcements() {
     const [announcements, setAnnouncements] = useState([]);
     const [notificationMap, setNotificationMap] = useState({});
+    const [systemNotifications, setSystemNotifications] = useState([]);
     const [unreadTotal, setUnreadTotal] = useState(0);
     const [expanded, setExpanded] = useState(null);
 
@@ -19,13 +20,16 @@ export default function Announcements() {
                 adminApi.getAnnouncementsForRole('parent'),
                 notificationsApi.getAll(),
             ]);
-            setAnnouncements(res.data?.data || []);
+            const announcementRows = res.data?.data || [];
+            setAnnouncements(announcementRows);
             const notifs = notifRes.data?.data || [];
+            const announcementIds = new Set(announcementRows.map(ann => ann.id));
             const byRelated = {};
             notifs.forEach(n => {
                 if (n.relatedId) byRelated[n.relatedId] = n;
             });
             setNotificationMap(byRelated);
+            setSystemNotifications(notifs.filter(n => !n.relatedId || !announcementIds.has(n.relatedId)));
             setUnreadTotal(notifs.filter(n => !n.isRead).length);
         } catch(e) { console.error(e); }
     };
@@ -51,6 +55,7 @@ export default function Announcements() {
                 });
                 return next;
             });
+            setSystemNotifications(prev => prev.map(item => item.id === notificationId ? { ...item, isRead: true } : item));
             setUnreadTotal(prev => Math.max(0, prev - 1));
             window.dispatchEvent(new Event('notificationsUpdated'));
         } catch (e) {
@@ -70,6 +75,7 @@ export default function Announcements() {
         try {
             await notificationsApi.markAllRead();
             setNotificationMap(prev => Object.fromEntries(Object.entries(prev).map(([key, value]) => [key, { ...value, isRead: true }])));
+            setSystemNotifications(prev => prev.map(item => ({ ...item, isRead: true })));
             setUnreadTotal(0);
             window.dispatchEvent(new Event('notificationsUpdated'));
         } catch (e) {
@@ -101,7 +107,40 @@ export default function Announcements() {
 
             <main className="flex-1 overflow-y-auto p-4 md:p-8">
                 <div className="max-w-3xl mx-auto flex flex-col gap-4">
-                    {announcements.length === 0 ? (
+                    {systemNotifications.length > 0 && (
+                        <div className="flex flex-col gap-3">
+                            {systemNotifications.map((notif) => (
+                                <div
+                                    key={notif.id}
+                                    className={`bg-white dark:bg-slate-800 rounded-2xl border p-5 shadow-sm ${notif.isRead ? 'border-slate-200 dark:border-slate-700' : 'border-sky-200 dark:border-sky-800/60'}`}
+                                >
+                                    <div className="flex items-start gap-4">
+                                        <div className="w-10 h-10 rounded-xl bg-sky-50 dark:bg-sky-900/20 flex items-center justify-center shrink-0">
+                                            <span className="material-symbols-outlined text-sky-600 dark:text-sky-400 text-[20px]">{notif.icon || 'notifications'}</span>
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2">
+                                                {!notif.isRead && <span className="size-2.5 rounded-full bg-red-500 shrink-0" />}
+                                                <h2 className="text-base font-bold text-slate-900 dark:text-white leading-tight">{notif.title}</h2>
+                                            </div>
+                                            <p className="mt-1 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">{notif.message}</p>
+                                            <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">{formatDate(notif.createdAt)}</p>
+                                        </div>
+                                        {!notif.isRead && (
+                                            <button
+                                                onClick={() => markNotificationRead(notif.id)}
+                                                className="shrink-0 rounded-lg border border-sky-100 bg-sky-50 px-3 py-1.5 text-xs font-black text-sky-700 hover:bg-sky-100 dark:border-sky-800/50 dark:bg-sky-900/20 dark:text-sky-300"
+                                            >
+                                                Dibaca
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {announcements.length === 0 && systemNotifications.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-20 gap-4 text-center">
                             <div className="w-20 h-20 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
                                 <span className="material-symbols-outlined text-4xl text-slate-400">notifications_none</span>

@@ -22,7 +22,9 @@ router.post("/", requireAuth, requireRole("parent"), async (req, res, next) => {
     const { parentId, childId, sessionId } = req.body;
     if (!parentId || !childId || !sessionId) return badRequest(res, "Data tidak lengkap");
     created(res, await rescheduleService.create(req.body), "Permintaan reschedule berhasil dikirim");
-  } catch (e) { next(e); }
+  } catch (e) {
+    return badRequest(res, e instanceof Error ? e.message : "Gagal mengirim permintaan reschedule");
+  }
 });
 
 router.patch("/:id", requireAuth, requireRole("admin"), async (req, res, next) => {
@@ -31,7 +33,9 @@ router.patch("/:id", requireAuth, requireRole("admin"), async (req, res, next) =
     const result = await rescheduleService.updateStatus(req.params.id as string, status, updates);
     if (!result) return notFound(res);
     ok(res, result);
-  } catch (e) { next(e); }
+  } catch (e) {
+    return badRequest(res, e instanceof Error ? e.message : "Gagal memperbarui permintaan reschedule");
+  }
 });
 
 router.delete("/:id", requireAuth, requireRole("admin"), async (req, res, next) => {

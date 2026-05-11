@@ -1,6 +1,16 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 
 const RequestCard = ({ name, parentName, session, date, reason, slots, submittedAgo, approveDisabled, onReject, onProcess, onApprove }) => {
+    const availableSlots = useMemo(() => (slots || []).filter(slot => slot.status === 'available'), [slots]);
+    const [selectedSlotKey, setSelectedSlotKey] = useState('');
+
+    useEffect(() => {
+        const firstAvailable = availableSlots[0];
+        setSelectedSlotKey(firstAvailable ? `${firstAvailable.date}_${firstAvailable.time}` : '');
+    }, [availableSlots]);
+
+    const selectedSlot = (slots || []).find(slot => `${slot.date}_${slot.time}` === selectedSlotKey) || null;
+
     return (
         <div className="bg-white dark:bg-primary/5 border border-slate-200 dark:border-primary/20 rounded-xl overflow-hidden shadow-sm flex flex-col">
             <div className="p-6 flex-1">
@@ -43,10 +53,29 @@ const RequestCard = ({ name, parentName, session, date, reason, slots, submitted
                 {/* Proposed Slots */}
                 <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-3">Proposed Alternate Slots:</h4>
                 <div className="flex flex-col gap-2">
-                    {slots.map((slot, i) => (
-                        <label key={i} className="flex items-center p-3 border border-slate-200 dark:border-primary/30 rounded-lg cursor-pointer hover:bg-slate-50 dark:hover:bg-primary/10 transition-colors">
-                            <input type="radio" name={`slot_${name.replace(/\s/g, '_')}`} className="text-primary focus:ring-primary h-4 w-4 border-slate-300 dark:border-primary/50 bg-transparent" />
-                            <span className="ml-3 text-sm text-slate-700 dark:text-slate-200 font-medium flex-1">{slot.label || slot.time}</span>
+                    {(slots || []).map((slot, i) => (
+                        <label
+                            key={i}
+                            className={`flex items-center p-3 border rounded-lg transition-colors ${
+                                slot.status === 'available'
+                                    ? 'border-slate-200 dark:border-primary/30 cursor-pointer hover:bg-slate-50 dark:hover:bg-primary/10'
+                                    : 'border-amber-200 dark:border-amber-800/50 bg-amber-50/70 dark:bg-amber-900/10 cursor-not-allowed opacity-80'
+                            }`}
+                        >
+                            <input
+                                type="radio"
+                                name={`slot_${(name || 'request').replace(/\s/g, '_')}`}
+                                checked={selectedSlotKey === `${slot.date}_${slot.time}`}
+                                disabled={slot.status !== 'available'}
+                                onChange={() => setSelectedSlotKey(`${slot.date}_${slot.time}`)}
+                                className="text-primary focus:ring-primary h-4 w-4 border-slate-300 dark:border-primary/50 bg-transparent disabled:cursor-not-allowed"
+                            />
+                            <span className="ml-3 text-sm text-slate-700 dark:text-slate-200 font-medium flex-1">
+                                {slot.label || slot.time}
+                                {slot.reason && (
+                                    <span className="block text-xs font-normal text-slate-500 dark:text-slate-400 mt-0.5">{slot.reason}</span>
+                                )}
+                            </span>
                             <span className={`text-xs font-medium px-2 py-0.5 rounded ${slot.status === 'available'
                                     ? 'text-green-600 dark:text-primary bg-green-100 dark:bg-primary/20'
                                     : 'text-yellow-600 dark:text-yellow-400 bg-yellow-100 dark:bg-yellow-900/30'
@@ -73,9 +102,9 @@ const RequestCard = ({ name, parentName, session, date, reason, slots, submitted
                     Process
                 </button>
                 <button 
-                    onClick={onApprove}
-                    disabled={approveDisabled}
-                    className={`px-5 py-2 text-sm font-bold text-background-dark bg-primary rounded-lg shadow-sm transition-colors ${approveDisabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-primary/90'}`}
+                    onClick={() => onApprove?.(selectedSlot)}
+                    disabled={approveDisabled || !selectedSlot}
+                    className={`px-5 py-2 text-sm font-bold text-background-dark bg-primary rounded-lg shadow-sm transition-colors ${approveDisabled || !selectedSlot ? 'opacity-50 cursor-not-allowed' : 'hover:bg-primary/90'}`}
                 >
                     Approve Selected
                 </button>

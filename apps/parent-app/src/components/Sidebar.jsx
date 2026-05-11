@@ -32,8 +32,8 @@ export default function Sidebar({ isOpen, onClose }) {
         const res = await notificationsApi.getAll();
         const allNotifs = res.data?.data || [];
         const unread = allNotifs.filter(n => !n.isRead);
-        const rescheduleCount = unread.filter(n => n.type === 'reschedule_result' || n.type === 'schedule_change').length;
-        const announcementCount = unread.filter(n => n.type === 'announcement' || n.type === 'new_session' || n.type === 'session_completed').length;
+        const rescheduleCount = unread.filter(n => ['reschedule_result', 'reschedule_request', 'schedule_change'].includes(n.type)).length;
+        const announcementCount = unread.length - rescheduleCount;
         setBadgeCounts({ reschedule: rescheduleCount, announcement: announcementCount });
       } catch(e) {}
     };
