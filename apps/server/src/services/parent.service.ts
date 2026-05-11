@@ -2,7 +2,7 @@ import { db } from "../db/index.js";
 import { account, authSession, children, notificationReads, notifications, parents, rescheduleRequests, sessionRatings, user } from "../db/schema.js";
 import { eq } from "drizzle-orm";
 import { auth } from "../auth.js";
-import { generatePortalResetPassword, generateSeqId } from "../utils/id-generators.js";
+import { generatePortalResetPassword, generateSeqId, generateTempPassword } from "../utils/id-generators.js";
 import { setCredentialPassword } from "./auth-password.service.js";
 
 function normalizePhone(phone?: string) {
@@ -102,7 +102,7 @@ export const parentService = {
   },
 
   async create(data: { name: string; email?: string; phone?: string; address?: string; tempPassword?: string }, lastId: number) {
-    const tempPassword = data.tempPassword?.trim() || generatePortalResetPassword();
+    const tempPassword = data.tempPassword?.trim() || generateTempPassword();
     const parentId = generateSeqId("P", lastId + 1);
     const email = parentLoginEmail(data.phone, data.email);
     const phone = data.phone?.trim() || "";
@@ -160,10 +160,10 @@ export const parentService = {
     return this.getById(id);
   },
 
-  async resetPassword(id: string) {
+  async resetPassword(id: string, passwordOverride?: string) {
     const parent = await db.query.parents.findFirst({ where: eq(parents.id, id) });
     if (!parent) return null;
-    const tempPassword = generatePortalResetPassword();
+    const tempPassword = passwordOverride?.trim() || generatePortalResetPassword();
     await setCredentialPassword(parent.userId, tempPassword);
     return { id, tempPassword };
   },

@@ -61,7 +61,7 @@ router.patch("/:id", requireAuth, requireRole("admin"), async (req, res, next) =
 
 router.post("/:id/reset-password", requireAuth, requireRole("admin"), async (req, res, next) => {
   try {
-    const result = await parentService.resetPassword(req.params.id as string);
+    const result = await parentService.resetPassword(req.params.id as string, req.body?.tempPassword);
     if (!result) return notFound(res);
     ok(res, result, "Password berhasil direset");
   } catch (e) { next(e); }
