@@ -2,6 +2,7 @@ import { Router } from "express";
 import { requireAuth, requireRole } from "../middleware/auth.middleware.js";
 import { announcementService } from "../services/announcement.service.js";
 import { adminService } from "../services/admin.service.js";
+import { centerClosureService } from "../services/center-closure.service.js";
 import { storageService } from "../services/storage.service.js";
 import { ok, created, notFound, badRequest, conflict } from "../utils/response.js";
 
@@ -99,6 +100,51 @@ router.post("/uploads/branding", requireAuth, requireRole("admin"), async (req, 
 });
 router.get("/stats", requireAuth, requireRole("admin"), async (req, res, next) => {
   try { ok(res, await adminService.getDashboardStats()); } catch (e) { next(e); }
+});
+
+// ── Center operational closures ──
+router.get("/center-closures", requireAuth, requireRole("admin"), async (_req, res, next) => {
+  try { ok(res, await centerClosureService.getAll()); } catch (e) { next(e); }
+});
+router.get("/center-closures/indonesia-holidays", requireAuth, requireRole("admin"), async (req, res, next) => {
+  try {
+    const year = Number(req.query.year || new Date().getFullYear());
+    ok(res, await centerClosureService.getIndonesianHolidays(year));
+  } catch (e) {
+    badRequest(res, e instanceof Error ? e.message : "Gagal mengambil tanggal merah Indonesia");
+  }
+});
+router.post("/center-closures/apply-holidays", requireAuth, requireRole("admin"), async (req, res, next) => {
+  try {
+    created(res, await centerClosureService.applyHolidays(req.body || {}, req.user!.id));
+  } catch (e) {
+    badRequest(res, e instanceof Error ? e.message : "Gagal menerapkan tanggal merah");
+  }
+});
+router.post("/center-closures", requireAuth, requireRole("admin"), async (req, res, next) => {
+  try {
+    created(res, await centerClosureService.create(req.body, req.user!.id));
+  } catch (e) {
+    badRequest(res, e instanceof Error ? e.message : "Gagal menyimpan jadwal off center");
+  }
+});
+router.patch("/center-closures/:id", requireAuth, requireRole("admin"), async (req, res, next) => {
+  try {
+    const result = await centerClosureService.update(req.params.id as string, req.body || {});
+    if (!result) return notFound(res);
+    ok(res, result);
+  } catch (e) {
+    badRequest(res, e instanceof Error ? e.message : "Gagal memperbarui jadwal off center");
+  }
+});
+router.delete("/center-closures/:id", requireAuth, requireRole("admin"), async (req, res, next) => {
+  try {
+    const result = await centerClosureService.delete(req.params.id as string);
+    if (!result) return notFound(res);
+    ok(res, result);
+  } catch (e) {
+    next(e);
+  }
 });
 
 export default router;

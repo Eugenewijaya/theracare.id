@@ -50,6 +50,33 @@ function AssetUploadButton({ id, label, uploading, onFile }) {
     );
 }
 
+const currentYear = new Date().getFullYear();
+
+const CLOSURE_TYPE_LABELS = {
+    public_holiday: 'Tanggal Merah',
+    manual_off: 'Libur Manual',
+    temporary_closure: 'Tutup Sementara',
+};
+
+function todayIso() {
+    return new Date().toISOString().slice(0, 10);
+}
+
+function formatDate(value) {
+    if (!value) return '-';
+    return new Date(`${value}T00:00:00`).toLocaleDateString('id-ID', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+    });
+}
+
+function formatRange(item) {
+    if (!item?.startDate) return '-';
+    if (!item.endDate || item.endDate === item.startDate) return formatDate(item.startDate);
+    return `${formatDate(item.startDate)} - ${formatDate(item.endDate)}`;
+}
+
 function App() {
     const [activeSection, setActiveSection] = useState('branding');
     const { settings, save, refresh } = useClinicSettings();
@@ -69,6 +96,26 @@ function App() {
     const [adminWhatsApp, setAdminWhatsApp] = useState('');
     const [uploadingAsset, setUploadingAsset] = useState('');
     const [toast, setToast] = useState(null);
+    const [closures, setClosures] = useState([]);
+    const [activeClosureToday, setActiveClosureToday] = useState(null);
+    const [closureLoading, setClosureLoading] = useState(false);
+    const [holidayLoading, setHolidayLoading] = useState(false);
+    const [holidayYear, setHolidayYear] = useState(currentYear);
+    const [holidayCandidates, setHolidayCandidates] = useState([]);
+    const [selectedHolidayDates, setSelectedHolidayDates] = useState([]);
+    const [manualOff, setManualOff] = useState({
+        title: '',
+        startDate: todayIso(),
+        endDate: todayIso(),
+        note: '',
+    });
+    const [temporaryClosure, setTemporaryClosure] = useState({
+        title: 'Tutup sementara',
+        startDate: todayIso(),
+        endDate: todayIso(),
+        reopensAt: '',
+        note: '',
+    });
 
     useEffect(() => {
         const loadSettings = async () => {
@@ -81,6 +128,28 @@ function App() {
             } catch(e) {}
         };
         loadSettings();
+    }, []);
+
+    const loadClosures = async ({ silent = false } = {}) => {
+        if (!silent) setClosureLoading(true);
+        try {
+            const res = await adminApi.getCenterClosures();
+            if (!res.ok) throw new Error(res.data?.error || 'Gagal memuat jadwal off center');
+            const payload = res.data?.data || {};
+            setClosures(payload.closures || []);
+            setActiveClosureToday(payload.activeToday || null);
+        } catch (e) {
+            showToast(e.message || 'Gagal memuat jadwal off center', 'error');
+        } finally {
+            if (!silent) setClosureLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        loadClosures({ silent: true });
+        const onNotificationUpdate = () => loadClosures({ silent: true });
+        window.addEventListener('notificationsUpdated', onNotificationUpdate);
+        return () => window.removeEventListener('notificationsUpdated', onNotificationUpdate);
     }, []);
 
     useEffect(() => {
@@ -232,6 +301,136 @@ function App() {
         }
     };
 
+    const handleFetchHolidays = async () => {
+        try {
+            setHolidayLoading(true);
+            const res = await adminApi.getIndonesianHolidays(holidayYear);
+            if (!res.ok) throw new Error(res.data?.error || 'Gagal menarik tanggal merah Indonesia');
+            const holidays = res.data?.data || [];
+            const existingDates = new Set(closures.filter((item) => item.type === 'public_holiday').map((item) => item.startDate));
+            setHolidayCandidates(holidays);
+            setSelectedHolidayDates(holidays.filter((item) => !existingDates.has(item.date)).map((item) => item.date));
+            showToast(`${holidays.length} tanggal merah tahun ${holidayYear} berhasil ditarik. Pilih lalu klik Apply.`, 'info');
+        } catch (e) {
+            showToast(e.message || 'Gagal menarik tanggal merah Indonesia', 'error');
+        } finally {
+            setHolidayLoading(false);
+        }
+    };
+
+    const toggleHolidaySelection = (date) => {
+        setSelectedHolidayDates((prev) => (
+            prev.includes(date) ? prev.filter((item) => item !== date) : [...prev, date]
+        ));
+    };
+
+    const handleApplySelectedHolidays = async () => {
+        const selected = holidayCandidates.filter((item) => selectedHolidayDates.includes(item.date));
+        if (selected.length === 0) {
+            showToast('Pilih minimal satu tanggal merah untuk diterapkan.', 'error');
+            return;
+        }
+        const confirmed = window.confirm(`Terapkan ${selected.length} tanggal merah sebagai jadwal off center dan kirim notifikasi ke semua role?`);
+        if (!confirmed) return;
+
+        try {
+            setClosureLoading(true);
+            const res = await adminApi.applyCenterHolidays({
+                year: Number(holidayYear),
+                holidays: selected,
+                notify: true,
+            });
+            if (!res.ok) throw new Error(res.data?.error || 'Gagal menerapkan tanggal merah');
+            const payload = res.data?.data || {};
+            setClosures(payload.closures || []);
+            await loadClosures({ silent: true });
+            setHolidayCandidates([]);
+            setSelectedHolidayDates([]);
+            window.dispatchEvent(new Event('notificationsUpdated'));
+            showToast(`${payload.added || 0} jadwal off center berhasil ditambahkan.`);
+        } catch (e) {
+            showToast(e.message || 'Gagal menerapkan tanggal merah', 'error');
+        } finally {
+            setClosureLoading(false);
+        }
+    };
+
+    const handleCreateClosure = async (type) => {
+        const source = type === 'temporary_closure' ? temporaryClosure : manualOff;
+        if (!source.startDate) {
+            showToast('Tanggal mulai wajib diisi.', 'error');
+            return;
+        }
+        if (!source.title.trim()) {
+            showToast('Judul jadwal off wajib diisi.', 'error');
+            return;
+        }
+
+        try {
+            setClosureLoading(true);
+            const res = await adminApi.createCenterClosure({
+                ...source,
+                type,
+                source: 'manual',
+                isActive: true,
+                notify: true,
+            });
+            if (!res.ok) throw new Error(res.data?.error || 'Gagal menyimpan jadwal off');
+            await loadClosures({ silent: true });
+            window.dispatchEvent(new Event('notificationsUpdated'));
+            if (type === 'temporary_closure') {
+                setTemporaryClosure({ title: 'Tutup sementara', startDate: todayIso(), endDate: todayIso(), reopensAt: '', note: '' });
+            } else {
+                setManualOff({ title: '', startDate: todayIso(), endDate: todayIso(), note: '' });
+            }
+            showToast('Jadwal off center berhasil disimpan dan notifikasi dikirim.');
+        } catch (e) {
+            showToast(e.message || 'Gagal menyimpan jadwal off center', 'error');
+        } finally {
+            setClosureLoading(false);
+        }
+    };
+
+    const handleToggleClosure = async (closure) => {
+        const nextActive = !closure.isActive;
+        const confirmed = window.confirm(nextActive
+            ? `Aktifkan kembali jadwal off "${closure.title}"?`
+            : `Nonaktifkan jadwal off "${closure.title}" agar center kembali aktif pada tanggal tersebut?`);
+        if (!confirmed) return;
+
+        try {
+            setClosureLoading(true);
+            const res = await adminApi.updateCenterClosure(closure.id, {
+                isActive: nextActive,
+                notify: true,
+            });
+            if (!res.ok) throw new Error(res.data?.error || 'Gagal memperbarui jadwal off');
+            await loadClosures({ silent: true });
+            window.dispatchEvent(new Event('notificationsUpdated'));
+            showToast(nextActive ? 'Jadwal off diaktifkan.' : 'Jadwal off dinonaktifkan, center kembali aktif.');
+        } catch (e) {
+            showToast(e.message || 'Gagal memperbarui jadwal off', 'error');
+        } finally {
+            setClosureLoading(false);
+        }
+    };
+
+    const handleDeleteClosure = async (closure) => {
+        const confirmed = window.confirm(`Hapus jadwal off "${closure.title}"?`);
+        if (!confirmed) return;
+        try {
+            setClosureLoading(true);
+            const res = await adminApi.deleteCenterClosure(closure.id);
+            if (!res.ok) throw new Error(res.data?.error || 'Gagal menghapus jadwal off');
+            await loadClosures({ silent: true });
+            showToast('Jadwal off center dihapus.');
+        } catch (e) {
+            showToast(e.message || 'Gagal menghapus jadwal off', 'error');
+        } finally {
+            setClosureLoading(false);
+        }
+    };
+
     return (
         <>
         {/* Toast */}
@@ -259,8 +458,32 @@ function App() {
                         <p className="text-slate-500 dark:text-slate-400 text-base font-normal leading-normal">
                             {activeSection === 'branding' && "Manage your center's visual identity, including naming, logos, colors, and global appearance."}
                             {activeSection === 'general' && "Manage general center settings such as operating hours, contact info, and system preferences."}
+                            {activeSection === 'schedule' && "Kelola tanggal merah Indonesia, jadwal off center, dan tutup sementara yang terhubung ke notifikasi portal."}
                             {activeSection === 'notifications' && "Configure how and when automatic notifications are sent to staff and families."}
                         </p>
+                    </div>
+
+                    <div className="mb-6 grid grid-cols-2 gap-2 md:hidden">
+                        {[
+                            { id: 'general', label: 'General', icon: 'settings' },
+                            { id: 'branding', label: 'Branding', icon: 'palette' },
+                            { id: 'schedule', label: 'Jadwal Off', icon: 'event_busy' },
+                            { id: 'notifications', label: 'Notifikasi', icon: 'notifications' },
+                        ].map((item) => (
+                            <button
+                                key={item.id}
+                                type="button"
+                                onClick={() => setActiveSection(item.id)}
+                                className={`flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 text-sm font-bold transition ${
+                                    activeSection === item.id
+                                        ? 'border-primary bg-primary/10 text-primary'
+                                        : 'border-slate-200 bg-white text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300'
+                                }`}
+                            >
+                                <span className="material-symbols-outlined text-[18px]">{item.icon}</span>
+                                <span className="truncate">{item.label}</span>
+                            </button>
+                        ))}
                     </div>
 
                     {/* BRANDING SECTION */}
@@ -467,6 +690,203 @@ function App() {
                                     </div>
                                 </div>
                             </div>
+                        </div>
+                    )}
+
+                    {/* SCHEDULE OFF SECTION */}
+                    {activeSection === 'schedule' && (
+                        <div className="flex flex-col gap-6">
+                            <section className="rounded-xl border border-slate-100 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                                    <div className="flex items-start gap-4">
+                                        <div className={`flex size-12 shrink-0 items-center justify-center rounded-2xl ${activeClosureToday ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600'}`}>
+                                            <span className="material-symbols-outlined text-[26px]">{activeClosureToday ? 'event_busy' : 'event_available'}</span>
+                                        </div>
+                                        <div>
+                                            <p className="text-sm font-black uppercase tracking-wider text-slate-500">Status Operasional Hari Ini</p>
+                                            <h3 className="mt-1 text-xl font-black text-slate-900 dark:text-white">
+                                                {activeClosureToday ? 'Center Sedang Libur / Off' : 'Center Aktif'}
+                                            </h3>
+                                            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                                                {activeClosureToday
+                                                    ? `${activeClosureToday.title} (${formatRange(activeClosureToday)})`
+                                                    : 'Tidak ada jadwal off aktif untuk hari ini.'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => loadClosures()}
+                                        disabled={closureLoading}
+                                        className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                                    >
+                                        <span className={`material-symbols-outlined text-[20px] ${closureLoading ? 'animate-spin' : ''}`}>refresh</span>
+                                        Refresh Status
+                                    </button>
+                                </div>
+                            </section>
+
+                            <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+                                <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                        <div>
+                                            <h3 className="text-lg font-black text-slate-900 dark:text-white">Tarik Tanggal Merah Indonesia</h3>
+                                            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                                                Data otomatis ditarik dari API hari libur Indonesia. Admin tetap memilih dan meng-apply tanggal yang ingin dijadikan off center.
+                                            </p>
+                                        </div>
+                                        <div className="flex shrink-0 items-center gap-2">
+                                            <input
+                                                type="number"
+                                                min="2020"
+                                                max="2035"
+                                                value={holidayYear}
+                                                onChange={(event) => setHolidayYear(event.target.value)}
+                                                className="h-10 w-24 rounded-lg border border-slate-300 bg-white px-3 text-sm font-bold text-slate-900 outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={handleFetchHolidays}
+                                                disabled={holidayLoading}
+                                                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-black text-white transition hover:bg-primary/90 disabled:cursor-wait disabled:opacity-60"
+                                            >
+                                                <span className={`material-symbols-outlined text-[18px] ${holidayLoading ? 'animate-spin' : ''}`}>sync</span>
+                                                Tarik
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div className="mt-5 max-h-[360px] overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-800">
+                                        {holidayCandidates.length === 0 ? (
+                                            <div className="flex flex-col items-center justify-center gap-2 px-4 py-12 text-center text-sm text-slate-500">
+                                                <span className="material-symbols-outlined text-[36px] text-slate-300">event_note</span>
+                                                Klik Tarik untuk memuat tanggal merah tahun {holidayYear}.
+                                            </div>
+                                        ) : holidayCandidates.map((holiday) => {
+                                            const alreadyApplied = closures.some((item) => item.type === 'public_holiday' && item.startDate === holiday.date);
+                                            const selected = selectedHolidayDates.includes(holiday.date);
+                                            return (
+                                                <label
+                                                    key={`${holiday.date}-${holiday.title}`}
+                                                    className={`flex cursor-pointer items-start gap-3 border-b border-slate-100 px-4 py-3 last:border-b-0 dark:border-slate-800 ${alreadyApplied ? 'bg-slate-50 text-slate-400 dark:bg-slate-800/40' : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'}`}
+                                                >
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={selected || alreadyApplied}
+                                                        disabled={alreadyApplied}
+                                                        onChange={() => toggleHolidaySelection(holiday.date)}
+                                                        className="mt-1 rounded text-primary focus:ring-primary disabled:opacity-50"
+                                                    />
+                                                    <div className="min-w-0 flex-1">
+                                                        <p className="text-sm font-black text-slate-900 dark:text-white">{holiday.title}</p>
+                                                        <p className="text-xs font-semibold text-slate-500">{formatDate(holiday.date)} {holiday.isCollectiveLeave ? '- Cuti Bersama' : ''}</p>
+                                                    </div>
+                                                    {alreadyApplied && <span className="rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-black text-emerald-700">Applied</span>}
+                                                </label>
+                                            );
+                                        })}
+                                    </div>
+
+                                    <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                        <p className="text-xs font-semibold text-slate-500">
+                                            {selectedHolidayDates.length} tanggal dipilih. Tanggal yang sudah applied tidak akan diduplikasi.
+                                        </p>
+                                        <button
+                                            type="button"
+                                            onClick={handleApplySelectedHolidays}
+                                            disabled={closureLoading || selectedHolidayDates.length === 0}
+                                            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 text-sm font-black text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-slate-900"
+                                        >
+                                            <span className="material-symbols-outlined text-[19px]">done_all</span>
+                                            Apply Off Center
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="flex flex-col gap-6">
+                                    <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                                        <h3 className="text-lg font-black text-slate-900 dark:text-white">Libur Manual</h3>
+                                        <p className="mt-1 text-sm text-slate-500">Untuk acara internal, maintenance, atau hari off khusus center.</p>
+                                        <div className="mt-4 grid grid-cols-1 gap-3">
+                                            <input value={manualOff.title} onChange={(e) => setManualOff((prev) => ({ ...prev, title: e.target.value }))} placeholder="Contoh: Training internal center" className="rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+                                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                                <input type="date" value={manualOff.startDate} onChange={(e) => setManualOff((prev) => ({ ...prev, startDate: e.target.value }))} className="rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+                                                <input type="date" value={manualOff.endDate} onChange={(e) => setManualOff((prev) => ({ ...prev, endDate: e.target.value }))} className="rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+                                            </div>
+                                            <textarea value={manualOff.note} onChange={(e) => setManualOff((prev) => ({ ...prev, note: e.target.value }))} rows={2} placeholder="Catatan untuk admin/keluarga/terapis" className="resize-y rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+                                            <button type="button" onClick={() => handleCreateClosure('manual_off')} disabled={closureLoading} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-black text-white transition hover:bg-primary/90 disabled:opacity-60">
+                                                <span className="material-symbols-outlined text-[19px]">add</span>
+                                                Simpan Libur Manual
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div className="rounded-xl border border-amber-100 bg-amber-50/60 p-5 shadow-sm dark:border-amber-900/60 dark:bg-amber-950/20">
+                                        <h3 className="text-lg font-black text-slate-900 dark:text-white">Tutup Sementara</h3>
+                                        <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Untuk kondisi khusus dan tanggal center akan beroperasi kembali.</p>
+                                        <div className="mt-4 grid grid-cols-1 gap-3">
+                                            <input value={temporaryClosure.title} onChange={(e) => setTemporaryClosure((prev) => ({ ...prev, title: e.target.value }))} placeholder="Tutup sementara" className="rounded-lg border border-amber-200 bg-white px-3 py-2.5 text-sm outline-none dark:border-amber-900 dark:bg-slate-900 dark:text-white" />
+                                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                                                <input type="date" value={temporaryClosure.startDate} onChange={(e) => setTemporaryClosure((prev) => ({ ...prev, startDate: e.target.value }))} className="rounded-lg border border-amber-200 bg-white px-3 py-2.5 text-sm outline-none dark:border-amber-900 dark:bg-slate-900 dark:text-white" />
+                                                <input type="date" value={temporaryClosure.endDate} onChange={(e) => setTemporaryClosure((prev) => ({ ...prev, endDate: e.target.value }))} className="rounded-lg border border-amber-200 bg-white px-3 py-2.5 text-sm outline-none dark:border-amber-900 dark:bg-slate-900 dark:text-white" />
+                                                <input type="date" value={temporaryClosure.reopensAt} onChange={(e) => setTemporaryClosure((prev) => ({ ...prev, reopensAt: e.target.value }))} className="rounded-lg border border-amber-200 bg-white px-3 py-2.5 text-sm outline-none dark:border-amber-900 dark:bg-slate-900 dark:text-white" title="Tanggal beroperasi kembali" />
+                                            </div>
+                                            <textarea value={temporaryClosure.note} onChange={(e) => setTemporaryClosure((prev) => ({ ...prev, note: e.target.value }))} rows={2} placeholder="Alasan tutup sementara dan arahan komunikasi" className="resize-y rounded-lg border border-amber-200 bg-white px-3 py-2.5 text-sm outline-none dark:border-amber-900 dark:bg-slate-900 dark:text-white" />
+                                            <button type="button" onClick={() => handleCreateClosure('temporary_closure')} disabled={closureLoading} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-amber-600 px-4 text-sm font-black text-white transition hover:bg-amber-700 disabled:opacity-60">
+                                                <span className="material-symbols-outlined text-[19px]">report</span>
+                                                Terapkan Tutup Sementara
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </section>
+
+                            <section className="rounded-xl border border-slate-100 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                                <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                    <div>
+                                        <h3 className="text-lg font-black text-slate-900 dark:text-white">Daftar Jadwal Off Center</h3>
+                                        <p className="text-sm text-slate-500">Nonaktifkan jika libur batal, atau hapus untuk membersihkan riwayat yang salah input.</p>
+                                    </div>
+                                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                                        {closures.filter((item) => item.isActive).length} aktif
+                                    </span>
+                                </div>
+
+                                {closures.length === 0 ? (
+                                    <div className="rounded-xl border border-dashed border-slate-200 py-10 text-center text-sm font-semibold text-slate-500 dark:border-slate-800">
+                                        Belum ada jadwal off center.
+                                    </div>
+                                ) : (
+                                    <div className="grid grid-cols-1 gap-3">
+                                        {closures.map((closure) => (
+                                            <div key={closure.id} className="flex flex-col gap-4 rounded-xl border border-slate-200 p-4 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
+                                                <div className="min-w-0">
+                                                    <div className="mb-2 flex flex-wrap items-center gap-2">
+                                                        <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${closure.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                                                            {closure.isActive ? 'Aktif' : 'Nonaktif'}
+                                                        </span>
+                                                        <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-black text-blue-700">{CLOSURE_TYPE_LABELS[closure.type] || closure.type}</span>
+                                                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-black uppercase text-slate-500">{closure.source}</span>
+                                                    </div>
+                                                    <p className="text-base font-black text-slate-900 dark:text-white">{closure.title}</p>
+                                                    <p className="text-sm font-semibold text-slate-500">{formatRange(closure)} {closure.reopensAt ? `- Buka kembali ${formatDate(closure.reopensAt)}` : ''}</p>
+                                                    {closure.note && <p className="mt-1 text-sm text-slate-500">{closure.note}</p>}
+                                                </div>
+                                                <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                                                    <button type="button" onClick={() => handleToggleClosure(closure)} disabled={closureLoading} className={`inline-flex h-10 items-center justify-center gap-1.5 rounded-lg px-3 text-xs font-black transition disabled:opacity-60 ${closure.isActive ? 'bg-slate-100 text-slate-700 hover:bg-slate-200' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}`}>
+                                                        <span className="material-symbols-outlined text-[17px]">{closure.isActive ? 'toggle_off' : 'toggle_on'}</span>
+                                                        {closure.isActive ? 'Nonaktifkan' : 'Aktifkan'}
+                                                    </button>
+                                                    <button type="button" onClick={() => handleDeleteClosure(closure)} disabled={closureLoading} className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg bg-red-50 px-3 text-xs font-black text-red-700 transition hover:bg-red-100 disabled:opacity-60">
+                                                        <span className="material-symbols-outlined text-[17px]">delete</span>
+                                                        Hapus
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </section>
                         </div>
                     )}
 

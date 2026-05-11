@@ -262,6 +262,12 @@ export const adminApi = {
   getPublicSettings: () => api.get('/admin/public-settings'),
   updateSettings: (data) => api.patch('/admin/settings', data),
   uploadBrandAsset: (data) => api.post('/admin/uploads/branding', data),
+  getCenterClosures: () => api.get('/admin/center-closures'),
+  getIndonesianHolidays: (year) => api.get(`/admin/center-closures/indonesia-holidays?year=${encodeURIComponent(year)}`),
+  applyCenterHolidays: (data) => api.post('/admin/center-closures/apply-holidays', data),
+  createCenterClosure: (data) => api.post('/admin/center-closures', data),
+  updateCenterClosure: (id, data) => api.patch(`/admin/center-closures/${id}`, data),
+  deleteCenterClosure: (id) => api.delete(`/admin/center-closures/${id}`),
   // Rooms
   getRooms: () => api.get('/admin/rooms'),
   createRoom: (data) => api.post('/admin/rooms', data),

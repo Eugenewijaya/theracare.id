@@ -121,6 +121,7 @@ export const adminService = {
       "logoUrl",
       "faviconUrl",
       "centerPhotoUrl",
+      "centerClosures",
     ];
     const settings = await this.getSettings();
     return Object.fromEntries(safeKeys.map((key) => [key, settings[key]]).filter(([, value]) => value));

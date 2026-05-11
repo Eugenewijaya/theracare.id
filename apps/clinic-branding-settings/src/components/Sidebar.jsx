@@ -3,6 +3,7 @@ import React from 'react';
 const navItems = [
     { id: 'general', label: 'General', icon: 'settings' },
     { id: 'branding', label: 'Branding', icon: 'palette' },
+    { id: 'schedule', label: 'Jadwal Off', icon: 'event_busy' },
     { id: 'notifications', label: 'Notifications', icon: 'notifications' },
 ];
 
