@@ -21,6 +21,7 @@ const navGroups = [
     label: 'Manajemen Klinik',
     items: [
       { path: '/children', icon: 'child_care', label: 'Data Anak' },
+      { path: '/children/program-registration', icon: 'playlist_add', label: 'Pendaftaran Program' },
       { path: '/therapists', icon: 'group', label: 'Data Terapis' },
       { path: '/rooms', icon: 'meeting_room', label: 'Manajemen Ruangan' },
       { path: '/programs', icon: 'menu_book', label: 'Program Layanan' },

@@ -36,7 +36,7 @@ export default function Sidebar({ isOpen, onClose }) {
         const unread = allNotifs.filter(n => !n.isRead && !(n.readBy || []).includes(user.id));
         setTotalUnread(unread.length);
         
-        const scheduleCount = unread.filter(n => ['schedule_change', 'new_session', 'substitute_confirmation', 'substitute_result'].includes(n.type)).length;
+        const scheduleCount = unread.filter(n => ['schedule_change', 'new_session', 'program_enrollment', 'substitute_confirmation', 'substitute_result'].includes(n.type)).length;
         const notifCount = unread.length - scheduleCount;
         setBadgeCounts({ schedule: scheduleCount, notification: notifCount });
       } catch (err) {

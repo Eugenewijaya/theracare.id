@@ -75,11 +75,18 @@ function App() {
                     <main className="flex flex-col gap-6 px-4 md:px-0">
                         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                             <h1 className="text-slate-900 dark:text-slate-100 text-2xl md:text-[28px] font-bold leading-tight tracking-[-0.015em]">Child Management</h1>
-                            <button onClick={() => navigate('/children/register')}
-                                className="px-4 py-2 rounded-lg bg-primary text-white font-medium hover:bg-primary/90 transition-colors flex items-center gap-2 text-sm shadow-sm shadow-primary/20 whitespace-nowrap">
-                                <span className="material-symbols-outlined text-[20px]">add</span>
-                                Add New Child
-                            </button>
+                            <div className="flex flex-wrap gap-2">
+                                <button onClick={() => navigate('/children/program-registration')}
+                                    className="px-4 py-2 rounded-lg border border-primary/20 bg-primary/10 text-primary font-bold hover:bg-primary/15 transition-colors flex items-center gap-2 text-sm whitespace-nowrap">
+                                    <span className="material-symbols-outlined text-[20px]">playlist_add</span>
+                                    Daftarkan Program
+                                </button>
+                                <button onClick={() => navigate('/children/register')}
+                                    className="px-4 py-2 rounded-lg bg-primary text-white font-medium hover:bg-primary/90 transition-colors flex items-center gap-2 text-sm shadow-sm shadow-primary/20 whitespace-nowrap">
+                                    <span className="material-symbols-outlined text-[20px]">add</span>
+                                    Add New Child
+                                </button>
+                            </div>
                         </div>
 
                         {/* Filters */}

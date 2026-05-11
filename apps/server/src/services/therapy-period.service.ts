@@ -1,7 +1,9 @@
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { children, programs, therapyPeriods, therapyPrograms, therapySessions } from "../db/schema.js";
+import { children, programs, therapists, therapyPeriods, therapyPrograms, therapySessions } from "../db/schema.js";
 import { generateId } from "../utils/id-generators.js";
+import { evaluateTherapistSlot } from "./scheduling-availability.service.js";
+import { notificationService } from "./notification.service.js";
 
 type TherapyPeriodInsert = typeof therapyPeriods.$inferInsert;
 type TherapySessionInsert = typeof therapySessions.$inferInsert;
@@ -140,6 +142,52 @@ async function getNextPeriodNumber(childId: string) {
   return rows.reduce((max, row) => Math.max(max, Number(row.periodNumber || 0)), 0) + 1;
 }
 
+async function notifyPeriodCreated(periodId: string, generation?: { created?: unknown[] }) {
+  const period = await db.query.therapyPeriods.findFirst({
+    where: eq(therapyPeriods.id, periodId),
+    with: {
+      child: { with: { parent: { with: { user: true } } } },
+      program: true,
+      therapyProgram: true,
+    },
+  });
+  if (!period) return;
+
+  const programName = period.program?.name || period.therapyProgram?.type || "Program Terapi";
+  const childName = period.child?.name || period.childId;
+  const sessionCount = Number(period.totalSessions || 0);
+  const createdCount = Array.isArray(generation?.created) ? generation.created.length : 0;
+
+  if (period.child?.parent?.userId) {
+    await notificationService.create({
+      type: "program_enrollment",
+      icon: "playlist_add_check",
+      title: "Program terapi anak didaftarkan",
+      message: `${childName} didaftarkan ke ${programName} (${period.name}) mulai ${period.startDate}. ${createdCount > 0 ? `${createdCount} sesi awal dibuat.` : `${sessionCount} sesi direncanakan.`}`,
+      targetRole: "parent",
+      targetUserId: period.child.parent.userId,
+      relatedId: period.id,
+    });
+  }
+
+  const therapistIds = Array.from(new Set((period.scheduleRules || [])
+    .map((rule: any) => rule?.therapistId)
+    .filter((id): id is string => typeof id === "string" && !!id)));
+  for (const therapistId of therapistIds) {
+    const therapist = await db.query.therapists.findFirst({ where: eq(therapists.id, therapistId) });
+    if (!therapist?.userId) continue;
+    await notificationService.create({
+      type: "program_enrollment",
+      icon: "event_available",
+      title: "Periode terapi baru ditugaskan",
+      message: `${childName} - ${programName} (${period.name}) mulai ${period.startDate}.`,
+      targetRole: "therapist",
+      targetUserId: therapist.userId,
+      relatedId: period.id,
+    });
+  }
+}
+
 async function findOrCreateTherapyProgram(data: any) {
   if (Number.isFinite(Number(data.therapyProgramId))) {
     const existing = await db.query.therapyPrograms.findFirst({ where: eq(therapyPrograms.id, Number(data.therapyProgramId)) });
@@ -244,11 +292,16 @@ export const therapyPeriodService = {
       })
       .where(eq(therapyPrograms.id, therapyProgram.id));
 
-    if (data.generateSessions) {
-      await this.generateSessions(period.id, { scheduleRules: data.scheduleRules });
-    }
+    const generation = data.generateSessions
+      ? await this.generateSessions(period.id, { scheduleRules: data.scheduleRules })
+      : null;
 
-    return this.getById(period.id);
+    await notifyPeriodCreated(period.id, generation || undefined);
+
+    const hydrated = await this.getById(period.id);
+    return generation
+      ? { ...hydrated, sessionGeneration: { created: generation.created.length, skipped: generation.skipped || [] } }
+      : hydrated;
   },
 
   async update(id: string, updates: any) {
@@ -318,6 +371,7 @@ export const therapyPeriodService = {
     const existing = Array.isArray(period.sessions) ? period.sessions : [];
     const existingKeys = new Set(existing.map((session: any) => `${session.date}|${session.startTime}|${session.therapistId}`));
     const values: TherapySessionInsert[] = [];
+    const skipped: Array<{ date: string; startTime: string; therapistId: string; reason?: string }> = [];
 
     for (let cursor = new Date(start); cursor <= hardEnd && (limit === 0 || existing.length + values.length < limit); cursor.setDate(cursor.getDate() + 1)) {
       const dayRules = rules.filter((rule) => rule.dayOfWeek === cursor.getDay());
@@ -326,6 +380,11 @@ export const therapyPeriodService = {
         const date = toDateString(cursor);
         const key = `${date}|${rule.startTime}|${rule.therapistId}`;
         if (existingKeys.has(key)) continue;
+        const availability = await evaluateTherapistSlot(rule.therapistId!, { date, time: rule.startTime });
+        if (availability.status !== "available") {
+          skipped.push({ date, startTime: rule.startTime, therapistId: rule.therapistId!, reason: availability.reason });
+          continue;
+        }
         existingKeys.add(key);
         values.push({
           id: `S-PER-${Date.now()}-${values.length}`,
@@ -343,6 +402,6 @@ export const therapyPeriodService = {
     }
 
     const created = values.length > 0 ? await db.insert(therapySessions).values(values).returning() : [];
-    return { period: await this.getById(id), created };
+    return { period: await this.getById(id), created, skipped };
   },
 };

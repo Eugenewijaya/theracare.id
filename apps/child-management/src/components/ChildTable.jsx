@@ -149,7 +149,7 @@ const ChildTable = ({ children, onDelete }) => {
                                         <button className="shrink-0 p-1.5 hover:text-primary hover:bg-primary/10 rounded transition-colors" title="Edit Info" onClick={() => setEditingChild(child)}>
                                             <span className="material-symbols-outlined text-[20px]">edit</span>
                                         </button>
-                                        <button className="shrink-0 p-1.5 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors" title="Tambah / Lanjut Periode" onClick={() => setEditingChild(child)}>
+                                        <button className="shrink-0 p-1.5 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors" title="Daftarkan Program / Lanjut Periode" onClick={() => navigate(`/children/program-registration?childId=${encodeURIComponent(child.id || child.nita)}`)}>
                                             <span className="material-symbols-outlined text-[20px]">event_upcoming</span>
                                         </button>
                                         <button className="shrink-0 p-1.5 hover:text-[#25D366] hover:bg-[#25D366]/10 rounded transition-colors" title="Contact Parent (WhatsApp)" onClick={() => handleContactParent(child)}>
@@ -235,7 +235,7 @@ const ChildTable = ({ children, onDelete }) => {
                             <button className="flex-1 py-2 sm:py-2.5 bg-slate-50 hover:bg-primary/10 text-slate-600 hover:text-primary dark:bg-slate-900 dark:text-slate-400 rounded-lg text-xs font-bold transition-colors border border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-center gap-1.5" onClick={() => setEditingChild(child)}>
                                 <span className="material-symbols-outlined text-[16px]">edit</span> <span className="hidden sm:inline">Edit</span>
                             </button>
-                            <button className="flex-1 py-2 sm:py-2.5 bg-slate-50 hover:bg-indigo-50 text-slate-600 hover:text-indigo-600 dark:bg-slate-900 dark:text-slate-400 rounded-lg text-xs font-bold transition-colors border border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-center gap-1.5" onClick={() => setEditingChild(child)}>
+                            <button className="flex-1 py-2 sm:py-2.5 bg-slate-50 hover:bg-indigo-50 text-slate-600 hover:text-indigo-600 dark:bg-slate-900 dark:text-slate-400 rounded-lg text-xs font-bold transition-colors border border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-center gap-1.5" onClick={() => navigate(`/children/program-registration?childId=${encodeURIComponent(child.id || child.nita)}`)}>
                                 <span className="material-symbols-outlined text-[16px]">event_upcoming</span> <span className="hidden sm:inline">Periode</span>
                             </button>
                             <button className="flex-1 py-2 sm:py-2.5 bg-slate-50 hover:bg-[#25D366]/10 text-slate-600 hover:text-[#25D366] dark:bg-slate-900 dark:text-slate-400 rounded-lg text-xs font-bold transition-colors border border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-center gap-1.5" onClick={() => handleContactParent(child)}>

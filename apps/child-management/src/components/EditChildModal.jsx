@@ -1,32 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { therapistsApi, adminApi, childrenApi, therapyPeriodsApi } from '../../../shared/api/client';
-
-const DAY_OPTIONS = [
-    { value: 'Monday', label: 'Senin' },
-    { value: 'Tuesday', label: 'Selasa' },
-    { value: 'Wednesday', label: 'Rabu' },
-    { value: 'Thursday', label: 'Kamis' },
-    { value: 'Friday', label: 'Jumat' },
-    { value: 'Saturday', label: 'Sabtu' },
-    { value: 'Sunday', label: 'Minggu' },
-];
+import { useNavigate } from 'react-router-dom';
+import { therapistsApi, adminApi, childrenApi } from '../../../shared/api/client';
 
 const EditChildModal = ({ child, onClose }) => {
+    const navigate = useNavigate();
     const [therapists, setTherapists] = useState([]);
     const [programsList, setProgramsList] = useState([]);
     const [isSaving, setIsSaving] = useState(false);
     const activePeriod = child.activePeriod || (Array.isArray(child.periods) ? child.periods.find(p => ['active', 'planned'].includes(p.status)) || child.periods[0] : null);
-    const [periodDraft, setPeriodDraft] = useState({
-        startDate: new Date().toISOString().split('T')[0],
-        endDate: '',
-        totalSessions: activePeriod?.totalSessions || 12,
-        pricePerSession: activePeriod?.pricePerSession || 0,
-        pricePerMonth: activePeriod?.pricePerMonth || 0,
-        billingMode: activePeriod?.billingMode || 'per_session',
-        therapyDays: [],
-        sessionStartTime: '09:00',
-        sessionDuration: '60',
-    });
 
     const [formData, setFormData] = useState({
         firstName: child.firstName || child.name?.split(' ')[0] || '',
@@ -83,63 +64,10 @@ const EditChildModal = ({ child, onClose }) => {
         }
     };
 
-    const handleCreateNextPeriod = async () => {
-        const selectedProgram = programsList.find(program => program.name === formData.program);
-        const scheduleRules = Array.isArray(periodDraft.therapyDays)
-            ? periodDraft.therapyDays.map(day => ({
-                day,
-                startTime: periodDraft.sessionStartTime || '09:00',
-                duration: `${periodDraft.sessionDuration || 60} mins`,
-                therapistId: formData.therapistId || child.therapistId,
-            }))
-            : [];
-        const payload = {
-            childId: child.id || child.nita,
-            programId: selectedProgram?.id || activePeriod?.programId || child.programs?.[0]?.programId,
-            therapyProgramId: activePeriod?.therapyProgramId,
-            type: formData.program || activePeriod?.programName || child.program || 'Program Terapi',
-            startDate: periodDraft.startDate,
-            endDate: periodDraft.endDate || null,
-            totalSessions: Number(periodDraft.totalSessions || 12),
-            pricePerSession: Number(periodDraft.pricePerSession || 0),
-            pricePerMonth: Number(periodDraft.pricePerMonth || 0),
-            billingMode: periodDraft.billingMode,
-            scheduleRules,
-            generateSessions: scheduleRules.length > 0,
-        };
-        if (!payload.startDate || !payload.totalSessions) {
-            alert('Tanggal mulai dan jumlah sesi periode wajib diisi.');
-            return;
-        }
-        if (scheduleRules.length > 0 && !scheduleRules.every(rule => rule.therapistId)) {
-            alert('Pilih terapis utama sebelum generate jadwal periode.');
-            return;
-        }
-        setIsSaving(true);
-        try {
-            const res = activePeriod?.id
-                ? await therapyPeriodsApi.renew(activePeriod.id, payload)
-                : await therapyPeriodsApi.create(payload);
-            if (!res.ok) throw new Error(res.data?.error || 'Gagal membuat periode baru.');
-            window.dispatchEvent(new CustomEvent('childUpdated'));
-            alert('Periode terapi baru berhasil dibuat.');
-            onClose();
-        } catch (e) {
-            console.error('Failed to create therapy period', e);
-            alert(e.message || 'Gagal membuat periode baru.');
-        } finally {
-            setIsSaving(false);
-        }
-    };
-
-    const togglePeriodDay = (day) => {
-        setPeriodDraft(prev => {
-            const current = Array.isArray(prev.therapyDays) ? prev.therapyDays : [];
-            return {
-                ...prev,
-                therapyDays: current.includes(day) ? current.filter(item => item !== day) : [...current, day],
-            };
-        });
+    const openProgramEnrollment = () => {
+        const childId = child.id || child.nita;
+        onClose();
+        navigate(`/children/program-registration?childId=${encodeURIComponent(childId)}`);
     };
 
     return (
@@ -179,6 +107,7 @@ const EditChildModal = ({ child, onClose }) => {
 
                     <div className="border-t border-slate-200 dark:border-slate-800 pt-4 mt-2">
                         <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Program Utama</label>
+                        <p className="mb-2 text-xs text-slate-500">Untuk membuat periode, sesi, harga, dan jadwal baru gunakan menu Pendaftaran Program.</p>
                         <select name="program" value={formData.program} onChange={handleChange} className="w-full h-11 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 focus:ring-primary focus:border-primary focus:outline-none">
                             <option value="">Pilih Program...</option>
                             {programsList.map(prog => <option key={prog.id} value={prog.name}>{prog.name}</option>)}
@@ -196,7 +125,7 @@ const EditChildModal = ({ child, onClose }) => {
                     <div className="border-t border-slate-200 dark:border-slate-800 pt-4 mt-2">
                         <div className="mb-3">
                             <h4 className="text-sm font-black text-slate-900 dark:text-slate-100">Periode Terapi</h4>
-                            <p className="mt-1 text-xs text-slate-500">Gunakan ini untuk lanjut periode setelah sesi sebelumnya selesai.</p>
+                            <p className="mt-1 text-xs text-slate-500">Riwayat periode aktif dan selesai. Pendaftaran periode baru dikelola dari menu khusus agar jadwal, harga, dan notifikasi sinkron.</p>
                         </div>
                         {Array.isArray(child.periods) && child.periods.length > 0 ? (
                             <div className="mb-4 flex flex-col gap-2">
@@ -213,54 +142,9 @@ const EditChildModal = ({ child, onClose }) => {
                         ) : (
                             <p className="mb-4 rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">Belum ada periode terapi tersimpan.</p>
                         )}
-                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 mb-1">Mulai Periode Baru</label>
-                                <input type="date" value={periodDraft.startDate} onChange={e => setPeriodDraft(p => ({ ...p, startDate: e.target.value }))} className="w-full h-10 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-sm text-slate-900 dark:text-slate-100 focus:ring-primary focus:border-primary focus:outline-none" />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 mb-1">Selesai</label>
-                                <input type="date" value={periodDraft.endDate} onChange={e => setPeriodDraft(p => ({ ...p, endDate: e.target.value }))} className="w-full h-10 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-sm text-slate-900 dark:text-slate-100 focus:ring-primary focus:border-primary focus:outline-none" />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 mb-1">Jumlah Sesi</label>
-                                <input type="number" min="1" value={periodDraft.totalSessions} onChange={e => setPeriodDraft(p => ({ ...p, totalSessions: e.target.value }))} className="w-full h-10 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-sm text-slate-900 dark:text-slate-100 focus:ring-primary focus:border-primary focus:outline-none" />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 mb-1">Mode Biaya</label>
-                                <select value={periodDraft.billingMode} onChange={e => setPeriodDraft(p => ({ ...p, billingMode: e.target.value }))} className="w-full h-10 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-sm text-slate-900 dark:text-slate-100 focus:ring-primary focus:border-primary focus:outline-none">
-                                    <option value="per_session">Per sesi</option>
-                                    <option value="per_month">Per bulan</option>
-                                    <option value="package">Paket/periode</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div className="mt-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
-                            <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Generate jadwal dari periode</p>
-                            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                                {DAY_OPTIONS.map(day => (
-                                    <button
-                                        type="button"
-                                        key={day.value}
-                                        onClick={() => togglePeriodDay(day.value)}
-                                        className={`h-9 rounded-lg border px-2 text-xs font-bold transition-colors ${periodDraft.therapyDays.includes(day.value) ? 'border-primary bg-primary/10 text-primary' : 'border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'}`}
-                                    >
-                                        {day.label}
-                                    </button>
-                                ))}
-                            </div>
-                            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                                <input type="time" value={periodDraft.sessionStartTime} onChange={e => setPeriodDraft(p => ({ ...p, sessionStartTime: e.target.value }))} className="w-full h-10 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-sm text-slate-900 dark:text-slate-100 focus:ring-primary focus:border-primary focus:outline-none" />
-                                <select value={periodDraft.sessionDuration} onChange={e => setPeriodDraft(p => ({ ...p, sessionDuration: e.target.value }))} className="w-full h-10 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-sm text-slate-900 dark:text-slate-100 focus:ring-primary focus:border-primary focus:outline-none">
-                                    <option value="30">30 menit</option>
-                                    <option value="45">45 menit</option>
-                                    <option value="60">60 menit</option>
-                                    <option value="90">90 menit</option>
-                                </select>
-                            </div>
-                        </div>
-                        <button type="button" onClick={handleCreateNextPeriod} disabled={isSaving} className="mt-3 w-full rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50">
-                            {activePeriod ? 'Lanjutkan ke Periode Baru' : 'Buat Periode Terapi'}
+                        <button type="button" onClick={openProgramEnrollment} disabled={isSaving} className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50">
+                            <span className="material-symbols-outlined text-base">playlist_add</span>
+                            Buka Pendaftaran Program
                         </button>
                     </div>
                 </div>

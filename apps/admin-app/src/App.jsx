@@ -19,6 +19,7 @@ const AdminReports = lazy(() => import('../../admin-reports/src/App'));
 const MonitoringProgress = lazy(() => import('../../monitoring-progress/src/App'));
 const ChildManagement = lazy(() => import('../../child-management/src/App'));
 const ChildRegistration = lazy(() => import('../../child-registration/src/App'));
+const ProgramEnrollment = lazy(() => import('../../child-management/src/ProgramEnrollmentPage'));
 const TherapistManagement = lazy(() => import('../../therapist-management/src/App'));
 const NotificationCenter = lazy(() => import('../../notification-center/src/App'));
 const ClinicBranding = lazy(() => import('../../clinic-branding-settings/src/App'));
@@ -110,6 +111,7 @@ function DashboardLayout() {
               <Route path="monitoring" element={<MonitoringProgress />} />
               <Route path="children" element={<ChildManagement />} />
               <Route path="children/register" element={<ChildRegistration />} />
+              <Route path="children/program-registration" element={<ProgramEnrollment />} />
               <Route path="therapists" element={<TherapistManagement />} />
               <Route path="rooms" element={<AdminRooms />} />
               <Route path="programs" element={<AdminPrograms />} />

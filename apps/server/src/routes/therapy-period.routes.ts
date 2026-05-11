@@ -48,7 +48,9 @@ router.post("/", requireAuth, requireRole("admin"), async (req, res, next) => {
     const period = await therapyPeriodService.create(req.body);
     if (!period) return notFound(res, "Anak tidak ditemukan");
     created(res, period, "Periode terapi berhasil dibuat");
-  } catch (e) { next(e); }
+  } catch (e) {
+    return badRequest(res, e instanceof Error ? e.message : "Gagal membuat periode terapi");
+  }
 });
 
 router.patch("/:id", requireAuth, requireRole("admin"), async (req, res, next) => {
@@ -64,7 +66,9 @@ router.post("/:id/generate-sessions", requireAuth, requireRole("admin"), async (
     const result = await therapyPeriodService.generateSessions(req.params.id as string, req.body || {});
     if (!result) return notFound(res);
     created(res, result, "Jadwal sesi periode berhasil dibuat");
-  } catch (e) { next(e); }
+  } catch (e) {
+    return badRequest(res, e instanceof Error ? e.message : "Gagal membuat jadwal sesi periode");
+  }
 });
 
 router.post("/:id/complete", requireAuth, requireRole("admin"), async (req, res, next) => {
@@ -80,7 +84,9 @@ router.post("/:id/renew", requireAuth, requireRole("admin"), async (req, res, ne
     const period = await therapyPeriodService.renew(req.params.id as string, req.body || {});
     if (!period) return notFound(res);
     created(res, period, "Periode lanjutan berhasil dibuat");
-  } catch (e) { next(e); }
+  } catch (e) {
+    return badRequest(res, e instanceof Error ? e.message : "Gagal membuat periode lanjutan");
+  }
 });
 
 export default router;

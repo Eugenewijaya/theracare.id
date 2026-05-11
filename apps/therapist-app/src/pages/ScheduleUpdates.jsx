@@ -40,7 +40,7 @@ export default function ScheduleUpdates() {
                 const substituteRows = substituteRes.data?.data || [];
                 setSubstituteRequests(substituteRows.filter(item => item.status === 'pending_primary' && item.originalTherapistId === user.id));
 
-                const scheduleNotifTypes = ['schedule_change', 'new_session', 'substitute_confirmation', 'substitute_result'];
+                const scheduleNotifTypes = ['schedule_change', 'new_session', 'program_enrollment', 'substitute_confirmation', 'substitute_result'];
                 const unreadNotifs = notifs.filter(n => scheduleNotifTypes.includes(n.type) && !n.isRead && !(n.readBy || []).includes(user.id));
                 for (const n of unreadNotifs) {
                     await notificationsApi.markRead(n.id);
