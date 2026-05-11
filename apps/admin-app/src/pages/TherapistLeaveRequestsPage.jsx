@@ -1,5 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { leaveRequestsApi } from '../../../shared/api/client';
+import {
+  ADMIN_GATE_PASSWORD,
+  LEAVE_REQUESTS_UNLOCK_KEY,
+  getSessionUnlockState,
+  markSessionUnlocked,
+} from '../config/accessGate';
 
 const TYPE_LABELS = {
   cuti: 'Cuti',
@@ -27,6 +33,9 @@ export default function TherapistLeaveRequestsPage() {
   const [loading, setLoading] = useState(true);
   const [reviewNotes, setReviewNotes] = useState({});
   const [toast, setToast] = useState(null);
+  const [isUnlocked, setIsUnlocked] = useState(() => getSessionUnlockState(LEAVE_REQUESTS_UNLOCK_KEY));
+  const [gatePassword, setGatePassword] = useState('');
+  const [gateError, setGateError] = useState('');
 
   const load = async () => {
     setLoading(true);
@@ -42,8 +51,23 @@ export default function TherapistLeaveRequestsPage() {
   };
 
   useEffect(() => {
+    if (!isUnlocked) return;
     load();
-  }, []);
+  }, [isUnlocked]);
+
+  const handleUnlock = (event) => {
+    event.preventDefault();
+    if (gatePassword !== ADMIN_GATE_PASSWORD) {
+      setGateError('Password super admin salah.');
+      return;
+    }
+
+    markSessionUnlocked(LEAVE_REQUESTS_UNLOCK_KEY);
+    setIsUnlocked(true);
+    setGatePassword('');
+    setGateError('');
+    setToast({ type: 'success', message: 'Akses Pengajuan Cuti dibuka.' });
+  };
 
   const stats = useMemo(() => ({
     pending: requests.filter((item) => item.status === 'pending').length,
@@ -77,6 +101,58 @@ export default function TherapistLeaveRequestsPage() {
           }`}>
             {toast.message}
           </div>
+        </div>
+      )}
+
+      {!isUnlocked && (
+        <div className="fixed inset-0 z-[900] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
+          <form
+            onSubmit={handleUnlock}
+            className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-primary/20 dark:bg-slate-900"
+          >
+            <div className="flex items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                <span className="material-symbols-outlined text-[26px]">lock</span>
+              </div>
+              <div>
+                <h2 className="text-lg font-black text-slate-900 dark:text-white">Pengajuan Cuti Terkunci</h2>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                  Masukkan password super admin untuk membuka halaman ini.
+                </p>
+              </div>
+            </div>
+
+            <label htmlFor="leave-requests-gate-password" className="mb-2 mt-6 block text-xs font-bold uppercase tracking-wider text-slate-500">
+              Password Super Admin
+            </label>
+            <div className="flex h-12 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 focus-within:ring-2 focus-within:ring-primary/40 dark:border-primary/20 dark:bg-slate-950">
+              <span className="material-symbols-outlined text-[20px] text-slate-400">key</span>
+              <input
+                id="leave-requests-gate-password"
+                type="password"
+                autoFocus
+                value={gatePassword}
+                onChange={(event) => {
+                  setGatePassword(event.target.value);
+                  if (gateError) setGateError('');
+                }}
+                autoComplete="off"
+                className="flex-1 bg-transparent text-sm font-semibold text-slate-900 outline-none placeholder:text-slate-400 dark:text-white"
+                placeholder="Masukkan password"
+              />
+            </div>
+            {gateError && (
+              <p className="mt-3 text-sm font-semibold text-red-600 dark:text-red-400">{gateError}</p>
+            )}
+
+            <button
+              type="submit"
+              className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-black text-white shadow-lg shadow-primary/20 transition hover:bg-primary-dark"
+            >
+              <span className="material-symbols-outlined text-[20px]">lock_open</span>
+              Buka Halaman
+            </button>
+          </form>
         </div>
       )}
 

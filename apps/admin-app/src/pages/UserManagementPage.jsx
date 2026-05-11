@@ -1,17 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { parentsApi, therapistsApi } from '../../../shared/api/client';
+import {
+    ADMIN_GATE_PASSWORD,
+    USER_MANAGEMENT_UNLOCK_KEY,
+    getSessionUnlockState,
+    markSessionUnlocked,
+} from '../config/accessGate';
 
-const USER_MANAGEMENT_PASSWORD = 'awasdiomelinevid';
-const USER_MANAGEMENT_UNLOCK_KEY = 'admin_user_management_unlocked';
 const PASSWORD_INFO_MESSAGE = 'Password saat ini tersimpan aman sebagai hash dan tidak bisa ditampilkan ulang. Gunakan Reset untuk membuat password baru yang bisa diberikan ke user.';
-
-const getInitialUnlockState = () => {
-    try {
-        return sessionStorage.getItem(USER_MANAGEMENT_UNLOCK_KEY) === 'true';
-    } catch {
-        return false;
-    }
-};
 
 export default function UserManagementPage() {
     const [activeTab, setActiveTab]   = useState('parents');
@@ -23,7 +19,7 @@ export default function UserManagementPage() {
     const [showPass, setShowPass]     = useState({});
     const [passwordOverrides, setPasswordOverrides] = useState({});
     const [loading, setLoading]       = useState(true);
-    const [isUnlocked, setIsUnlocked] = useState(getInitialUnlockState);
+    const [isUnlocked, setIsUnlocked] = useState(() => getSessionUnlockState(USER_MANAGEMENT_UNLOCK_KEY));
     const [gatePassword, setGatePassword] = useState('');
     const [gateError, setGateError] = useState('');
 
@@ -55,14 +51,12 @@ export default function UserManagementPage() {
 
     const handleUnlock = (e) => {
         e.preventDefault();
-        if (gatePassword !== USER_MANAGEMENT_PASSWORD) {
+        if (gatePassword !== ADMIN_GATE_PASSWORD) {
             setGateError('Password super admin salah.');
             return;
         }
 
-        try {
-            sessionStorage.setItem(USER_MANAGEMENT_UNLOCK_KEY, 'true');
-        } catch {}
+        markSessionUnlocked(USER_MANAGEMENT_UNLOCK_KEY);
         setIsUnlocked(true);
         setGatePassword('');
         setGateError('');
