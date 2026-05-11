@@ -91,21 +91,11 @@ export function AuthProvider({ children }) {
     setLoading(true);
 
     try {
-      const identityRes = await parentsApi.getLoginIdentity(loginId);
-      if (!identityRes.ok || !identityRes.data?.data?.email) {
-        setError(identityRes.data?.error || 'Nomor HP, Parent ID, atau NITA belum terdaftar');
+      const res = await parentsApi.portalLogin(loginId, password, rememberMe);
+      if (res.ok && res.data?.data?.parent) {
+        applyParent(res.data.data.parent, rememberMe);
         if (runId === authRunRef.current) setLoading(false);
-        return false;
-      }
-
-      const res = await authApi.signIn(identityRes.data.data.email, password, rememberMe);
-      if (res.ok) {
-        const profileRes = await parentsApi.getMe();
-        if (profileRes.ok && profileRes.data?.data) {
-          applyParent(profileRes.data.data, rememberMe);
-          if (runId === authRunRef.current) setLoading(false);
-          return true;
-        }
+        return true;
       }
       setError(res.data?.error || res.data?.message || 'ID login atau password tidak valid');
       if (runId === authRunRef.current) setLoading(false);

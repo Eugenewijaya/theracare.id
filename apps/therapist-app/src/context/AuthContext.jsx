@@ -97,21 +97,11 @@ export function AuthProvider({ children }) {
     setError('');
     setLoading(true);
     try {
-      const identityRes = await therapistsApi.getLoginIdentity(nit);
-      if (!identityRes.ok || !identityRes.data?.data?.email) {
-        setError(identityRes.data?.error || 'NIT belum terdaftar');
+      const res = await therapistsApi.portalLogin(nit, password, rememberMe);
+      if (res.ok && res.data?.data?.therapist) {
+        applyTherapist(res.data.data.therapist, rememberMe);
         if (runId === authRunRef.current) setLoading(false);
-        return false;
-      }
-
-      const res = await authApi.signIn(identityRes.data.data.email, password, rememberMe);
-      if (res.ok) {
-        const profileRes = await therapistsApi.getMe();
-        if (profileRes.ok && profileRes.data?.data) {
-          applyTherapist(profileRes.data.data, rememberMe);
-          if (runId === authRunRef.current) setLoading(false);
-          return true;
-        }
+        return true;
       }
       setError(res.data?.error || res.data?.message || 'NIT atau password tidak valid');
       if (runId === authRunRef.current) setLoading(false);

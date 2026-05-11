@@ -17,6 +17,16 @@ router.get("/login-identity/:nit", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+router.post("/portal-login", async (req, res, next) => {
+  try {
+    const { nit, password } = req.body || {};
+    if (!nit || !password) return badRequest(res, "NIT dan password wajib diisi");
+    const result = await therapistService.portalLogin(nit, password);
+    if (!result) return res.status(401).json({ success: false, error: "NIT atau password tidak valid" });
+    ok(res, result, "Login berhasil");
+  } catch (e) { next(e); }
+});
+
 router.get("/me/profile", requireAuth, requireRole("therapist"), async (req, res, next) => {
   try {
     const therapist = await therapistService.getByUserId(req.user!.id);

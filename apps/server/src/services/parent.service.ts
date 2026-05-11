@@ -1,8 +1,10 @@
 import { db } from "../db/index.js";
 import { account, authSession, children, notificationReads, notifications, parents, rescheduleRequests, sessionRatings, user } from "../db/schema.js";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { auth } from "../auth.js";
-import { generatePortalResetPassword, generateSeqId, generateTempPassword } from "../utils/id-generators.js";
+import { verifyPassword } from "better-auth/crypto";
+import { randomBytes } from "node:crypto";
+import { generateId, generatePortalResetPassword, generateSeqId, generateTempPassword } from "../utils/id-generators.js";
 import { setCredentialPassword } from "./auth-password.service.js";
 
 function normalizePhone(phone?: string) {
@@ -29,6 +31,46 @@ function formatParent(parent: any) {
     status: parent.user?.status || parent.status || "active",
     children: parent.children || [],
   };
+}
+
+async function findLoginParent(identifier: string) {
+  const raw = (identifier || "").trim();
+  const upper = raw.toUpperCase();
+  const wantedPhone = normalizePhone(raw);
+  if (!raw && !wantedPhone) return null;
+
+  const all = await db.query.parents.findMany({ with: { user: true, children: true } });
+  return all.find((p) => {
+    if (p.user?.status && p.user.status !== "active") return false;
+    const parentIdMatch = (p.id || "").toUpperCase() === upper;
+    const phoneMatch = Boolean(wantedPhone) && normalizePhone(p.user?.phone || "") === wantedPhone;
+    const childMatch = (p.children || []).some((child: any) =>
+      (child.id || "").toUpperCase() === upper || (child.nita || "").toUpperCase() === upper
+    );
+    return parentIdMatch || phoneMatch || childMatch;
+  }) || null;
+}
+
+async function createPortalSession(userId: string) {
+  const token = randomBytes(32).toString("hex");
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  await db.insert(authSession).values({
+    id: generateId("SES"),
+    token,
+    userId,
+    expiresAt,
+  });
+  return token;
+}
+
+async function verifyCredentialPassword(userId: string, password: string) {
+  const [credential] = await db
+    .select()
+    .from(account)
+    .where(and(eq(account.userId, userId), eq(account.providerId, "credential")))
+    .limit(1);
+  if (!credential?.password) return false;
+  return verifyPassword({ hash: credential.password, password });
 }
 
 async function archiveUser(userId: string, reason: string) {
@@ -77,19 +119,7 @@ export const parentService = {
 
   async getLoginIdentity(identifier: string) {
     const raw = (identifier || "").trim();
-    const upper = raw.toUpperCase();
-    const wantedPhone = normalizePhone(raw);
-    if (!raw && !wantedPhone) return null;
-    const all = await db.query.parents.findMany({ with: { user: true, children: true } });
-    const parent = all.find((p) => {
-      if (p.user?.status && p.user.status !== "active") return false;
-      const parentIdMatch = (p.id || "").toUpperCase() === upper;
-      const phoneMatch = Boolean(wantedPhone) && normalizePhone(p.user?.phone || "") === wantedPhone;
-      const childMatch = (p.children || []).some((child: any) =>
-        (child.id || "").toUpperCase() === upper || (child.nita || "").toUpperCase() === upper
-      );
-      return parentIdMatch || phoneMatch || childMatch;
-    });
+    const parent = await findLoginParent(identifier);
     if (!parent || parent.user?.status !== "active") return null;
     return {
       parentId: parent.id,
@@ -99,6 +129,15 @@ export const parentService = {
       phone: parent.user?.phone,
       children: parent.children || [],
     };
+  },
+
+  async portalLogin(identifier: string, password: string) {
+    const parent = await findLoginParent(identifier);
+    if (!parent || parent.user?.status !== "active") return null;
+    const isValid = await verifyCredentialPassword(parent.userId, password);
+    if (!isValid) return null;
+    const token = await createPortalSession(parent.userId);
+    return { token, parent: formatParent(parent) };
   },
 
   async create(data: { name: string; email?: string; phone?: string; address?: string; tempPassword?: string }, lastId: number) {

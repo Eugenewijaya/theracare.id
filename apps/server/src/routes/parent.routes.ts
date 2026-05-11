@@ -17,6 +17,16 @@ router.get("/login-identity/:identifier", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+router.post("/portal-login", async (req, res, next) => {
+  try {
+    const { identifier, password } = req.body || {};
+    if (!identifier || !password) return badRequest(res, "ID login dan password wajib diisi");
+    const result = await parentService.portalLogin(identifier, password);
+    if (!result) return res.status(401).json({ success: false, error: "ID login atau password tidak valid" });
+    ok(res, result, "Login berhasil");
+  } catch (e) { next(e); }
+});
+
 router.get("/me/profile", requireAuth, requireRole("parent"), async (req, res, next) => {
   try {
     const parent = await parentService.getByUserId(req.user!.id);

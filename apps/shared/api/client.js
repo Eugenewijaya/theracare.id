@@ -117,6 +117,11 @@ export const parentsApi = {
   getById: (id) => api.get(`/parents/${id}`),
   getMe: () => api.get('/parents/me/profile'),
   getLoginIdentity: (identifier) => api.get(`/parents/login-identity/${encodeURIComponent(identifier)}`),
+  portalLogin: async (identifier, password, rememberMe = true) => {
+    const res = await api.post('/parents/portal-login', { identifier, password });
+    if (res.ok && res.data?.data?.token) storeAuthToken(res.data.data.token, rememberMe);
+    return res;
+  },
   create: (data) => api.post('/parents', data),
   update: (id, data) => api.patch(`/parents/${id}`, data),
   updateStatus: (id, status) => api.patch(`/parents/${id}/status`, { status }),
@@ -141,6 +146,11 @@ export const therapistsApi = {
   getById: (id) => api.get(`/therapists/${id}`),
   getMe: () => api.get('/therapists/me/profile'),
   getLoginIdentity: (nit) => api.get(`/therapists/login-identity/${encodeURIComponent(nit)}`),
+  portalLogin: async (nit, password, rememberMe = true) => {
+    const res = await api.post('/therapists/portal-login', { nit, password });
+    if (res.ok && res.data?.data?.token) storeAuthToken(res.data.data.token, rememberMe);
+    return res;
+  },
   create: (data) => api.post('/therapists', data),
   updateProfile: (id, data) => api.patch(`/therapists/${id}`, data),
   updateStatus: (id, status) => api.patch(`/therapists/${id}/status`, { status }),

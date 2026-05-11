@@ -1,8 +1,10 @@
 import { db } from "../db/index.js";
 import { account, authSession, notificationReads, notifications, reports, therapists, therapySessions, user } from "../db/schema.js";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { auth } from "../auth.js";
-import { generatePortalResetPassword, generateTempPassword, generateNIT } from "../utils/id-generators.js";
+import { verifyPassword } from "better-auth/crypto";
+import { randomBytes } from "node:crypto";
+import { generateId, generatePortalResetPassword, generateTempPassword, generateNIT } from "../utils/id-generators.js";
 import { setCredentialPassword } from "./auth-password.service.js";
 
 type TherapistProfileInput = {
@@ -95,6 +97,28 @@ function formatTherapist(therapist: any) {
     primaryRoom: therapist.primaryRoom || "",
     maxClients: therapist.maxClients ?? null,
   };
+}
+
+async function createPortalSession(userId: string) {
+  const token = randomBytes(32).toString("hex");
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  await db.insert(authSession).values({
+    id: generateId("SES"),
+    token,
+    userId,
+    expiresAt,
+  });
+  return token;
+}
+
+async function verifyCredentialPassword(userId: string, password: string) {
+  const [credential] = await db
+    .select()
+    .from(account)
+    .where(and(eq(account.userId, userId), eq(account.providerId, "credential")))
+    .limit(1);
+  if (!credential?.password) return false;
+  return verifyPassword({ hash: credential.password, password });
 }
 
 async function archiveUser(userId: string, reason: string) {
@@ -225,6 +249,20 @@ export const therapistService = {
     const tempPassword = generatePortalResetPassword();
     await setCredentialPassword(therapist.userId, tempPassword);
     return { id, tempPassword };
+  },
+
+  async portalLogin(nit: string, password: string) {
+    const id = nit.trim().toUpperCase();
+    if (!id) return null;
+    const therapist = await db.query.therapists.findFirst({
+      where: eq(therapists.nit, id),
+      with: { user: true },
+    });
+    if (!therapist || therapist.user?.status !== "active") return null;
+    const isValid = await verifyCredentialPassword(therapist.userId, password);
+    if (!isValid) return null;
+    const token = await createPortalSession(therapist.userId);
+    return { token, therapist: formatTherapist(therapist) };
   },
 
   async delete(id: string) {
