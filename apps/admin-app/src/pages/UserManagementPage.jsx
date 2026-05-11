@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { parentsApi, therapistsApi } from '../../../shared/api/client';
 
-const USER_MANAGEMENT_PASSWORD = 'Awasdi omelinEvid';
+const USER_MANAGEMENT_PASSWORD = 'awasdiomelinevid';
 const USER_MANAGEMENT_UNLOCK_KEY = 'admin_user_management_unlocked';
 const PASSWORD_INFO_MESSAGE = 'Password saat ini tersimpan aman sebagai hash dan tidak bisa ditampilkan ulang. Gunakan Reset untuk membuat password baru yang bisa diberikan ke user.';
 

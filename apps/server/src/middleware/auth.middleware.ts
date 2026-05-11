@@ -1,6 +1,9 @@
 import type { Request, Response, NextFunction } from "express";
 import { auth } from "../auth.js";
 import { fromNodeHeaders } from "better-auth/node";
+import { and, eq, gt } from "drizzle-orm";
+import { db } from "../db/index.js";
+import { authSession, user as userTable } from "../db/schema.js";
 
 // Extend Express Request to include user
 declare global {
@@ -27,9 +30,32 @@ export const requireAuth = async (
   next: NextFunction
 ) => {
   try {
-    const session = await auth.api.getSession({
+    let session = await auth.api.getSession({
       headers: fromNodeHeaders(req.headers),
     });
+    if (!session?.user) {
+      const token = req.get("x-theracare-session-token")?.trim();
+      if (token) {
+        const [fallbackUser] = await db
+          .select({
+            id: userTable.id,
+            name: userTable.name,
+            email: userTable.email,
+            role: userTable.role,
+            status: userTable.status,
+            phone: userTable.phone,
+            banned: userTable.banned,
+          })
+          .from(authSession)
+          .innerJoin(userTable, eq(authSession.userId, userTable.id))
+          .where(and(eq(authSession.token, token), gt(authSession.expiresAt, new Date())))
+          .limit(1);
+
+        if (fallbackUser) {
+          session = { user: fallbackUser } as any;
+        }
+      }
+    }
     if (!session || !session.user) {
       return res.status(401).json({ error: "Unauthorized — silakan login terlebih dahulu" });
     }

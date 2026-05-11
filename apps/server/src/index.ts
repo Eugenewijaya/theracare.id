@@ -2,8 +2,11 @@ import "dotenv/config";
 import express from "express";
 import cors, { type CorsOptions } from "cors";
 import { fromNodeHeaders, toNodeHandler } from "better-auth/node";
+import { and, eq, gt } from "drizzle-orm";
 import { auth } from "./auth.js";
 import { ensureProductionSchema } from "./db/production-schema.js";
+import { db } from "./db/index.js";
+import { authSession, user as userTable } from "./db/schema.js";
 import { errorHandler } from "./middleware/error.middleware.js";
 
 // Routes
@@ -66,6 +69,37 @@ async function sendAuthResponse(res: express.Response, response: Response) {
   res.status(response.status).send(body);
 }
 
+async function getSessionWithTokenFallback(req: express.Request) {
+  const session = await auth.api.getSession({
+    headers: fromNodeHeaders(req.headers),
+  });
+  if (session?.user) return session;
+
+  const token = req.get("x-theracare-session-token")?.trim();
+  if (!token) return null;
+
+  const [fallbackUser] = await db
+    .select({
+      id: userTable.id,
+      name: userTable.name,
+      email: userTable.email,
+      role: userTable.role,
+      status: userTable.status,
+      phone: userTable.phone,
+      banned: userTable.banned,
+      image: userTable.image,
+      emailVerified: userTable.emailVerified,
+      createdAt: userTable.createdAt,
+      updatedAt: userTable.updatedAt,
+    })
+    .from(authSession)
+    .innerJoin(userTable, eq(authSession.userId, userTable.id))
+    .where(and(eq(authSession.token, token), gt(authSession.expiresAt, new Date())))
+    .limit(1);
+
+  return fallbackUser ? { user: fallbackUser, session: { token } } : null;
+}
+
 // ── Middleware ──────────────────────────────────────────
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
@@ -93,6 +127,16 @@ app.post("/api/auth/change-password", express.json({ limit: "1mb" }), async (req
       asResponse: true,
     });
     await sendAuthResponse(res, response);
+  } catch (e) {
+    next(e);
+  }
+});
+
+app.get("/api/auth/get-session", async (req, res, next) => {
+  try {
+    const session = await getSessionWithTokenFallback(req);
+    if (!session?.user) return res.status(401).json({ error: "Unauthorized — silakan login terlebih dahulu" });
+    res.json(session);
   } catch (e) {
     next(e);
   }

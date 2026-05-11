@@ -5,6 +5,34 @@
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 const REQUEST_TIMEOUT_MS = 20000;
+const AUTH_TOKEN_KEY = 'theracare_session_token';
+
+function readAuthToken() {
+  try {
+    return localStorage.getItem(AUTH_TOKEN_KEY) || sessionStorage.getItem(AUTH_TOKEN_KEY) || '';
+  } catch {
+    return '';
+  }
+}
+
+function storeAuthToken(token, rememberMe = true) {
+  if (!token) return;
+  try {
+    sessionStorage.setItem(AUTH_TOKEN_KEY, token);
+    if (rememberMe) {
+      localStorage.setItem(AUTH_TOKEN_KEY, token);
+    } else {
+      localStorage.removeItem(AUTH_TOKEN_KEY);
+    }
+  } catch {}
+}
+
+function clearAuthToken() {
+  try {
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+    sessionStorage.removeItem(AUTH_TOKEN_KEY);
+  } catch {}
+}
 
 /**
  * Make an API request with automatic session cookie handling.
@@ -19,9 +47,13 @@ async function request(method, path, body = null) {
   const timeoutId = controller
     ? globalThis.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
     : null;
+  const headers = { 'Content-Type': 'application/json' };
+  const authToken = readAuthToken();
+  if (authToken) headers['x-theracare-session-token'] = authToken;
+
   const options = {
     method,
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     credentials: 'include', // Send cookies for Better Auth session
     ...(controller ? { signal: controller.signal } : {}),
   };
@@ -58,13 +90,21 @@ export const api = {
 // ── Auth API ─────────────────────────────────────────────────────
 export const authApi = {
   /** Login with email + password */
-  signIn: (email, password, rememberMe = true) => request('POST', '/auth/sign-in/email', { email, password, rememberMe }),
+  signIn: async (email, password, rememberMe = true) => {
+    const res = await request('POST', '/auth/sign-in/email', { email, password, rememberMe });
+    if (res.ok && res.data?.token) storeAuthToken(res.data.token, rememberMe);
+    return res;
+  },
   
   /** Get current session (check if logged in) */
   getSession: () => request('GET', '/auth/get-session'),
   
   /** Logout */
-  signOut: () => request('POST', '/auth/sign-out'),
+  signOut: async () => {
+    const res = await request('POST', '/auth/sign-out');
+    clearAuthToken();
+    return res;
+  },
 
   /** Change password for the current signed-in user */
   changePassword: (currentPassword, newPassword, revokeOtherSessions = true) =>
