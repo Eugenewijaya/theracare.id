@@ -54,14 +54,6 @@ function MobileTopBar({ onMenuOpen }) {
   return (
     <header className="lg:hidden sticky top-0 z-[120] flex min-h-[64px] shrink-0 items-center gap-2 border-b border-slate-200 bg-white px-3 py-3 pt-[max(env(safe-area-inset-top),0px)] dark:border-slate-800 dark:bg-slate-900">
       <button
-        onClick={() => canGoBack && navigate(-1)}
-        disabled={!canGoBack}
-        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-600 transition-colors hover:bg-slate-100 disabled:opacity-35 disabled:hover:bg-transparent dark:text-slate-400 dark:hover:bg-slate-800"
-        aria-label="Kembali"
-      >
-        <span className="material-symbols-outlined text-[22px]">arrow_back</span>
-      </button>
-      <button
         onClick={onMenuOpen}
         className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-600 transition-colors hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
         aria-label="Open menu"
@@ -73,6 +65,18 @@ function MobileTopBar({ onMenuOpen }) {
         <span className="min-w-0 truncate text-sm font-bold text-slate-900 dark:text-white">{clinicName}</span>
         <span className="hidden shrink-0 text-[10px] font-semibold text-slate-500 dark:text-slate-400 sm:inline">Portal Orang Tua</span>
       </div>
+      {canGoBack ? (
+        <button
+          onClick={() => navigate(-1)}
+          className="flex h-10 shrink-0 items-center justify-center gap-1 rounded-xl px-2.5 text-slate-600 transition-colors hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+          aria-label="Kembali"
+        >
+          <span className="material-symbols-outlined text-[20px]">arrow_back_ios_new</span>
+          <span className="hidden text-xs font-bold sm:inline">Kembali</span>
+        </button>
+      ) : (
+        <div className="h-10 w-10 shrink-0" aria-hidden="true" />
+      )}
     </header>
   );
 }

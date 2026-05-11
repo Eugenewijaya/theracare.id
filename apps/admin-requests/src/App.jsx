@@ -166,12 +166,15 @@ function App() {
     const [activeTab, setActiveTab] = useState('pending');
     const [allRequests, setAllRequests] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
 
     const [popup, setPopup] = useState({ isOpen: false, message: '', type: 'success', showConfirm: false });
     const [pendingAction, setPendingAction] = useState(null);
     const [searchQuery, setSearchQuery] = useState('');
 
-    const refreshData = async () => {
+    const refreshData = async ({ silent = false } = {}) => {
+        if (!silent) setLoading(true);
+        setRefreshing(true);
         try {
             const [rescheduleResult, meetingsResult] = await Promise.allSettled([
                 rescheduleApi.getAll(),
@@ -215,7 +218,7 @@ function App() {
             const mappedMeetings = meetingRaw.map(m => {
                 const statusMap = {
                     pending_admin_review: 'pending',
-                    approved_by_admin: 'review',
+                    approved_by_admin: 'approved',
                     parent_confirmed: 'approved',
                     parent_declined: 'rejected',
                     cancelled: 'rejected',
@@ -249,17 +252,22 @@ function App() {
             setAllRequests([...mapped, ...mappedMeetings].sort((a, b) => new Date(b.createdAt || b.submittedAgo) - new Date(a.createdAt || a.submittedAgo)));
         } catch (e) {
             console.error('Failed to load incoming requests', e);
+        } finally {
+            if (!silent) setLoading(false);
+            setRefreshing(false);
         }
-        setLoading(false);
     };
 
     useEffect(() => {
         refreshData();
-        const interval = window.setInterval(refreshData, 30000);
-        window.addEventListener('notificationsUpdated', refreshData);
+        const refreshSilently = () => refreshData({ silent: true });
+        const interval = window.setInterval(refreshSilently, 30000);
+        window.addEventListener('notificationsUpdated', refreshSilently);
+        window.addEventListener('incomingRequestsUpdated', refreshSilently);
         return () => {
             window.clearInterval(interval);
-            window.removeEventListener('notificationsUpdated', refreshData);
+            window.removeEventListener('notificationsUpdated', refreshSilently);
+            window.removeEventListener('incomingRequestsUpdated', refreshSilently);
         };
     }, []);
 
@@ -271,6 +279,19 @@ function App() {
 
     const showPopup = (message, type = 'success', showConfirm = false) => {
         setPopup({ isOpen: true, message, type, showConfirm });
+    };
+
+    const patchRequestStatus = (requestId, status) => {
+        setAllRequests((prev) => prev.map((item) => (
+            item.id === requestId
+                ? {
+                    ...item,
+                    status,
+                    outcome: status,
+                    resolvedOn: new Date().toLocaleDateString(),
+                }
+                : item
+        )));
     };
 
     const confirmAction = async () => {
@@ -286,7 +307,9 @@ function App() {
             } else {
                 await rescheduleApi.updateStatus(req.id, 'rejected');
             }
-            refreshData();
+            patchRequestStatus(req.id, 'rejected');
+            await refreshData({ silent: true });
+            window.dispatchEvent(new Event('incomingRequestsUpdated'));
             setTimeout(() => showPopup(`Request from ${req.name} has been rejected.`, 'success'), 300);
         }
         else if (type === 'process') {
@@ -296,7 +319,9 @@ function App() {
                 return;
             }
             await rescheduleApi.updateStatus(req.id, 'review', { reviewNote: 'Under internal review.' });
-            refreshData();
+            patchRequestStatus(req.id, 'review');
+            await refreshData({ silent: true });
+            window.dispatchEvent(new Event('incomingRequestsUpdated'));
             setTimeout(() => {
                 showPopup(`Request from ${req.name} moved to Under Review.`);
                 setActiveTab('review');
@@ -317,7 +342,10 @@ function App() {
                     newStartTime: chosenSlot?.time,
                 });
             }
-            refreshData();
+            patchRequestStatus(req.id, 'approved');
+            await refreshData({ silent: true });
+            window.dispatchEvent(new Event('incomingRequestsUpdated'));
+            setActiveTab('resolved');
             setTimeout(() => showPopup(`Request from ${req.name} has been approved.`, 'success'), 300);
         }
         
@@ -347,7 +375,8 @@ function App() {
         if (!window.confirm(`Hapus riwayat request ${req.name}?`)) return;
         if (req.kind === 'meeting') await meetingsApi.delete(req.id);
         else await rescheduleApi.delete(req.id);
-        refreshData();
+        await refreshData({ silent: true });
+        window.dispatchEvent(new Event('incomingRequestsUpdated'));
         showPopup('Riwayat request berhasil dihapus.', 'success');
     };
 
@@ -376,10 +405,12 @@ function App() {
                         </div>
                         <div className="flex items-end">
                             <button
-                                onClick={refreshData}
-                                className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-primary/10 border border-slate-300 dark:border-primary/30 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-primary/20 transition-colors text-sm font-medium"
+                                type="button"
+                                onClick={() => refreshData({ silent: true })}
+                                disabled={refreshing}
+                                className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-primary/10 border border-slate-300 dark:border-primary/30 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-primary/20 transition-colors text-sm font-medium disabled:cursor-wait disabled:opacity-60"
                             >
-                                <span className="material-symbols-outlined text-sm">refresh</span>
+                                <span className={`material-symbols-outlined text-sm ${refreshing ? 'animate-spin' : ''}`}>refresh</span>
                                 Refresh
                             </button>
                         </div>

@@ -31,14 +31,17 @@ function formatDate(value) {
 export default function TherapistLeaveRequestsPage() {
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [reviewNotes, setReviewNotes] = useState({});
+  const [statusEditOpen, setStatusEditOpen] = useState({});
   const [toast, setToast] = useState(null);
   const [isUnlocked, setIsUnlocked] = useState(() => getSessionUnlockState(LEAVE_REQUESTS_UNLOCK_KEY));
   const [gatePassword, setGatePassword] = useState('');
   const [gateError, setGateError] = useState('');
 
-  const load = async () => {
-    setLoading(true);
+  const load = async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
+    setRefreshing(true);
     try {
       const res = await leaveRequestsApi.getAll();
       setRequests(res.data?.data || []);
@@ -46,13 +49,23 @@ export default function TherapistLeaveRequestsPage() {
       console.error(e);
       setToast({ type: 'error', message: 'Gagal memuat pengajuan cuti.' });
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
+      setRefreshing(false);
     }
   };
 
   useEffect(() => {
     if (!isUnlocked) return;
     load();
+    const refreshSilently = () => load({ silent: true });
+    const interval = window.setInterval(refreshSilently, 30000);
+    window.addEventListener('notificationsUpdated', refreshSilently);
+    window.addEventListener('leaveRequestsUpdated', refreshSilently);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('notificationsUpdated', refreshSilently);
+      window.removeEventListener('leaveRequestsUpdated', refreshSilently);
+    };
   }, [isUnlocked]);
 
   const handleUnlock = (event) => {
@@ -80,14 +93,25 @@ export default function TherapistLeaveRequestsPage() {
       const confirmed = window.confirm('Setujui pengajuan ini? Jika ada anak yang tetap hadir, lanjutkan atur terapis pengganti melalui Penjadwalan Tunggal.');
       if (!confirmed) return;
     }
+    if (request.status === 'approved' && status === 'pending') {
+      const confirmed = window.confirm('Batalkan status approved dan kembalikan pengajuan ini ke Pending? Gunakan ini jika terapis batal cuti atau perlu direview ulang.');
+      if (!confirmed) return;
+    }
+    if (request.status === 'approved' && status === 'rejected') {
+      const confirmed = window.confirm('Tandai pengajuan ini sebagai batal/tidak disetujui? Pastikan terapis terkait sudah dihubungi.');
+      if (!confirmed) return;
+    }
     const res = await leaveRequestsApi.updateStatus(request.id, status, reviewNotes[request.id] || '');
     if (!res.ok) {
       setToast({ type: 'error', message: res.data?.error || 'Gagal memperbarui pengajuan.' });
       return;
     }
+    setRequests((prev) => prev.map((item) => (item.id === request.id ? { ...item, status, reviewNote: reviewNotes[request.id] || item.reviewNote } : item)));
+    setStatusEditOpen((prev) => ({ ...prev, [request.id]: false }));
     setToast({ type: 'success', message: `Pengajuan ${request.therapistName} diperbarui.` });
-    await load();
+    await load({ silent: true });
     window.dispatchEvent(new Event('notificationsUpdated'));
+    window.dispatchEvent(new Event('leaveRequestsUpdated'));
   };
 
   return (
@@ -163,6 +187,15 @@ export default function TherapistLeaveRequestsPage() {
               <h1 className="text-2xl font-black leading-tight text-slate-900 dark:text-white sm:text-3xl">Pengajuan Cuti Terapis</h1>
               <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Review pengajuan cuti, sakit, dan unpaid leave dari terapis.</p>
             </div>
+            <button
+              type="button"
+              onClick={() => load({ silent: true })}
+              disabled={refreshing}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60 dark:border-primary/20 dark:bg-primary/10 dark:text-slate-200"
+            >
+              <span className={`material-symbols-outlined text-[20px] ${refreshing ? 'animate-spin' : ''}`}>refresh</span>
+              Refresh
+            </button>
           </div>
 
           <div className="grid grid-cols-3 gap-3">
@@ -226,20 +259,61 @@ export default function TherapistLeaveRequestsPage() {
                             placeholder="Catatan admin"
                             className="w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-primary/20 dark:bg-background-dark"
                           />
-                          <div className="flex justify-end gap-2">
-                            <button
-                              onClick={() => updateStatus(request, 'rejected')}
-                              className="rounded-lg bg-red-50 px-3 py-2 text-xs font-black text-red-700 hover:bg-red-100"
-                            >
-                              Tolak
-                            </button>
-                            <button
-                              onClick={() => updateStatus(request, 'approved')}
-                              className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-700 hover:bg-emerald-100"
-                            >
-                              Setujui
-                            </button>
-                          </div>
+                          {request.status === 'pending' ? (
+                            <div className="flex justify-end gap-2">
+                              <button
+                                onClick={() => updateStatus(request, 'rejected')}
+                                className="rounded-lg bg-red-50 px-3 py-2 text-xs font-black text-red-700 hover:bg-red-100"
+                              >
+                                Tolak
+                              </button>
+                              <button
+                                onClick={() => updateStatus(request, 'approved')}
+                                className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-700 hover:bg-emerald-100"
+                              >
+                                Setujui
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex flex-wrap justify-end gap-2">
+                              {!statusEditOpen[request.id] ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setStatusEditOpen((prev) => ({ ...prev, [request.id]: true }))}
+                                  className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-200 dark:bg-primary/10 dark:text-slate-200"
+                                >
+                                  Ubah
+                                </button>
+                              ) : (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => updateStatus(request, 'pending')}
+                                    className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-black text-amber-700 hover:bg-amber-100"
+                                  >
+                                    Jadikan Pending
+                                  </button>
+                                  {request.status === 'approved' ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => updateStatus(request, 'rejected')}
+                                      className="rounded-lg bg-red-50 px-3 py-2 text-xs font-black text-red-700 hover:bg-red-100"
+                                    >
+                                      Batal Cuti
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => updateStatus(request, 'approved')}
+                                      className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-700 hover:bg-emerald-100"
+                                    >
+                                      Setujui
+                                    </button>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </td>
                     </tr>
