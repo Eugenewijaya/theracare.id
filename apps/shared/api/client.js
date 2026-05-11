@@ -3,7 +3,14 @@
  * Central HTTP client for all micro-apps to communicate with the backend.
  */
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+function normalizeApiBase(value) {
+  const raw = (value || 'http://localhost:3000/api').trim().replace(/\/+$/, '');
+  if (/^https?:\/\//i.test(raw)) return raw;
+  if (raw.startsWith('localhost') || raw.startsWith('127.0.0.1')) return `http://${raw}`;
+  return `https://${raw}`;
+}
+
+const API_BASE = normalizeApiBase(import.meta.env.VITE_API_URL);
 const REQUEST_TIMEOUT_MS = 20000;
 const AUTH_TOKEN_KEY = 'theracare_session_token';
 
