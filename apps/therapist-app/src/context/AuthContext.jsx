@@ -126,12 +126,12 @@ export function AuthProvider({ children }) {
 
   const logout = async () => {
     ++authRunRef.current;
-    try {
-      await authApi.signOut();
-    } catch {}
     setUser(null);
     setLoading(false);
     clearStoredUser();
+    try {
+      await authApi.signOut();
+    } catch {}
   };
 
   return (

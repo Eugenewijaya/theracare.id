@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { authApi, childrenApi, adminApi } from '../../../shared/api/client';
 import PortalProfileMenu from '../../../shared/ui/PortalProfileMenu';
 
-const Header = ({ title = "Reschedule" }) => {
+const Header = ({ title = "Reschedule", onLogout }) => {
     const [children, setChildren] = useState([]);
     const [activeChildId, setActiveChildId] = useState('');
     const [showNotif, setShowNotif] = useState(false);
@@ -74,13 +74,18 @@ const Header = ({ title = "Reschedule" }) => {
     };
 
     const handleLogout = async () => {
+        if (onLogout) {
+            await onLogout();
+            return;
+        }
         try {
             await authApi.signOut();
         } catch {}
         sessionStorage.removeItem('parent_user');
         localStorage.removeItem('parent_user');
         sessionStorage.removeItem('read_notifs');
-        navigate('/login');
+        window.dispatchEvent(new CustomEvent('theracare-auth-logout'));
+        navigate('/login', { replace: true });
     };
 
     return (

@@ -1,5 +1,5 @@
-import React, { lazy, Suspense, useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import React, { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import Sidebar from './components/Sidebar';
 import LoginPage from './pages/LoginPage';
@@ -69,7 +69,18 @@ function MobileTopBar({ onMenuOpen }) {
 }
 
 function DashboardLayout() {
+  const { logout } = useAuth();
+  const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const handlePortalLogout = useCallback(async () => {
+    await logout();
+    navigate('/login', { replace: true });
+  }, [logout, navigate]);
+
+  useEffect(() => {
+    window.addEventListener('theracare-auth-logout', handlePortalLogout);
+    return () => window.removeEventListener('theracare-auth-logout', handlePortalLogout);
+  }, [handlePortalLogout]);
 
   return (
     <div className="flex h-screen w-full overflow-hidden">
@@ -79,12 +90,12 @@ function DashboardLayout() {
         <div className="flex-1 overflow-y-auto bg-background-light dark:bg-background-dark">
           <Suspense fallback={<Loading />}>
             <Routes>
-              <Route index element={<TherapistDashboard />} />
-              <Route path="schedule" element={<TherapistSchedule />} />
+              <Route index element={<TherapistDashboard onLogout={handlePortalLogout} />} />
+              <Route path="schedule" element={<TherapistSchedule onLogout={handlePortalLogout} />} />
               <Route path="availability" element={<TherapistAvailability />} />
               <Route path="reports" element={<TherapistWebReport />} />
               <Route path="reports/new" element={<TherapistWebReport />} />
-              <Route path="performance" element={<TherapistPerformance />} />
+              <Route path="performance" element={<TherapistPerformance onLogout={handlePortalLogout} />} />
               <Route path="meetings" element={<ParentsMeeting />} />
               <Route path="child-progress" element={<ChildProgress />} />
               <Route path="announcements" element={<Announcements />} />

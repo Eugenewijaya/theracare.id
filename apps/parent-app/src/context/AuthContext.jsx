@@ -79,21 +79,21 @@ export function AuthProvider({ children }) {
   }, []);
 
   /**
-   * Login using Parent's Phone Number as username and parent's tempPassword as password.
-   * @param {string} phone - Nomor telepon orang tua yang terdaftar
+   * Login using parent phone number, Parent ID, or child NITA as username.
+   * @param {string} identifier - Nomor HP, Parent ID, atau NITA yang terdaftar
    * @param {string} password - Password sementara atau password aktif parent
    * @returns {boolean} true if login successful
    */
-  const login = async (phone, password, rememberMe = true) => {
-    const normalizedPhone = (phone || '').replace(/\D/g, '');
+  const login = async (identifier, password, rememberMe = true) => {
+    const loginId = (identifier || '').trim();
     const runId = ++authRunRef.current;
     setError('');
     setLoading(true);
 
     try {
-      const identityRes = await parentsApi.getLoginIdentity(normalizedPhone);
+      const identityRes = await parentsApi.getLoginIdentity(loginId);
       if (!identityRes.ok || !identityRes.data?.data?.email) {
-        setError(identityRes.data?.error || 'Nomor HP belum terdaftar');
+        setError(identityRes.data?.error || 'Nomor HP, Parent ID, atau NITA belum terdaftar');
         if (runId === authRunRef.current) setLoading(false);
         return false;
       }
@@ -107,7 +107,7 @@ export function AuthProvider({ children }) {
           return true;
         }
       }
-      setError(res.data?.error || res.data?.message || 'Nomor HP atau password tidak valid');
+      setError(res.data?.error || res.data?.message || 'ID login atau password tidak valid');
       if (runId === authRunRef.current) setLoading(false);
       return false;
     } catch (err) {
@@ -120,12 +120,12 @@ export function AuthProvider({ children }) {
 
   const logout = async () => {
     ++authRunRef.current;
-    try {
-      await authApi.signOut();
-    } catch(e) {}
     setUser(null);
     setLoading(false);
     clearStoredUser();
+    try {
+      await authApi.signOut();
+    } catch(e) {}
   };
 
   return (

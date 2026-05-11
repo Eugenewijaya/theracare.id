@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import LoginExperience, { LoginInput, loginInputClassName } from '../../../shared/ui/LoginExperience';
 
 export default function LoginPage() {
-  const [phone, setPhone] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(true);
@@ -23,8 +23,8 @@ export default function LoginPage() {
     event.preventDefault();
     setError('');
 
-    if (!phone.trim()) {
-      setError('Masukkan nomor HP orang tua.');
+    if (!identifier.trim()) {
+      setError('Masukkan nomor HP, Parent ID, atau NITA.');
       return;
     }
     if (!password.trim()) {
@@ -33,13 +33,13 @@ export default function LoginPage() {
     }
 
     setIsLoading(true);
-    const success = await login(phone.trim(), password, remember);
+    const success = await login(identifier.trim(), password, remember);
     setIsLoading(false);
 
     if (success) {
       navigate(redirectTo, { replace: true });
     } else {
-      setError(authError || 'Nomor HP atau password tidak valid. Pastikan sesuai dengan data registrasi.');
+      setError(authError || 'ID login atau password tidak valid. Pastikan sesuai dengan data registrasi.');
     }
   };
 
@@ -50,7 +50,7 @@ export default function LoginPage() {
       subtitle="Pantau perkembangan anak dengan lebih jelas."
       description="Lihat jadwal terapi, laporan perkembangan, reschedule, dan pengumuman klinik dari satu portal keluarga."
       formTitle="Masuk sebagai orang tua"
-      formDescription="Gunakan nomor HP yang didaftarkan admin saat registrasi anak."
+      formDescription="Gunakan nomor HP, Parent ID, atau NITA anak yang didaftarkan admin."
       submitLabel="Masuk ke Parent Portal"
       remember={remember}
       onRememberChange={setRemember}
@@ -58,15 +58,15 @@ export default function LoginPage() {
       isLoading={isLoading}
       onSubmit={handleSubmit}
     >
-      <LoginInput id="phone" label="Nomor HP Orang Tua" icon="call">
+      <LoginInput id="identifier" label="Nomor HP / Parent ID / NITA" icon="badge">
         <input
-          id="phone"
+          id="identifier"
           type="text"
-          value={phone}
-          onChange={(event) => setPhone(event.target.value.trim())}
-          placeholder="08xx-xxxx-xxxx"
+          value={identifier}
+          onChange={(event) => setIdentifier(event.target.value.trim())}
+          placeholder="08xx, P-0001, atau NITA"
           className={`${loginInputClassName} font-mono tracking-wide`}
-          autoComplete="tel"
+          autoComplete="username"
           disabled={isLoading}
         />
       </LoginInput>

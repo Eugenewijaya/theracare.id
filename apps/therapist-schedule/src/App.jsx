@@ -63,7 +63,7 @@ function getProgramStyle(programType = '') {
     return { tag: 'TH', color: 'bg-slate-100 text-slate-700 dark:bg-slate-900/30 dark:text-slate-400' };
 }
 
-function App() {
+function App({ onLogout }) {
     const navigate = useNavigate();
     
     // User Session
@@ -164,12 +164,17 @@ function App() {
     const activeInSchedule = sessions.some(s => s.status === 'active');
 
     const handleLogout = async () => {
+        if (onLogout) {
+            await onLogout();
+            return;
+        }
         try {
             await authApi.signOut();
         } catch {}
         sessionStorage.removeItem('therapist_user');
         localStorage.removeItem('therapist_user');
-        navigate('/login');
+        window.dispatchEvent(new CustomEvent('theracare-auth-logout'));
+        navigate('/login', { replace: true });
     };
 
     const openFinish = (s) => setFinishModal(s);

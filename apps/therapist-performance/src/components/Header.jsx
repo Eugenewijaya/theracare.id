@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { authApi, notificationsApi } from '../../../shared/api/client';
 import PortalProfileMenu from '../../../shared/ui/PortalProfileMenu';
 
-const Header = ({ searchValue, onSearchChange, user, onSettingsClick }) => {
+const Header = ({ searchValue, onSearchChange, user, onSettingsClick, onLogout }) => {
     const navigate = useNavigate();
     const [unreadCount, setUnreadCount] = useState(0);
 
@@ -22,12 +22,17 @@ const Header = ({ searchValue, onSearchChange, user, onSettingsClick }) => {
     }, []);
 
     const handleLogout = async () => {
+        if (onLogout) {
+            await onLogout();
+            return;
+        }
         try {
             await authApi.signOut();
         } catch {}
         sessionStorage.removeItem('therapist_user');
         localStorage.removeItem('therapist_user');
-        navigate('/login');
+        window.dispatchEvent(new CustomEvent('theracare-auth-logout'));
+        navigate('/login', { replace: true });
     };
 
     return (

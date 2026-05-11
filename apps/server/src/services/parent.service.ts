@@ -2,7 +2,7 @@ import { db } from "../db/index.js";
 import { account, authSession, children, notificationReads, notifications, parents, rescheduleRequests, sessionRatings, user } from "../db/schema.js";
 import { eq } from "drizzle-orm";
 import { auth } from "../auth.js";
-import { generatePortalResetPassword, generateTempPassword, generateSeqId } from "../utils/id-generators.js";
+import { generatePortalResetPassword, generateSeqId } from "../utils/id-generators.js";
 import { setCredentialPassword } from "./auth-password.service.js";
 
 function normalizePhone(phone?: string) {
@@ -75,14 +75,25 @@ export const parentService = {
     return formatParent(parent);
   },
 
-  async getLoginIdentity(phone: string) {
-    const wanted = normalizePhone(phone);
-    if (!wanted) return null;
+  async getLoginIdentity(identifier: string) {
+    const raw = (identifier || "").trim();
+    const upper = raw.toUpperCase();
+    const wantedPhone = normalizePhone(raw);
+    if (!raw && !wantedPhone) return null;
     const all = await db.query.parents.findMany({ with: { user: true, children: true } });
-    const parent = all.find((p) => normalizePhone(p.user?.phone || "") === wanted);
+    const parent = all.find((p) => {
+      if (p.user?.status && p.user.status !== "active") return false;
+      const parentIdMatch = (p.id || "").toUpperCase() === upper;
+      const phoneMatch = Boolean(wantedPhone) && normalizePhone(p.user?.phone || "") === wantedPhone;
+      const childMatch = (p.children || []).some((child: any) =>
+        (child.id || "").toUpperCase() === upper || (child.nita || "").toUpperCase() === upper
+      );
+      return parentIdMatch || phoneMatch || childMatch;
+    });
     if (!parent || parent.user?.status !== "active") return null;
     return {
       parentId: parent.id,
+      loginId: raw,
       email: parent.user?.email,
       name: parent.user?.name,
       phone: parent.user?.phone,
@@ -90,8 +101,8 @@ export const parentService = {
     };
   },
 
-  async create(data: { name: string; email?: string; phone?: string; address?: string }, lastId: number) {
-    const tempPassword = generateTempPassword();
+  async create(data: { name: string; email?: string; phone?: string; address?: string; tempPassword?: string }, lastId: number) {
+    const tempPassword = data.tempPassword?.trim() || generatePortalResetPassword();
     const parentId = generateSeqId("P", lastId + 1);
     const email = parentLoginEmail(data.phone, data.email);
     const phone = data.phone?.trim() || "";

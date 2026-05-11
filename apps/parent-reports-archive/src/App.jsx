@@ -320,7 +320,7 @@ function EmptyState({ icon, title, subtitle }) {
 }
 
 // ── App ────────────────────────────────────────────────────────────────
-function App() {
+function App({ onLogout }) {
     const [search, setSearch]         = useState('');
     const [typeFilter, setTypeFilter] = useState('All');
     const [dailyReports, setDailyReports] = useState([]);
@@ -501,7 +501,7 @@ function App() {
         <div className="layout-container flex h-full grow flex-col">
             <div className="px-4 sm:px-8 md:px-12 lg:px-20 flex flex-1 justify-center py-5">
                 <div className="layout-content-container flex flex-col max-w-[900px] flex-1 w-full gap-6">
-                    <Header />
+                    <Header onLogout={onLogout} />
 
                     {/* Top Header */}
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">

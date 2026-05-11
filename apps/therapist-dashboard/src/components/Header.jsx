@@ -5,7 +5,7 @@ import PortalProfileMenu from '../../../shared/ui/PortalProfileMenu';
 
 // Dashboard header search: navigates to /child-progress with a ?q= param
 // so the child-progress page can pre-filter on mount.
-const Header = ({ searchValue = '', onSearchChange }) => {
+const Header = ({ searchValue = '', onSearchChange, onLogout }) => {
     const navigate = useNavigate();
     const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
     const [currentUser, setCurrentUser] = useState(null);
@@ -41,12 +41,17 @@ const Header = ({ searchValue = '', onSearchChange }) => {
     };
 
     const handleLogout = async () => {
+        if (onLogout) {
+            await onLogout();
+            return;
+        }
         try {
             await authApi.signOut();
         } catch {}
         sessionStorage.removeItem('therapist_user');
         localStorage.removeItem('therapist_user');
-        navigate('/login');
+        window.dispatchEvent(new CustomEvent('theracare-auth-logout'));
+        navigate('/login', { replace: true });
     };
 
     return (

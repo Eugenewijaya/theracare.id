@@ -47,7 +47,10 @@ export default function Sidebar({ isOpen, onClose }) {
     onClose?.();
   }, [location.pathname]);
 
-  const handleLogout = () => { logout(); navigate('/login'); };
+  const handleLogout = async () => {
+    await logout();
+    navigate('/login', { replace: true });
+  };
 
   const sidebarContent = (
     <aside className="w-60 flex-shrink-0 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col h-full">

@@ -1,5 +1,5 @@
-import React, { lazy, Suspense, useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import React, { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import Sidebar from './components/Sidebar';
 import LoginPage from './pages/LoginPage';
@@ -67,7 +67,18 @@ function MobileTopBar({ onMenuOpen }) {
 }
 
 function DashboardLayout() {
+  const { logout } = useAuth();
+  const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const handlePortalLogout = useCallback(async () => {
+    await logout();
+    navigate('/login', { replace: true });
+  }, [logout, navigate]);
+
+  useEffect(() => {
+    window.addEventListener('theracare-auth-logout', handlePortalLogout);
+    return () => window.removeEventListener('theracare-auth-logout', handlePortalLogout);
+  }, [handlePortalLogout]);
 
   return (
     <div className="flex h-screen w-full overflow-hidden">
@@ -77,9 +88,9 @@ function DashboardLayout() {
         <div className="flex-1 overflow-y-auto bg-background-light dark:bg-background-dark">
           <Suspense fallback={<Loading />}>
             <Routes>
-              <Route index element={<ParentWebDashboard />} />
-              <Route path="reports" element={<ParentReportsArchive />} />
-              <Route path="reschedule" element={<ParentReschedule />} />
+              <Route index element={<ParentWebDashboard onLogout={handlePortalLogout} />} />
+              <Route path="reports" element={<ParentReportsArchive onLogout={handlePortalLogout} />} />
+              <Route path="reschedule" element={<ParentReschedule onLogout={handlePortalLogout} />} />
               <Route path="profile" element={<ChildProfile />} />
               <Route path="attendance" element={<AttendanceLog />} />
               <Route path="progress" element={<ProgressSummary />} />

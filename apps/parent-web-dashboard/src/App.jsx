@@ -44,7 +44,7 @@ function EmptyState({ icon, title, subtitle }) {
 }
 
 // ── Main App ───────────────────────────────────────────────────────
-function App() {
+function App({ onLogout }) {
     const navigate = useNavigate();
 
     const [parentUser, setParentUser]         = useState(null);
@@ -118,7 +118,7 @@ function App() {
     return (
         <div className="flex flex-col w-full bg-background-light dark:bg-background-dark font-sans text-slate-900 dark:text-slate-100 min-h-full">
             <main className="flex-1 flex flex-col relative">
-                <Header />
+                <Header onLogout={onLogout} />
 
                 <div className="flex-1 p-4 sm:p-6 lg:p-8">
                     <div className="max-w-7xl mx-auto space-y-6">

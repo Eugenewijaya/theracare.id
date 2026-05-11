@@ -15,22 +15,33 @@ function readStoredTherapist() {
     }
 }
 
-function App() {
+function App({ onLogout }) {
     const navigate = useNavigate();
     const [currentUser] = useState(readStoredTherapist);
 
     const handleLogout = async () => {
+        if (onLogout) {
+            await onLogout();
+            return;
+        }
         try {
             await authApi.signOut();
         } catch {}
         sessionStorage.removeItem('therapist_user');
         localStorage.removeItem('therapist_user');
-        navigate('/login');
+        window.dispatchEvent(new CustomEvent('theracare-auth-logout'));
+        navigate('/login', { replace: true });
     };
 
     return (
         <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 flex flex-col gap-6 sm:gap-8">
-            <div className="flex justify-end">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0">
+                    <p className="text-xs font-black uppercase tracking-[0.18em] text-teal-600">Therapist Portal</p>
+                    <h1 className="truncate text-xl font-black text-slate-900 dark:text-white sm:text-2xl">
+                        Dasbor Terapis
+                    </h1>
+                </div>
                 <PortalProfileMenu
                     user={currentUser}
                     role="therapist"
