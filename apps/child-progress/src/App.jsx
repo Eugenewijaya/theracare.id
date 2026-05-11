@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Header from './components/Header';
 import { childrenApi, sessionsApi } from '../../shared/api/client';
 
@@ -19,6 +19,77 @@ const formatDate = (d) => {
 
 const PROGRAM_COLORS = ['#30e8c9', '#facc15', '#4ade80', '#60a5fa', '#f472b6'];
 const PROGRAM_ICONS  = ['front_hand', 'psychology', 'extension', 'record_voice_over', 'directions_walk'];
+
+function readStoredTherapist() {
+    try {
+        const stored = sessionStorage.getItem('therapist_user') || localStorage.getItem('therapist_user');
+        return stored ? JSON.parse(stored) : null;
+    } catch {
+        return null;
+    }
+}
+
+function isDone(session) {
+    return ['done', 'completed'].includes(session?.status);
+}
+
+function getProgramName(program) {
+    return program?.programName || program?.program?.name || program?.therapyProgram?.type || program?.type || program?.name || 'Program Terapi';
+}
+
+function buildMilestones(child, childSessions = []) {
+    const periods = Array.isArray(child?.periods) && child.periods.length > 0
+        ? child.periods
+        : Array.isArray(child?.therapyPeriods)
+            ? child.therapyPeriods
+            : [];
+    const legacyPrograms = Array.isArray(child?.therapyPrograms)
+        ? child.therapyPrograms
+        : Array.isArray(child?.programs)
+            ? child.programs
+            : [];
+    const source = periods.length > 0 ? periods : legacyPrograms;
+
+    if (source.length > 0) {
+        return source.map((program, index) => {
+            const matchingSessions = childSessions.filter(session => !program.id || session.therapyPeriodId === program.id);
+            const completed = program.completedSessions ?? program.sessionsCompleted ?? matchingSessions.filter(isDone).length;
+            const total = program.totalSessions || matchingSessions.length || 0;
+            const pct = program.progress ?? (total > 0 ? Math.min(100, Math.round((completed / total) * 100)) : 0);
+            const name = getProgramName(program);
+            return {
+                icon: PROGRAM_ICONS[index % PROGRAM_ICONS.length],
+                name,
+                tag: (program.code || name)?.split(' ')[0]?.slice(0, 3).toUpperCase() || 'TX',
+                pct,
+                completed,
+                total,
+                color: program.colorHex || PROGRAM_COLORS[index % PROGRAM_COLORS.length],
+                target: program.goal || program.target || program.name || 'Ongoing',
+            };
+        });
+    }
+
+    const completed = childSessions.filter(isDone).length;
+    const total = childSessions.length;
+    return [{
+        icon: 'flag',
+        name: child?.program || child?.phase || 'Program Terapi',
+        tag: 'TX',
+        pct: child?.progress ?? (total > 0 ? Math.min(100, Math.round((completed / total) * 100)) : 0),
+        completed,
+        total,
+        color: PROGRAM_COLORS[0],
+        target: child?.diagnosis || 'Ongoing',
+    }];
+}
+
+function buildTrend(milestones) {
+    const current = milestones.length
+        ? Math.round(milestones.reduce((sum, item) => sum + Number(item.pct || 0), 0) / milestones.length)
+        : 0;
+    return [0.35, 0.48, 0.62, 0.76, 0.9, 1].map(factor => Math.max(4, Math.min(100, Math.round(current * factor))));
+}
 
 
 // sessions are now loaded dynamically in the component
@@ -41,15 +112,42 @@ function App() {
 
     // Real children from store
     const [storeChildren, setStoreChildren] = useState([]);
-    const [sessions, setSessions] = useState([]);
+    const [rawSessions, setRawSessions] = useState([]);
+    const [sessionHistory, setSessionHistory] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState('');
 
     useEffect(() => {
         const load = async () => {
+            setLoading(true);
+            setLoadError('');
             try {
-                const res = await childrenApi.getAll();
-                setStoreChildren(res.data?.data || []);
+                const therapist = readStoredTherapist();
+                if (therapist?.id) {
+                    const res = await sessionsApi.getForTherapist(therapist.id);
+                    const therapistSessions = res.data?.data || [];
+                    const childMap = new Map();
+                    therapistSessions.forEach(session => {
+                        if (!session.child?.id) return;
+                        const existing = childMap.get(session.child.id) || {};
+                        childMap.set(session.child.id, {
+                            ...existing,
+                            ...session.child,
+                            sessions: [...(existing.sessions || []), session],
+                        });
+                    });
+                    setRawSessions(therapistSessions);
+                    setStoreChildren(Array.from(childMap.values()));
+                } else {
+                    const res = await childrenApi.getAll();
+                    setStoreChildren(res.data?.data || []);
+                    setRawSessions([]);
+                }
             } catch (e) {
                 console.error(e);
+                setLoadError('Gagal memuat data kemajuan anak.');
+            } finally {
+                setLoading(false);
             }
         };
         load();
@@ -57,9 +155,11 @@ function App() {
 
     // Build combined list: store children first
     const allChildren = storeChildren.map(c => {
-        const periods = Array.isArray(c.periods) && c.periods.length > 0 ? c.periods : [];
-        const legacyPrograms = Array.isArray(c.therapyPrograms) ? c.therapyPrograms : [];
-        const milestoneSource = periods.length > 0 ? periods : legacyPrograms;
+        const childSessions = Array.isArray(c.sessions) ? c.sessions : rawSessions.filter(s => s.childId === c.id || s.child?.id === c.id);
+        const milestones = buildMilestones(c, childSessions);
+        const therapistInitials = Array.from(new Set(childSessions.map(s =>
+            (s.therapist?.user?.name || s.therapist?.name || s.therapistName || 'TX')?.split(' ')[0]?.slice(0, 3).toUpperCase()
+        ).filter(Boolean)));
         return {
         id: c.id,
         name: c.name || `${c.firstName} ${c.lastName}`,
@@ -73,16 +173,9 @@ function App() {
         diagnosis: c.diagnosis || '—',
         enrolled: c.createdAt ? new Date(c.createdAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : '—',
         photo: c.photoUrl || c.avatar || null,
-        therapists: c.therapist ? [c.therapist.split(' ')[0]?.slice(0, 3).toUpperCase()] : milestoneSource.map(p => (p.programName || p.type || p.name || 'TX')?.split(' ')[0]?.slice(0, 3).toUpperCase() || 'TX'),
-        milestones: milestoneSource.map((p, i) => ({
-            icon: PROGRAM_ICONS[i % PROGRAM_ICONS.length],
-            name: p.programName || p.type || p.name || 'Therapy',
-            tag: (p.programName || p.type || p.name || 'TX')?.split(' ')[0]?.slice(0, 3).toUpperCase() || 'TX',
-            pct: p.progress ?? (p.totalSessions > 0 ? Math.round(((p.completedSessions ?? p.sessionsCompleted ?? 0) / p.totalSessions) * 100) : 0),
-            color: PROGRAM_COLORS[i % PROGRAM_COLORS.length],
-            target: p.goal || p.name || 'Ongoing',
-        })),
-        chartData: [20, 35, 45, 55, 60, (milestoneSource?.[0]?.progress || (milestoneSource?.[0]?.completedSessions || legacyPrograms?.[0]?.sessionsCompleted || 0) * 5 || 65)],
+        therapists: c.therapist ? [c.therapist.split(' ')[0]?.slice(0, 3).toUpperCase()] : (therapistInitials.length ? therapistInitials : milestones.map(p => p.tag)),
+        milestones,
+        chartData: buildTrend(milestones),
         radarPoints: '50,10 85,45 60,90 20,70',
     };
     });
@@ -97,7 +190,7 @@ function App() {
         if (filteredChildren.length > 0 && !filteredChildren.find(c => c.id === selectedId)) {
             setSelectedId(filteredChildren[0].id);
         }
-    }, [searchQuery, storeChildren]);
+    }, [filteredChildren, selectedId]);
 
     // Load sessions for selected child
     useEffect(() => {
@@ -105,7 +198,8 @@ function App() {
         const loadSessions = async () => {
             try {
                 const rawRes = await sessionsApi.getCompletedForChild(selectedId);
-                const raw = rawRes.data?.data || [];
+                const fallbackRaw = rawSessions.filter(s => (s.childId === selectedId || s.child?.id === selectedId) && isDone(s));
+                const raw = rawRes.data?.data || fallbackRaw;
                 const mapped = await Promise.all(raw.map(async s => {
                     let ratingData = null;
                     try {
@@ -119,21 +213,47 @@ function App() {
                         date: formatDate(s.date),
                         type: ttype.label,
                         typeBg: ttype.bg,
-                        therapist: s.therapist?.name || 'Therapist',
+                        therapist: s.therapist?.user?.name || s.therapist?.name || 'Therapist',
                         stars: rating?.rating || -1,
                         ratingComment: rating?.comment || '',
                         notes: s.notes || '',
                     };
                 }));
-                setSessions(mapped);
+                setSessionHistory(mapped);
             } catch(e) {
                 console.error(e);
+                const fallbackRaw = rawSessions.filter(s => (s.childId === selectedId || s.child?.id === selectedId) && isDone(s));
+                setSessionHistory(fallbackRaw.map(s => {
+                    const ttype = guessTherapyType(s.focus);
+                    return {
+                        id: s.id,
+                        date: formatDate(s.date),
+                        type: ttype.label,
+                        typeBg: ttype.bg,
+                        therapist: s.therapist?.user?.name || s.therapist?.name || 'Therapist',
+                        stars: -1,
+                        ratingComment: '',
+                        notes: s.notes || '',
+                    };
+                }));
             }
         };
         loadSessions();
-    }, [selectedId, storeChildren]);
+    }, [selectedId, storeChildren, rawSessions]);
 
     const child = filteredChildren.find(c => c.id === selectedId) || filteredChildren[0] || null;
+    const summaryStats = useMemo(() => {
+        const allMilestones = allChildren.flatMap(c => c.milestones || []);
+        const averageProgress = allMilestones.length
+            ? Math.round(allMilestones.reduce((sum, item) => sum + Number(item.pct || 0), 0) / allMilestones.length)
+            : 0;
+        return [
+            { label: 'Anak Aktif', value: allChildren.length, icon: 'groups', tone: 'text-teal-600 bg-teal-50 dark:bg-teal-900/20' },
+            { label: 'Program Aktif', value: allMilestones.length, icon: 'flag', tone: 'text-amber-600 bg-amber-50 dark:bg-amber-900/20' },
+            { label: 'Sesi Selesai', value: rawSessions.filter(isDone).length, icon: 'task_alt', tone: 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20' },
+            { label: 'Rata-rata Progres', value: `${averageProgress}%`, icon: 'monitoring', tone: 'text-sky-600 bg-sky-50 dark:bg-sky-900/20' },
+        ];
+    }, [allChildren, rawSessions]);
 
     return (
         <div className="layout-container flex h-full grow flex-col overflow-x-hidden">
@@ -143,7 +263,31 @@ function App() {
 
                     <div className="flex flex-col lg:flex-row gap-8">
                         <main className="flex-1 flex flex-col gap-6 min-w-0">
-                            {child ? (
+                            {loadError && (
+                                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+                                    {loadError}
+                                </div>
+                            )}
+                            {loading && (
+                                <div className="flex items-center justify-center rounded-2xl border border-slate-200 bg-white py-12 text-sm font-bold text-slate-500 shadow-sm dark:border-slate-700 dark:bg-slate-800">
+                                    <span className="material-symbols-outlined mr-2 animate-spin text-[20px]">progress_activity</span>
+                                    Memuat kemajuan anak...
+                                </div>
+                            )}
+                            {!loading && (
+                                <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+                                    {summaryStats.map(stat => (
+                                        <div key={stat.label} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800">
+                                            <div className={`mb-3 flex h-10 w-10 items-center justify-center rounded-xl ${stat.tone}`}>
+                                                <span className="material-symbols-outlined text-[21px]">{stat.icon}</span>
+                                            </div>
+                                            <p className="text-xs font-black uppercase tracking-wide text-slate-400">{stat.label}</p>
+                                            <p className="mt-1 text-2xl font-black text-slate-900 dark:text-white">{stat.value}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                            {!loading && child ? (
                                 <>
                                     {/* Profile Header */}
                             <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col md:flex-row gap-6 items-start md:items-center relative overflow-hidden transition-all">
@@ -270,7 +414,7 @@ function App() {
                                     <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
                                         <span className="material-symbols-outlined text-[20px] text-teal-500">history</span> Recent Session History
                                     </h3>
-                                    <span className="text-xs text-slate-400 font-medium">{sessions.length} session{sessions.length !== 1 ? 's' : ''}</span>
+                                    <span className="text-xs text-slate-400 font-medium">{sessionHistory.length} session{sessionHistory.length !== 1 ? 's' : ''}</span>
                                 </div>
                                 <div className="overflow-x-auto">
                                     <table className="w-full min-w-[800px] text-left border-collapse">
@@ -284,14 +428,14 @@ function App() {
                                             </tr>
                                         </thead>
                                         <tbody className="text-sm text-slate-700 dark:text-slate-300 font-medium">
-                                            {sessions.length === 0 ? (
+                                            {sessionHistory.length === 0 ? (
                                                 <tr>
                                                     <td colSpan={5} className="p-10 text-center text-slate-400 dark:text-slate-500">
                                                         <span className="material-symbols-outlined text-3xl block mb-2 opacity-50">history</span>
                                                         Belum ada sesi yang selesai untuk anak ini.
                                                     </td>
                                                 </tr>
-                                            ) : sessions.map((s, i) => (
+                                            ) : sessionHistory.map((s, i) => (
                                                 <tr key={s.id || i} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900/30 transition-colors last:border-b-0">
                                                     <td className="p-4"><span className="font-bold">{s.date}</span></td>
                                                     <td className="p-4"><span className={`px-2.5 py-1 rounded-md text-xs font-bold tracking-wide uppercase ${s.typeBg}`}>{s.type}</span></td>

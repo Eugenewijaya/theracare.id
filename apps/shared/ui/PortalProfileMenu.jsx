@@ -16,6 +16,31 @@ function getErrorMessage(data, fallback) {
   return data.message || data.error || data.raw || fallback;
 }
 
+function PasswordField({ id, label, placeholder, value, visible, onChange, onToggle }) {
+  return (
+    <label className="relative block">
+      <span className="sr-only">{label}</span>
+      <input
+        id={id}
+        type={visible ? 'text' : 'password'}
+        value={value}
+        onChange={event => onChange(id, event.target.value)}
+        placeholder={placeholder}
+        autoComplete={id === 'currentPassword' ? 'current-password' : 'new-password'}
+        className="w-full border-0 border-b border-slate-300 bg-transparent px-1 py-3 pr-10 text-sm text-slate-800 placeholder:text-slate-500 focus:border-primary focus:outline-none focus:ring-0 dark:border-slate-700 dark:text-slate-100 dark:placeholder:text-slate-400"
+      />
+      <button
+        type="button"
+        onClick={() => onToggle(id)}
+        className="absolute right-1 top-1/2 -translate-y-1/2 rounded-md p-1 text-primary hover:bg-primary/10"
+        aria-label={visible ? `Sembunyikan ${label}` : `Tampilkan ${label}`}
+      >
+        <span className="material-symbols-outlined text-[20px]">{visible ? 'visibility' : 'visibility_off'}</span>
+      </button>
+    </label>
+  );
+}
+
 function ChangePasswordModal({ isOpen, onClose, onChanged }) {
   const [form, setForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [visible, setVisible] = useState({ currentPassword: false, newPassword: false, confirmPassword: false });
@@ -36,6 +61,10 @@ function ChangePasswordModal({ isOpen, onClose, onChanged }) {
   const update = (key, value) => {
     setForm(prev => ({ ...prev, [key]: value }));
     setError('');
+  };
+
+  const toggleVisibility = (key) => {
+    setVisible(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
   const submit = async (event) => {
@@ -68,29 +97,6 @@ function ChangePasswordModal({ isOpen, onClose, onChanged }) {
     await onChanged?.();
   };
 
-  const Field = ({ id, label, placeholder }) => (
-    <label className="relative block">
-      <span className="sr-only">{label}</span>
-      <input
-        id={id}
-        type={visible[id] ? 'text' : 'password'}
-        value={form[id]}
-        onChange={event => update(id, event.target.value)}
-        placeholder={placeholder}
-        autoComplete={id === 'currentPassword' ? 'current-password' : 'new-password'}
-        className="w-full border-0 border-b border-slate-300 bg-transparent px-1 py-3 pr-10 text-sm text-slate-800 placeholder:text-slate-500 focus:border-primary focus:outline-none focus:ring-0 dark:border-slate-700 dark:text-slate-100 dark:placeholder:text-slate-400"
-      />
-      <button
-        type="button"
-        onClick={() => setVisible(prev => ({ ...prev, [id]: !prev[id] }))}
-        className="absolute right-1 top-1/2 -translate-y-1/2 rounded-md p-1 text-primary hover:bg-primary/10"
-        aria-label={visible[id] ? `Sembunyikan ${label}` : `Tampilkan ${label}`}
-      >
-        <span className="material-symbols-outlined text-[20px]">{visible[id] ? 'visibility' : 'visibility_off'}</span>
-      </button>
-    </label>
-  );
-
   return (
     <div className="fixed inset-0 z-[300] flex items-center justify-center bg-slate-950/55 p-4" onClick={onClose}>
       <form
@@ -105,9 +111,9 @@ function ChangePasswordModal({ isOpen, onClose, onChanged }) {
         </div>
 
         <div className="space-y-2">
-          <Field id="currentPassword" label="Password lama" placeholder="Password Lama" />
-          <Field id="newPassword" label="Password baru" placeholder="Password Baru" />
-          <Field id="confirmPassword" label="Konfirmasi password baru" placeholder="Konfirmasi password baru" />
+          <PasswordField id="currentPassword" label="Password lama" placeholder="Password Lama" value={form.currentPassword} visible={visible.currentPassword} onChange={update} onToggle={toggleVisibility} />
+          <PasswordField id="newPassword" label="Password baru" placeholder="Password Baru" value={form.newPassword} visible={visible.newPassword} onChange={update} onToggle={toggleVisibility} />
+          <PasswordField id="confirmPassword" label="Konfirmasi password baru" placeholder="Konfirmasi password baru" value={form.confirmPassword} visible={visible.confirmPassword} onChange={update} onToggle={toggleVisibility} />
         </div>
 
         {error && (

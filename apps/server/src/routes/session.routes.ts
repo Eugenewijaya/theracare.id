@@ -114,6 +114,10 @@ router.get("/:id/rating", requireAuth, async (req, res, next) => {
 
 router.post("/:id/rating", requireAuth, requireRole("parent"), async (req, res, next) => {
   try {
+    const rating = Number(req.body?.rating);
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+      return badRequest(res, "Rating harus bernilai 1 sampai 5");
+    }
     created(res, await sessionService.addRating({ sessionId: req.params.id as string, ...req.body }));
   } catch (e) { next(e); }
 });

@@ -177,6 +177,23 @@ export const sessionService = {
   async addRating(data: {
     sessionId: string; childId: string; parentId: string; rating: number; comment?: string;
   }) {
+    const existing = await db.query.sessionRatings.findFirst({
+      where: eq(sessionRatings.sessionId, data.sessionId),
+    });
+    if (existing) {
+      const [rating] = await db
+        .update(sessionRatings)
+        .set({
+          childId: data.childId,
+          parentId: data.parentId,
+          rating: data.rating,
+          comment: data.comment || null,
+        })
+        .where(eq(sessionRatings.id, existing.id))
+        .returning();
+      return rating;
+    }
+
     const id = generateId("RAT");
     const [rating] = await db.insert(sessionRatings).values({ id, ...data }).returning();
     return rating;
