@@ -20,6 +20,8 @@ function App() {
       }
     };
     load();
+    const interval = window.setInterval(load, 30000);
+    return () => window.clearInterval(interval);
   }, []);
 
   

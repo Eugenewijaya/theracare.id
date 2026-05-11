@@ -49,6 +49,8 @@ function App() {
       }
     };
     load();
+    const interval = window.setInterval(load, 30000);
+    return () => window.clearInterval(interval);
   }, []);
   const [toast, setToast] = useState(null);
   const [formError, setFormError] = useState('');

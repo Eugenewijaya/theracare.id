@@ -21,33 +21,40 @@ export default function Announcements() {
     const [expanded, setExpanded] = useState(null);
     const [activeTab, setActiveTab] = useState('announcements'); // 'announcements' | 'reschedules'
 
-    useEffect(() => {
-        const load = async () => {
-            try {
-                const [annRes, notifRes] = await Promise.all([
-                    adminApi.getAnnouncementsForRole('therapist'),
-                    notificationsApi.getAll(),
-                ]);
-                setAnnouncements(annRes.data?.data || []);
-                const notifs = notifRes.data?.data || [];
-                const byRelated = {};
-                notifs.forEach(n => {
-                    if (n.relatedId) byRelated[n.relatedId] = n;
-                });
-                setNotificationMap(byRelated);
-                setUnreadTotal(notifs.filter(n => !n.isRead).length);
-                
-                const saved = sessionStorage.getItem('therapist_user') || localStorage.getItem('therapist_user');
-                if (saved) {
-                    const user = JSON.parse(saved);
-                    const resRes = await rescheduleApi.getForTherapist(user.id);
-                    setReschedules(resRes.data?.data || []);
-                }
-            } catch (e) {
-                console.error(e);
+    const load = async () => {
+        try {
+            const [annRes, notifRes] = await Promise.all([
+                adminApi.getAnnouncementsForRole('therapist'),
+                notificationsApi.getAll(),
+            ]);
+            setAnnouncements(annRes.data?.data || []);
+            const notifs = notifRes.data?.data || [];
+            const byRelated = {};
+            notifs.forEach(n => {
+                if (n.relatedId) byRelated[n.relatedId] = n;
+            });
+            setNotificationMap(byRelated);
+            setUnreadTotal(notifs.filter(n => !n.isRead).length);
+
+            const saved = sessionStorage.getItem('therapist_user') || localStorage.getItem('therapist_user');
+            if (saved) {
+                const user = JSON.parse(saved);
+                const resRes = await rescheduleApi.getForTherapist(user.id);
+                setReschedules(resRes.data?.data || []);
             }
-        };
+        } catch (e) {
+            console.error(e);
+        }
+    };
+
+    useEffect(() => {
         load();
+        window.addEventListener('notificationsUpdated', load);
+        const interval = window.setInterval(load, 30000);
+        return () => {
+            window.clearInterval(interval);
+            window.removeEventListener('notificationsUpdated', load);
+        };
     }, []);
 
     const pendingReschedules = reschedules.filter(r => r.status === 'pending').length;

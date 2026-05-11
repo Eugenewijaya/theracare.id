@@ -1,11 +1,12 @@
-import React, { lazy, Suspense, useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import React, { lazy, Suspense, useEffect, useState } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import { useAdmin } from './context/AdminContext';
 import Sidebar from './components/Sidebar';
 import LoginPage from './pages/LoginPage';
 import LegalPage from '../../shared/ui/LegalPage';
 import ClinicLogoMark from '../../shared/ui/ClinicLogoMark';
+import { setClinicPortalTitle } from '../../shared/clinicSettings';
 
 const ClinicAdmin = lazy(() => import('../../clinic-admin/src/App'));
 const AdminScheduling = lazy(() => import('../../admin-scheduling/src/App'));
@@ -54,11 +55,22 @@ function ProtectedRoute({ children }) {
 
 function MobileTopBar({ onMenuOpen }) {
   const { clinicName, brandColor, logoUrl } = useAdmin();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const canGoBack = location.pathname !== '/';
   return (
-    <header className="lg:hidden flex items-center gap-3 px-4 py-3 border-b border-slate-200/80 dark:border-slate-800/80 sticky top-0 z-40 bg-white dark:bg-slate-900 shadow-sm transition-colors">
+    <header className="lg:hidden sticky top-0 z-[120] flex min-h-[64px] shrink-0 items-center gap-2 border-b border-slate-200/80 bg-white px-3 py-3 pt-[max(env(safe-area-inset-top),0px)] shadow-sm transition-colors dark:border-slate-800/80 dark:bg-slate-900">
+      <button
+        onClick={() => canGoBack && navigate(-1)}
+        disabled={!canGoBack}
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-600 transition-colors hover:bg-slate-200/60 disabled:opacity-35 disabled:hover:bg-transparent dark:text-slate-400 dark:hover:bg-slate-800/60"
+        aria-label="Kembali"
+      >
+        <span className="material-symbols-outlined text-[22px]">arrow_back</span>
+      </button>
       <button
         onClick={onMenuOpen}
-        className="p-2 rounded-xl text-slate-600 dark:text-slate-400 hover:bg-slate-200/60 dark:hover:bg-slate-800/60 transition-colors"
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-600 transition-colors hover:bg-slate-200/60 dark:text-slate-400 dark:hover:bg-slate-800/60"
         aria-label="Open menu"
       >
         <span className="material-symbols-outlined text-[22px]">menu</span>
@@ -66,7 +78,7 @@ function MobileTopBar({ onMenuOpen }) {
       <div className="flex min-w-0 flex-1 items-center gap-2.5">
         <ClinicLogoMark logoUrl={logoUrl} name={clinicName || 'TheraCare'} color={brandColor || '#3b82f6'} className="h-8 w-8 shrink-0 rounded-lg" />
         <span className="min-w-0 truncate text-sm font-extrabold text-slate-900 dark:text-white tracking-tight">{clinicName || 'TheraCare'}</span>
-        <span className="hidden shrink-0 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider sm:inline">Admin</span>
+        <span className="hidden shrink-0 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider sm:inline">Dashboard Admin</span>
       </div>
     </header>
   );
@@ -112,6 +124,10 @@ function DashboardLayout() {
 }
 
 export default function App() {
+  useEffect(() => {
+    setClinicPortalTitle('Dashboard Admin');
+  }, []);
+
   return (
     <BrowserRouter>
       <Routes>

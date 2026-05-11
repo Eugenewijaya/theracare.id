@@ -26,7 +26,7 @@ const statusConfig = {
     pending:  { label: 'Pending',  cls: 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400'   },
 };
 
-const ChildTable = ({ children }) => {
+const ChildTable = ({ children, onDelete }) => {
     const navigate = useNavigate();
     const [editingChild, setEditingChild] = useState(null);
 
@@ -56,7 +56,7 @@ const ChildTable = ({ children }) => {
             {editingChild && <EditChildModal child={editingChild} onClose={() => setEditingChild(null)} />}
         <section className="rounded-xl bg-white dark:bg-slate-900 shadow-sm border border-slate-100 dark:border-slate-800 overflow-hidden mb-10">
             <div className="hidden w-full overflow-x-auto xl:block">
-                <table className="w-full min-w-[1240px] table-fixed text-left border-collapse">
+                <table className="w-full min-w-[1300px] table-fixed text-left border-collapse">
                     <colgroup>
                         <col className="w-[230px]" />
                         <col className="w-[90px]" />
@@ -64,7 +64,7 @@ const ChildTable = ({ children }) => {
                         <col className="w-[190px]" />
                         <col className="w-[280px]" />
                         <col className="w-[120px]" />
-                        <col className="w-[140px]" />
+                        <col className="w-[190px]" />
                     </colgroup>
                     <thead>
                         <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
@@ -149,8 +149,14 @@ const ChildTable = ({ children }) => {
                                         <button className="shrink-0 p-1.5 hover:text-primary hover:bg-primary/10 rounded transition-colors" title="Edit Info" onClick={() => setEditingChild(child)}>
                                             <span className="material-symbols-outlined text-[20px]">edit</span>
                                         </button>
+                                        <button className="shrink-0 p-1.5 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors" title="Tambah / Lanjut Periode" onClick={() => setEditingChild(child)}>
+                                            <span className="material-symbols-outlined text-[20px]">event_upcoming</span>
+                                        </button>
                                         <button className="shrink-0 p-1.5 hover:text-[#25D366] hover:bg-[#25D366]/10 rounded transition-colors" title="Contact Parent (WhatsApp)" onClick={() => handleContactParent(child)}>
                                             <span className="material-symbols-outlined text-[20px]">chat</span>
+                                        </button>
+                                        <button className="shrink-0 p-1.5 hover:text-red-600 hover:bg-red-50 rounded transition-colors" title="Hapus Anak" onClick={() => onDelete?.(child)}>
+                                            <span className="material-symbols-outlined text-[20px]">delete</span>
                                         </button>
                                     </div>
                                 </td>
@@ -229,8 +235,14 @@ const ChildTable = ({ children }) => {
                             <button className="flex-1 py-2 sm:py-2.5 bg-slate-50 hover:bg-primary/10 text-slate-600 hover:text-primary dark:bg-slate-900 dark:text-slate-400 rounded-lg text-xs font-bold transition-colors border border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-center gap-1.5" onClick={() => setEditingChild(child)}>
                                 <span className="material-symbols-outlined text-[16px]">edit</span> <span className="hidden sm:inline">Edit</span>
                             </button>
+                            <button className="flex-1 py-2 sm:py-2.5 bg-slate-50 hover:bg-indigo-50 text-slate-600 hover:text-indigo-600 dark:bg-slate-900 dark:text-slate-400 rounded-lg text-xs font-bold transition-colors border border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-center gap-1.5" onClick={() => setEditingChild(child)}>
+                                <span className="material-symbols-outlined text-[16px]">event_upcoming</span> <span className="hidden sm:inline">Periode</span>
+                            </button>
                             <button className="flex-1 py-2 sm:py-2.5 bg-slate-50 hover:bg-[#25D366]/10 text-slate-600 hover:text-[#25D366] dark:bg-slate-900 dark:text-slate-400 rounded-lg text-xs font-bold transition-colors border border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-center gap-1.5" onClick={() => handleContactParent(child)}>
                                 <span className="material-symbols-outlined text-[16px]">chat</span> <span className="hidden sm:inline">WA</span>
+                            </button>
+                            <button className="flex-1 py-2 sm:py-2.5 bg-red-50 hover:bg-red-100 text-red-600 dark:bg-red-900/20 dark:text-red-300 rounded-lg text-xs font-bold transition-colors border border-red-100 dark:border-red-900/30 shadow-sm flex items-center justify-center gap-1.5" onClick={() => onDelete?.(child)}>
+                                <span className="material-symbols-outlined text-[16px]">delete</span> <span className="hidden sm:inline">Hapus</span>
                             </button>
                         </div>
                     </div>

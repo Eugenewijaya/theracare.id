@@ -39,7 +39,11 @@ export default function Sidebar({ isOpen, onClose }) {
     };
     computeBadges();
     window.addEventListener('notificationsUpdated', computeBadges);
-    return () => window.removeEventListener('notificationsUpdated', computeBadges);
+    const interval = window.setInterval(computeBadges, 30000);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('notificationsUpdated', computeBadges);
+    };
   }, [user]);
 
   // Close sidebar on route change (mobile)

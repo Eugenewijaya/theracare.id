@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAdmin } from '../context/AdminContext';
-import { rescheduleApi, notificationsApi, leaveRequestsApi } from '../../../shared/api/client';
+import { meetingsApi, rescheduleApi, notificationsApi, leaveRequestsApi } from '../../../shared/api/client';
 import ClinicLogoMark from '../../../shared/ui/ClinicLogoMark';
 
 const navGroups = [
@@ -56,15 +56,19 @@ export default function Sidebar({ isOpen, onClose }) {
   useEffect(() => {
     const computeBadges = async () => {
       try {
-        const [reqResult, unreadResult, leaveResult] = await Promise.allSettled([
+        const [reqResult, meetingResult, unreadResult, leaveResult] = await Promise.allSettled([
           rescheduleApi.getAll(),
+          meetingsApi.getAll(),
           notificationsApi.getUnreadCount(),
           leaveRequestsApi.getAll(),
         ]);
         const reqRes = reqResult.status === 'fulfilled' ? reqResult.value : { data: { data: [] } };
+        const meetingRes = meetingResult.status === 'fulfilled' ? meetingResult.value : { data: { data: [] } };
         const unreadRes = unreadResult.status === 'fulfilled' ? unreadResult.value : { data: { data: { count: 0 } } };
         const leaveRes = leaveResult.status === 'fulfilled' ? leaveResult.value : { data: { data: [] } };
-        const pendingCount = (reqRes.data?.data || []).filter(r => r.status === 'pending').length;
+        const pendingReschedules = (reqRes.data?.data || []).filter(r => r.status === 'pending').length;
+        const pendingMeetings = (meetingRes.data?.data || []).filter(r => r.status === 'pending_admin_review').length;
+        const pendingCount = pendingReschedules + pendingMeetings;
         const unreadNotifs = unreadRes.data?.data?.count || 0;
         const pendingLeave = (leaveRes.data?.data || []).filter(r => r.status === 'pending').length;
         setBadgeCounts({ requests: pendingCount, notifications: unreadNotifs, leaveRequests: pendingLeave });

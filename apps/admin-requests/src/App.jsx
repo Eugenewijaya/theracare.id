@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Header from './components/Header';
 import RequestCard from './components/RequestCard';
-import { rescheduleApi } from '../../shared/api/client';
+import { meetingsApi, rescheduleApi } from '../../shared/api/client';
 
 // ── Notification Popup Component ──────────────────────────────────
 function NotificationPopup({ isOpen, message, type, onClose, onConfirm, showConfirmButtons }) {
@@ -173,9 +173,15 @@ function App() {
 
     const refreshData = async () => {
         try {
-            const res = await rescheduleApi.getAll();
-            const raw = res.data?.data || [];
-            
+            const [rescheduleResult, meetingsResult] = await Promise.allSettled([
+                rescheduleApi.getAll(),
+                meetingsApi.getAll(),
+            ]);
+            const rescheduleRes = rescheduleResult.status === 'fulfilled' ? rescheduleResult.value : { data: { data: [] } };
+            const meetingsRes = meetingsResult.status === 'fulfilled' ? meetingsResult.value : { data: { data: [] } };
+            const raw = rescheduleRes.data?.data || [];
+            const meetingRaw = meetingsRes.data?.data || [];
+
             const mapped = raw.map(r => {
                 const child = r.child || {};
                 const parent = r.parent || {};
@@ -183,11 +189,13 @@ function App() {
                 
                 return {
                     id: r.id,
+                    kind: 'reschedule',
                     name: child.name || `${child.firstName || ''} ${child.lastName || ''}`.trim() || 'Unknown Child',
                     parentName: parent.name || parent.firstName || 'Unknown Parent',
                     session: session.focus || 'Therapy Session',
                     date: session.date ? `${session.date} • ${session.startTime}` : 'Date TBD',
                     reason: r.reason || r.details || 'No reason provided',
+                    createdAt: r.createdAt || new Date().toISOString(),
                     submittedAgo: new Date(r.createdAt || Date.now()).toLocaleDateString(),
                     slots: (r.proposedSlots || []).map((s, idx) => ({
                         date: s.date,
@@ -204,15 +212,55 @@ function App() {
                     outcome: r.status
                 };
             });
-            setAllRequests(mapped.reverse());
+            const mappedMeetings = meetingRaw.map(m => {
+                const statusMap = {
+                    pending_admin_review: 'pending',
+                    approved_by_admin: 'review',
+                    parent_confirmed: 'approved',
+                    parent_declined: 'rejected',
+                    cancelled: 'rejected',
+                };
+                return {
+                    id: m.id,
+                    kind: 'meeting',
+                    name: m.childName || m.child?.name || 'Unknown Child',
+                    parentName: m.parentName || m.parent?.user?.name || 'Unknown Parent',
+                    session: m.objective || 'Parent Meeting',
+                    date: m.date ? `${m.date} • ${m.time || 'Jam TBD'}` : 'Date TBD',
+                    reason: m.notes || m.reviewNote || 'Parent meeting request',
+                    createdAt: m.createdAt || new Date().toISOString(),
+                    submittedAgo: new Date(m.createdAt || Date.now()).toLocaleDateString(),
+                    slots: [{
+                        date: m.date,
+                        time: m.time,
+                        label: `${m.date || 'Tanggal TBD'} • ${m.time || 'Jam TBD'}`,
+                        status: 'available',
+                    }],
+                    status: statusMap[m.status] || 'pending',
+                    originalStatus: m.status,
+                    reviewNote: m.reviewNote || 'Menunggu review admin.',
+                    reviewedBy: m.reviewedBy || 'Admin',
+                    originalDate: m.date ? `${m.date} • ${m.time || ''}` : 'TBD',
+                    newDate: m.status === 'approved_by_admin' || m.status === 'parent_confirmed' ? `${m.date} • ${m.time || ''}` : '—',
+                    resolvedOn: m.updatedAt ? new Date(m.updatedAt).toLocaleDateString() : '',
+                    outcome: statusMap[m.status] || 'pending',
+                };
+            });
+            setAllRequests([...mapped, ...mappedMeetings].sort((a, b) => new Date(b.createdAt || b.submittedAgo) - new Date(a.createdAt || a.submittedAgo)));
         } catch (e) {
-            console.error('Failed to load reschedule requests', e);
+            console.error('Failed to load incoming requests', e);
         }
         setLoading(false);
     };
 
     useEffect(() => {
         refreshData();
+        const interval = window.setInterval(refreshData, 30000);
+        window.addEventListener('notificationsUpdated', refreshData);
+        return () => {
+            window.clearInterval(interval);
+            window.removeEventListener('notificationsUpdated', refreshData);
+        };
     }, []);
 
     const filterByName = (arr) => arr.filter(req => !searchQuery || req.name.toLowerCase().includes(searchQuery.toLowerCase()) || req.parentName.toLowerCase().includes(searchQuery.toLowerCase()));
@@ -230,11 +278,23 @@ function App() {
         const { type, req } = pendingAction;
         
         if (type === 'reject') {
-            await rescheduleApi.updateStatus(req.id, 'rejected');
+            if (req.kind === 'meeting') {
+                await meetingsApi.adminReview(req.id, {
+                    status: 'cancelled',
+                    reviewNote: 'Dibatalkan dari Permintaan Masuk.',
+                });
+            } else {
+                await rescheduleApi.updateStatus(req.id, 'rejected');
+            }
             refreshData();
             setTimeout(() => showPopup(`Request from ${req.name} has been rejected.`, 'success'), 300);
         }
         else if (type === 'process') {
+            if (req.kind === 'meeting') {
+                showPopup('Parent meeting sudah berada dalam proses review admin. Gunakan Approve jika orang tua sudah dikonfirmasi.', 'info');
+                setPendingAction(null);
+                return;
+            }
             await rescheduleApi.updateStatus(req.id, 'review', { reviewNote: 'Under internal review.' });
             refreshData();
             setTimeout(() => {
@@ -244,10 +304,19 @@ function App() {
         }
         else if (type === 'approve') {
             const chosenSlot = req.slots ? req.slots.find(s => s.status === 'available') || req.slots[0] : null;
-            await rescheduleApi.updateStatus(req.id, 'approved', {
-                newDate: chosenSlot?.date,
-                newStartTime: chosenSlot?.time,
-            });
+            if (req.kind === 'meeting') {
+                await meetingsApi.adminReview(req.id, {
+                    status: 'approved_by_admin',
+                    parentContactConfirmed: true,
+                    communicationMethod: 'Admin confirmation',
+                    reviewNote: 'Admin sudah menghubungi orang tua dan mendapatkan persetujuan.',
+                });
+            } else {
+                await rescheduleApi.updateStatus(req.id, 'approved', {
+                    newDate: chosenSlot?.date,
+                    newStartTime: chosenSlot?.time,
+                });
+            }
             refreshData();
             setTimeout(() => showPopup(`Request from ${req.name} has been approved.`, 'success'), 300);
         }
@@ -268,12 +337,16 @@ function App() {
 
     const handleApprove = (req) => {
         setPendingAction({ type: 'approve', req });
-        showPopup(`Confirm approval for ${req.name}'s request?`, 'info', true);
+        const message = req.kind === 'meeting'
+            ? `Approve parent meeting untuk ${req.name}? Pastikan orang tua sudah dihubungi dan menyetujui jadwal melalui tatap muka, WhatsApp, telepon, atau media komunikasi lain.`
+            : `Confirm approval for ${req.name}'s request?`;
+        showPopup(message, 'info', true);
     };
 
     const handleDelete = async (req) => {
         if (!window.confirm(`Hapus riwayat request ${req.name}?`)) return;
-        await rescheduleApi.delete(req.id);
+        if (req.kind === 'meeting') await meetingsApi.delete(req.id);
+        else await rescheduleApi.delete(req.id);
         refreshData();
         showPopup('Riwayat request berhasil dihapus.', 'success');
     };

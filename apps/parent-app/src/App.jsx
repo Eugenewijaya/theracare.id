@@ -9,7 +9,7 @@ import ProgressSummary from './pages/ProgressSummary';
 import Announcements from './pages/Announcements';
 import Meetings from './pages/Meetings';
 import Settings from './pages/Settings';
-import { useClinicSettings } from '../../shared/clinicSettings';
+import { setClinicPortalTitle, useClinicSettings } from '../../shared/clinicSettings';
 import LegalPage from '../../shared/ui/LegalPage';
 import ClinicLogoMark from '../../shared/ui/ClinicLogoMark';
 
@@ -48,11 +48,22 @@ function ProtectedRoute({ children }) {
 
 function MobileTopBar({ onMenuOpen }) {
   const { clinicName, primaryColor, logoUrl } = useClinicSettings();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const canGoBack = location.pathname !== '/';
   return (
-    <header className="lg:hidden flex items-center gap-3 px-4 py-3 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 sticky top-0 z-40">
+    <header className="lg:hidden sticky top-0 z-[120] flex min-h-[64px] shrink-0 items-center gap-2 border-b border-slate-200 bg-white px-3 py-3 pt-[max(env(safe-area-inset-top),0px)] dark:border-slate-800 dark:bg-slate-900">
+      <button
+        onClick={() => canGoBack && navigate(-1)}
+        disabled={!canGoBack}
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-600 transition-colors hover:bg-slate-100 disabled:opacity-35 disabled:hover:bg-transparent dark:text-slate-400 dark:hover:bg-slate-800"
+        aria-label="Kembali"
+      >
+        <span className="material-symbols-outlined text-[22px]">arrow_back</span>
+      </button>
       <button
         onClick={onMenuOpen}
-        className="p-2 rounded-xl text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-600 transition-colors hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
         aria-label="Open menu"
       >
         <span className="material-symbols-outlined text-[22px]">menu</span>
@@ -60,7 +71,7 @@ function MobileTopBar({ onMenuOpen }) {
       <div className="flex min-w-0 flex-1 items-center gap-2.5">
         <ClinicLogoMark logoUrl={logoUrl} name={clinicName} color={primaryColor} className="h-8 w-8 shrink-0 rounded-lg" />
         <span className="min-w-0 truncate text-sm font-bold text-slate-900 dark:text-white">{clinicName}</span>
-        <span className="hidden shrink-0 text-[10px] font-semibold text-slate-500 dark:text-slate-400 sm:inline">Parent Portal</span>
+        <span className="hidden shrink-0 text-[10px] font-semibold text-slate-500 dark:text-slate-400 sm:inline">Portal Orang Tua</span>
       </div>
     </header>
   );
@@ -107,6 +118,10 @@ function DashboardLayout() {
 }
 
 export default function App() {
+  useEffect(() => {
+    setClinicPortalTitle('Portal Orang Tua');
+  }, []);
+
   return (
     <BrowserRouter>
       <Routes>

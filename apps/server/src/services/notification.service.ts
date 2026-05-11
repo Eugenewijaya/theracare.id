@@ -1,13 +1,13 @@
 import { db } from "../db/index.js";
 import { notifications, notificationReads } from "../db/schema.js";
-import { eq } from "drizzle-orm";
+import { eq, or } from "drizzle-orm";
 import { generateId } from "../utils/id-generators.js";
 import { emailService } from "./email.service.js";
 
 export const notificationService = {
   async getForUser(role: string, userId: string) {
     const all = await db.query.notifications.findMany({
-      where: eq(notifications.targetRole, role),
+      where: or(eq(notifications.targetRole, role), eq(notifications.targetRole, "all")),
       orderBy: (n, { desc }) => [desc(n.createdAt)],
       limit: 100,
     });

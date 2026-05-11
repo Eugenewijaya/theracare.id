@@ -37,8 +37,25 @@ function App() {
     useEffect(() => {
         loadData();
         window.addEventListener('childUpdated', loadData);
-        return () => window.removeEventListener('childUpdated', loadData);
+        const interval = window.setInterval(loadData, 30000);
+        return () => {
+            window.clearInterval(interval);
+            window.removeEventListener('childUpdated', loadData);
+        };
     }, []);
+
+    const handleDeleteChild = async (child) => {
+        const confirmed = window.confirm(`Hapus data anak ${child.name}? Data yang sudah punya sesi, laporan, rating, atau request akan ditolak oleh server.`);
+        if (!confirmed) return;
+        const res = await childrenApi.delete(child.id);
+        if (!res.ok) {
+            alert(res.data?.error || res.data?.message || res.data?.data?.reason || 'Gagal menghapus data anak.');
+            return;
+        }
+        setAllChildren(prev => prev.filter(item => item.id !== child.id));
+        window.dispatchEvent(new Event('childUpdated'));
+        alert(`Data anak ${child.name} berhasil dihapus.`);
+    };
 
     const filtered = allChildren.filter(child => {
         const name    = child.name || `${child.firstName || ''} ${child.lastName || ''}`;
@@ -104,7 +121,7 @@ function App() {
                                 {error}
                             </div>
                         ) : (
-                            <ChildTable children={filtered} />
+                            <ChildTable children={filtered} onDelete={handleDeleteChild} />
                         )}
                     </main>
                 </div>

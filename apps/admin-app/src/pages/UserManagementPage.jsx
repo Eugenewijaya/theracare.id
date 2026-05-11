@@ -219,7 +219,7 @@ export default function UserManagementPage() {
             )}
 
             {isUnlocked && (
-            <main className="px-6 md:px-10 flex flex-1 justify-center py-8">
+            <main className="flex flex-1 justify-center px-4 py-6 md:px-6 xl:px-10 xl:py-8">
                 <div className="layout-content-container flex flex-col max-w-[1500px] flex-1 w-full gap-6">
 
                     {/* Page Header */}
@@ -277,14 +277,14 @@ export default function UserManagementPage() {
                     {/* Table */}
                     <div className="bg-white dark:bg-primary/5 border border-slate-200 dark:border-primary/20 rounded-xl overflow-hidden shadow-sm">
                         <div className="overflow-x-auto">
-                            <table className="w-full min-w-[1400px] text-left">
+                            <table className="w-full min-w-[1160px] table-fixed text-left">
                                 <colgroup>
+                                    <col className="w-[200px]" />
                                     <col className="w-[220px]" />
-                                    <col className="w-[230px]" />
-                                    <col className="w-[170px]" />
-                                    <col className="w-[360px]" />
-                                    <col className="w-[120px]" />
-                                    <col className="w-[300px]" />
+                                    <col className="w-[160px]" />
+                                    <col className="w-[250px]" />
+                                    <col className="w-[110px]" />
+                                    <col className="w-[220px]" />
                                 </colgroup>
                                 <thead>
                                     <tr className="border-b border-slate-200 dark:border-primary/20 bg-slate-50 dark:bg-background-dark/50">
@@ -360,7 +360,7 @@ export default function UserManagementPage() {
                                                 </td>
                                                 <td className="px-5 py-4 align-middle">
                                                     <div className="flex items-center gap-2 min-w-0">
-                                                        <code className="min-w-[180px] max-w-[220px] rounded-lg bg-slate-100 dark:bg-slate-800 px-3 py-2 text-sm font-mono leading-5 text-slate-700 dark:text-slate-300 break-words">
+                                                        <code className="min-w-[120px] max-w-[150px] rounded-lg bg-slate-100 dark:bg-slate-800 px-3 py-2 text-sm font-mono leading-5 text-slate-700 dark:text-slate-300 break-words">
                                                             {displayPassword}
                                                         </code>
                                                         <button onClick={() => setShowPass(prev => ({ ...prev, [user.id]: !passVisible }))}
@@ -392,19 +392,19 @@ export default function UserManagementPage() {
                                                             className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
                                                             title="Reset Password">
                                                             <span className="material-symbols-outlined text-[14px]">key</span>
-                                                            Reset
+                                                            <span className="hidden 2xl:inline">Reset</span>
                                                         </button>
                                                         <button onClick={() => handleToggleStatus(user, activeTab)}
                                                             className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${isActive ? 'text-red-700 bg-red-50 hover:bg-red-100' : 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100'}`}
                                                             title={isActive ? 'Suspend Account' : 'Activate Account'}>
                                                             <span className="material-symbols-outlined text-[14px]">{isActive ? 'block' : 'check_circle'}</span>
-                                                            {isActive ? 'Suspend' : 'Activate'}
+                                                            <span className="hidden 2xl:inline">{isActive ? 'Suspend' : 'Activate'}</span>
                                                         </button>
                                                         <button onClick={() => handleDelete(user, activeTab)}
                                                             className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 transition-colors hover:bg-red-100"
                                                             title="Delete Account">
                                                             <span className="material-symbols-outlined text-[14px]">delete</span>
-                                                            Delete
+                                                            <span className="hidden 2xl:inline">Delete</span>
                                                         </button>
                                                     </div>
                                                 </td>

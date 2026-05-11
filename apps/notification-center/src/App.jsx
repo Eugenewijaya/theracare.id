@@ -64,6 +64,12 @@ function App() {
     useEffect(() => {
         setCurrentUser(readStoredAdmin());
         refreshData();
+        window.addEventListener('notificationsUpdated', refreshData);
+        const interval = window.setInterval(refreshData, 30000);
+        return () => {
+            window.clearInterval(interval);
+            window.removeEventListener('notificationsUpdated', refreshData);
+        };
     }, []);
 
     const markAllRead = async () => {

@@ -13,24 +13,31 @@ export default function Announcements() {
     const [unreadTotal, setUnreadTotal] = useState(0);
     const [expanded, setExpanded] = useState(null);
 
+    const load = async () => {
+        try {
+            const [res, notifRes] = await Promise.all([
+                adminApi.getAnnouncementsForRole('parent'),
+                notificationsApi.getAll(),
+            ]);
+            setAnnouncements(res.data?.data || []);
+            const notifs = notifRes.data?.data || [];
+            const byRelated = {};
+            notifs.forEach(n => {
+                if (n.relatedId) byRelated[n.relatedId] = n;
+            });
+            setNotificationMap(byRelated);
+            setUnreadTotal(notifs.filter(n => !n.isRead).length);
+        } catch(e) { console.error(e); }
+    };
+
     useEffect(() => {
-        const load = async () => {
-            try {
-                const [res, notifRes] = await Promise.all([
-                    adminApi.getAnnouncementsForRole('parent'),
-                    notificationsApi.getAll(),
-                ]);
-                setAnnouncements(res.data?.data || []);
-                const notifs = notifRes.data?.data || [];
-                const byRelated = {};
-                notifs.forEach(n => {
-                    if (n.relatedId) byRelated[n.relatedId] = n;
-                });
-                setNotificationMap(byRelated);
-                setUnreadTotal(notifs.filter(n => !n.isRead).length);
-            } catch(e) { console.error(e); }
-        };
         load();
+        window.addEventListener('notificationsUpdated', load);
+        const interval = window.setInterval(load, 30000);
+        return () => {
+            window.clearInterval(interval);
+            window.removeEventListener('notificationsUpdated', load);
+        };
     }, []);
 
     const markNotificationRead = async (notificationId) => {

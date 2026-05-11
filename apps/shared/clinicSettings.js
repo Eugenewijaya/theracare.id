@@ -5,6 +5,7 @@ import { applyPlatformFavicon } from './platformBrand.js';
 export const CLINIC_SETTINGS_EVENT = 'clinicSettingsUpdated';
 export const CLINIC_SETTINGS_KEY = 'clinicSettings';
 export const LEGACY_ADMIN_SETTINGS_KEY = 'adminSettings';
+export const CLINIC_PORTAL_TITLE_KEY = 'theracarePortalTitle';
 
 export const DEFAULT_CLINIC_SETTINGS = {
   clinicName: 'Special Needs Center',
@@ -58,6 +59,28 @@ export function cacheClinicSettings(settings) {
   return normalized;
 }
 
+export function setClinicPortalTitle(title = '') {
+  if (typeof document === 'undefined') return;
+  const clean = String(title || '').trim();
+  document.documentElement.dataset.portalTitle = clean;
+  try {
+    if (clean) sessionStorage.setItem(CLINIC_PORTAL_TITLE_KEY, clean);
+    else sessionStorage.removeItem(CLINIC_PORTAL_TITLE_KEY);
+  } catch {}
+  applyClinicTheme(getCachedClinicSettings());
+}
+
+function getClinicPortalTitle() {
+  if (typeof document === 'undefined') return '';
+  const fromDataset = document.documentElement.dataset.portalTitle || '';
+  if (fromDataset) return fromDataset;
+  try {
+    return sessionStorage.getItem(CLINIC_PORTAL_TITLE_KEY) || '';
+  } catch {
+    return '';
+  }
+}
+
 export async function fetchClinicSettings() {
   const cached = getCachedClinicSettings();
   try {
@@ -83,7 +106,8 @@ export function applyClinicTheme(settings) {
   const normalized = normalizeClinicSettings(settings);
   document.documentElement.style.setProperty('--clinic-primary', normalized.primaryColor);
   document.documentElement.style.setProperty('--clinic-secondary', normalized.secondaryColor);
-  document.title = `${normalized.clinicName} Admin`;
+  const portalTitle = getClinicPortalTitle();
+  document.title = portalTitle ? `${normalized.clinicName} - ${portalTitle}` : normalized.clinicName;
   applyPlatformFavicon(normalized.faviconUrl || normalized.logoUrl);
 }
 
