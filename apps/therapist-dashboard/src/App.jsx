@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import WelcomeFocus from './components/WelcomeFocus';
 import TimelineList from './components/TimelineList';
 import RecentActivity from './components/RecentActivity';
-import { authApi } from '../../shared/api/client';
+import { adminApi, authApi, leaveRequestsApi, sessionsApi, therapistsApi } from '../../shared/api/client';
 import PortalProfileMenu from '../../shared/ui/PortalProfileMenu';
+import TherapistWeeklyScheduleTable from '../../shared/ui/TherapistWeeklyScheduleTable';
 import { clearTherapistUser, readTherapistUser } from '../../shared/sessionIdentity';
 
 function readStoredTherapist() {
@@ -13,7 +14,40 @@ function readStoredTherapist() {
 
 function App({ onLogout }) {
     const navigate = useNavigate();
-    const [currentUser] = useState(readStoredTherapist);
+    const [currentUser, setCurrentUser] = useState(readStoredTherapist);
+    const [scheduleData, setScheduleData] = useState({
+        sessions: [],
+        leaveRequests: [],
+        centerClosures: [],
+    });
+
+    const loadScheduleSummary = useCallback(async () => {
+        if (!currentUser?.id) return;
+        try {
+            const [sessionsRes, profileRes, leaveRes, closureRes] = await Promise.all([
+                sessionsApi.getForTherapist(currentUser.id),
+                therapistsApi.getMe().catch(() => ({ data: { data: null } })),
+                leaveRequestsApi.getMine().catch(() => ({ data: { data: [] } })),
+                adminApi.getCenterClosures().catch(() => ({ data: { data: { closures: [] } } })),
+            ]);
+            const profile = profileRes.data?.data;
+            if (profile?.id) setCurrentUser(prev => prev ? { ...prev, ...profile } : profile);
+            setScheduleData({
+                sessions: sessionsRes.data?.data || [],
+                leaveRequests: leaveRes.data?.data || [],
+                centerClosures: closureRes.data?.data?.closures || [],
+            });
+        } catch (error) {
+            console.error('Failed to load therapist dashboard schedule summary', error);
+        }
+    }, [currentUser?.id]);
+
+    useEffect(() => {
+        loadScheduleSummary();
+        const events = ['sessionUpdated', 'therapistUpdated', 'leaveRequestsUpdated', 'centerClosuresUpdated'];
+        events.forEach((eventName) => window.addEventListener(eventName, loadScheduleSummary));
+        return () => events.forEach((eventName) => window.removeEventListener(eventName, loadScheduleSummary));
+    }, [loadScheduleSummary]);
 
     const handleLogout = async () => {
         if (onLogout) {
@@ -50,6 +84,16 @@ function App({ onLogout }) {
             <div className="flex flex-col md:flex-row gap-6 sm:gap-8">
                 <div className="flex-1 flex flex-col gap-8">
                     <WelcomeFocus />
+                    <TherapistWeeklyScheduleTable
+                        title="Jadwal Terapi Mingguan Saya"
+                        subtitle="Ringkasan read-only dari sesi aktif, jadwal kerja, cuti, dan jadwal off center."
+                        sessions={scheduleData.sessions}
+                        therapists={currentUser ? [currentUser] : []}
+                        leaveRequests={scheduleData.leaveRequests}
+                        centerClosures={scheduleData.centerClosures}
+                        initialDate={new Date()}
+                        compact
+                    />
                     <TimelineList />
                 </div>
 

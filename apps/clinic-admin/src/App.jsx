@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import Header from './components/Header';
 import QuickStats from './components/QuickStats';
 import PendingAttendance from './components/PendingAttendance';
@@ -8,8 +8,46 @@ import DailyScheduleTable from './components/DailyScheduleTable';
 import QuickActions from './components/QuickActions';
 import MiniCalendar from './components/MiniCalendar';
 import ChildrenMonthChart from './components/ChildrenMonthChart';
+import { adminApi, childrenApi, leaveRequestsApi, sessionsApi, therapistsApi } from '../../shared/api/client';
+import TherapistWeeklyScheduleTable from '../../shared/ui/TherapistWeeklyScheduleTable';
 
 function App() {
+    const [scheduleData, setScheduleData] = useState({
+        sessions: [],
+        therapists: [],
+        children: [],
+        leaveRequests: [],
+        centerClosures: [],
+    });
+
+    const loadScheduleSummary = useCallback(async () => {
+        try {
+            const [sessionsRes, therapistsRes, childrenRes, leaveRes, closureRes] = await Promise.all([
+                sessionsApi.getAll(),
+                therapistsApi.getAll(),
+                childrenApi.getAll(),
+                leaveRequestsApi.getAll().catch(() => ({ data: { data: [] } })),
+                adminApi.getCenterClosures().catch(() => ({ data: { data: { closures: [] } } })),
+            ]);
+            setScheduleData({
+                sessions: sessionsRes.data?.data || [],
+                therapists: (therapistsRes.data?.data || []).filter((therapist) => (therapist.status || 'active') !== 'deleted'),
+                children: childrenRes.data?.data || [],
+                leaveRequests: leaveRes.data?.data || [],
+                centerClosures: closureRes.data?.data?.closures || [],
+            });
+        } catch (error) {
+            console.error('Failed to load dashboard schedule summary', error);
+        }
+    }, []);
+
+    useEffect(() => {
+        loadScheduleSummary();
+        const events = ['sessionUpdated', 'therapistUpdated', 'leaveRequestsUpdated', 'centerClosuresUpdated'];
+        events.forEach((eventName) => window.addEventListener(eventName, loadScheduleSummary));
+        return () => events.forEach((eventName) => window.removeEventListener(eventName, loadScheduleSummary));
+    }, [loadScheduleSummary]);
+
     return (
         <>
             <Header />
@@ -17,6 +55,17 @@ function App() {
 
                 {/* Quick Stats - Full Width */}
                 <QuickStats />
+
+                <TherapistWeeklyScheduleTable
+                    title="Jadwal Terapi Mingguan"
+                    subtitle="Ringkasan read-only dari sesi anak, jadwal kerja terapis, cuti, dan jadwal off center."
+                    sessions={scheduleData.sessions}
+                    therapists={scheduleData.therapists}
+                    childrenList={scheduleData.children}
+                    leaveRequests={scheduleData.leaveRequests}
+                    centerClosures={scheduleData.centerClosures}
+                    initialDate={new Date()}
+                />
 
                 {/* Main 2-column layout */}
                 <div className="flex flex-col lg:flex-row gap-6 items-start">

@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { adminApi, authApi, leaveRequestsApi, sessionsApi, therapistsApi } from '../../shared/api/client';
+import { authApi, sessionsApi } from '../../shared/api/client';
 import PortalProfileMenu from '../../shared/ui/PortalProfileMenu';
-import TherapistWeeklyScheduleTable from '../../shared/ui/TherapistWeeklyScheduleTable';
 import { clearTherapistUser, readTherapistUser } from '../../shared/sessionIdentity';
 
 const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
@@ -70,9 +69,6 @@ function App({ onLogout }) {
 
     const [currentDate, setCurrentDate] = useState(new Date());
     const [sessions, setSessions] = useState([]);
-    const [weeklySessions, setWeeklySessions] = useState([]);
-    const [leaveRequests, setLeaveRequests] = useState([]);
-    const [centerClosures, setCenterClosures] = useState([]);
     const [loading, setLoading] = useState(true);
     
     const [finishModal, setFinishModal] = useState(null);
@@ -86,16 +82,8 @@ function App({ onLogout }) {
         }
         const dateKey = formatKey(currentDate);
         try {
-            const [res, weeklyRes, profileRes, leaveRes, closureRes] = await Promise.all([
-                sessionsApi.getForTherapist(currentUser.id, dateKey),
-                sessionsApi.getForTherapist(currentUser.id).catch(() => ({ data: { data: [] } })),
-                therapistsApi.getMe().catch(() => ({ data: { data: null } })),
-                leaveRequestsApi.getMine().catch(() => ({ data: { data: [] } })),
-                adminApi.getCenterClosures().catch(() => ({ data: { data: { closures: [] } } })),
-            ]);
+            const res = await sessionsApi.getForTherapist(currentUser.id, dateKey);
             const rawSessions = res.data?.data || [];
-            const allTherapistSessions = weeklyRes.data?.data || rawSessions;
-            const profile = profileRes.data?.data;
             
             const mapped = rawSessions.map(s => {
                 const program = s.focus || s.child?.therapyPrograms?.[0]?.type || 'General Therapy';
@@ -115,12 +103,6 @@ function App({ onLogout }) {
             }).sort((a, b) => a.start.localeCompare(b.start));
             
             setSessions(mapped);
-            setWeeklySessions(allTherapistSessions);
-            setLeaveRequests(leaveRes.data?.data || []);
-            setCenterClosures(closureRes.data?.data?.closures || []);
-            if (profile?.id) {
-                setCurrentUser(prev => prev ? { ...prev, ...profile } : profile);
-            }
         } catch (e) {
             console.error('Failed to load therapist schedule', e);
         } finally {
@@ -273,17 +255,6 @@ function App({ onLogout }) {
                             </div>
                         </div>
                     </div>
-
-                    <TherapistWeeklyScheduleTable
-                        title="Jadwal Terapi Mingguan Saya"
-                        subtitle="Tabel ini mengikuti sesi aktif, jadwal kerja, cuti yang disetujui, dan jadwal off center."
-                        sessions={weeklySessions}
-                        therapists={currentUser ? [currentUser] : []}
-                        leaveRequests={leaveRequests}
-                        centerClosures={centerClosures}
-                        initialDate={currentDate}
-                        compact
-                    />
 
                     {/* Sessions List */}
                     <div className="space-y-6">

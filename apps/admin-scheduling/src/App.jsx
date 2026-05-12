@@ -4,8 +4,7 @@ import CalendarHeader from './components/CalendarHeader';
 import CalendarGrid from './components/CalendarGrid';
 import Legend from './components/Legend';
 import SidePanel from './components/SidePanel';
-import TherapistWeeklyScheduleTable from '../../shared/ui/TherapistWeeklyScheduleTable';
-import { sessionsApi, childrenApi, therapistsApi, adminApi, substituteRequestsApi, leaveRequestsApi } from '../../shared/api/client';
+import { sessionsApi, childrenApi, therapistsApi, adminApi, substituteRequestsApi } from '../../shared/api/client';
 import { confirmAction } from '../../shared/ui/confirmDialog';
 
 const LEAVE_REASONS = [
@@ -374,27 +373,21 @@ function App() {
     const [childrenList, setChildrenList] = useState([]);
     const [therapistsList, setTherapistsList] = useState([]);
     const [programsList, setProgramsList] = useState([]);
-    const [leaveRequests, setLeaveRequests] = useState([]);
-    const [centerClosures, setCenterClosures] = useState([]);
 
     const loadDb = useCallback(async () => {
         try {
-            const [sessRes, childRes, therRes, progRes, settingsRes, leaveRes, closureRes] = await Promise.all([
+            const [sessRes, childRes, therRes, progRes, settingsRes] = await Promise.all([
                 sessionsApi.getAll(),
                 childrenApi.getAll(),
                 therapistsApi.getAll(),
                 adminApi.getPrograms(),
                 adminApi.getSettings(),
-                leaveRequestsApi.getAll().catch(() => ({ data: { data: [] } })),
-                adminApi.getCenterClosures().catch(() => ({ data: { data: { closures: [] } } })),
             ]);
             setAllSessions(sessRes.data?.data || []);
             setChildrenList(childRes.data?.data || []);
             setTherapistsList(therRes.data?.data || []);
             setProgramsList(progRes.data?.data || []);
             setOneTimeVisits(parseJsonSetting(settingsRes.data?.data?.oneTimeVisitLog, []));
-            setLeaveRequests(leaveRes.data?.data || []);
-            setCenterClosures(closureRes.data?.data?.closures || []);
         } catch (e) {
             console.error(e);
         }
@@ -434,17 +427,6 @@ function App() {
             return true;
         });
     }, [calendarSessions, filters, childrenList, therapistsList]);
-
-    const timetableTherapists = React.useMemo(() => {
-        const activeTherapists = therapistsList.filter((therapist) => (therapist.status || 'active') !== 'deleted');
-        if (filters.therapist === 'All Therapists') return activeTherapists;
-        return activeTherapists.filter((therapist) => therapist.name === filters.therapist);
-    }, [filters.therapist, therapistsList]);
-
-    const timetableInitialDate = React.useMemo(
-        () => selectedDate || new Date(currentYear, currentMonth, 1),
-        [selectedDate, currentYear, currentMonth]
-    );
 
     // New session form state
     const [newSession, setNewSession] = useState({
@@ -779,19 +761,6 @@ function App() {
 
                     {/* Calendar Grid */}
                     <div className="flex-1 overflow-auto p-4 sm:p-6 flex flex-col">
-                        <div className="mb-6">
-                            <TherapistWeeklyScheduleTable
-                                title={`Jadwal Terapi ${new Date(currentYear, currentMonth, 1).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}`}
-                                subtitle="Tabel mingguan terhubung ke sesi anak, jadwal kerja terapis, cuti, dan jadwal off center."
-                                sessions={filteredSessions}
-                                therapists={timetableTherapists}
-                                childrenList={childrenList}
-                                leaveRequests={leaveRequests}
-                                centerClosures={centerClosures}
-                                initialDate={timetableInitialDate}
-                                onSelectSession={openEditSession}
-                            />
-                        </div>
                         <CalendarGrid
                             currentView={currentView}
                             onDateClick={handleDateClick}
