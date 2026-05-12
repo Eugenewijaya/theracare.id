@@ -3,7 +3,7 @@ import { db } from "../db/index.js";
 import { clinicSettings, therapists, therapySessions } from "../db/schema.js";
 import { generateId } from "../utils/id-generators.js";
 import { notificationService } from "./notification.service.js";
-import { evaluateTherapistSlot, getAvailableTherapistsForSlot } from "./scheduling-availability.service.js";
+import { evaluateSessionSlot, evaluateTherapistSlot, getAvailableTherapistsForSlot } from "./scheduling-availability.service.js";
 
 const SUBSTITUTE_REQUESTS_KEY = "substituteTherapistRequests";
 
@@ -11,6 +11,7 @@ type SubstituteRequestStatus = "pending_primary" | "approved" | "declined";
 
 type SubstituteRequest = {
   id: string;
+  requestKind?: "substitute" | "session_update";
   sessionId: string;
   childId: string;
   childName: string;
@@ -26,6 +27,7 @@ type SubstituteRequest = {
   substituteTherapistUserId?: string;
   substituteTherapistName: string;
   suggestedSubstituteId?: string;
+  proposedUpdates?: Record<string, unknown>;
   responseNote?: string;
   status: SubstituteRequestStatus;
   createdBy?: string;
@@ -138,6 +140,7 @@ export const substituteRequestService = {
 
     const request: SubstituteRequest = {
       id: generateId("SUB"),
+      requestKind: "substitute",
       sessionId: session.id,
       childId: session.childId,
       childName: session.child?.name || session.childId,
@@ -175,6 +178,63 @@ export const substituteRequestService = {
     return enrichRequest(request);
   },
 
+  async createSessionUpdateByAdmin(data: { sessionId: string; updates: Record<string, unknown>; note?: string }, adminUserId?: string) {
+    const session = await db.query.therapySessions.findFirst({
+      where: eq(therapySessions.id, data.sessionId),
+      with: {
+        therapist: { with: { user: true } },
+        child: true,
+      },
+    });
+    if (!session) throw new Error("Sesi tidak ditemukan");
+    const allowedUpdates = Object.fromEntries(
+      Object.entries(data.updates || {}).filter(([key, value]) => (
+        ["date", "startTime", "duration", "focus", "roomId"].includes(key) && value !== undefined
+      ))
+    );
+    if (Object.keys(allowedUpdates).length === 0) throw new Error("Tidak ada perubahan jadwal/program yang valid");
+
+    const request: SubstituteRequest = {
+      id: generateId("SCH"),
+      requestKind: "session_update",
+      sessionId: session.id,
+      childId: session.childId,
+      childName: session.child?.name || session.childId,
+      date: session.date,
+      startTime: session.startTime,
+      focus: session.focus || "",
+      leaveType: "schedule_update",
+      note: (data.note || "").trim(),
+      originalTherapistId: session.therapistId,
+      originalTherapistUserId: session.therapist?.userId,
+      originalTherapistName: session.therapist?.user?.name || session.therapistId,
+      substituteTherapistId: session.therapistId,
+      substituteTherapistUserId: session.therapist?.userId,
+      substituteTherapistName: session.therapist?.user?.name || session.therapistId,
+      proposedUpdates: allowedUpdates,
+      status: "pending_primary",
+      createdBy: adminUserId,
+      createdAt: new Date().toISOString(),
+    };
+
+    const requests = await readRequests();
+    await writeRequests([request, ...requests]);
+
+    if (request.originalTherapistUserId) {
+      await notificationService.create({
+        type: "schedule_change_confirmation",
+        icon: "rule",
+        title: "Konfirmasi perubahan jadwal/program",
+        message: `Admin meminta persetujuan perubahan sesi ${request.childName} pada ${request.date} ${request.startTime}.`,
+        targetRole: "therapist",
+        targetUserId: request.originalTherapistUserId,
+        relatedId: request.id,
+      });
+    }
+
+    return enrichRequest(request);
+  },
+
   async respondAsPrimaryTherapist(id: string, therapistId: string, data: {
     decision: "approve" | "decline";
     suggestedSubstituteId?: string;
@@ -195,6 +255,64 @@ export const substituteRequestService = {
     const responseNote = (data.responseNote || "").trim();
 
     if (data.decision === "approve") {
+      if (current.requestKind === "session_update") {
+        const session = await db.query.therapySessions.findFirst({ where: eq(therapySessions.id, current.sessionId) });
+        if (!session) throw new Error("Sesi tidak ditemukan");
+        const updates = current.proposedUpdates || {};
+        const next = {
+          ...session,
+          ...updates,
+          therapistId: session.therapistId,
+          childId: session.childId,
+        };
+        if (["date", "startTime", "duration", "roomId"].some((key) => Object.prototype.hasOwnProperty.call(updates, key))) {
+          const availability = await evaluateSessionSlot({
+            therapistId: next.therapistId,
+            childId: next.childId,
+            roomId: (next.roomId as string | null) || undefined,
+            date: next.date,
+            startTime: next.startTime,
+            duration: next.duration || undefined,
+          }, current.sessionId);
+          if (availability.status !== "available") {
+            throw new Error(availability.reason || "Perubahan jadwal bentrok atau di luar jam operasional");
+          }
+        }
+        const existingNotes = String(session.notes || "").trim();
+        const approvalLine = `[${now}] Terapis utama menyetujui perubahan jadwal/program. ${responseNote}`.trim();
+        await db.update(therapySessions)
+          .set({
+            ...(typeof updates.date === "string" ? { date: updates.date } : {}),
+            ...(typeof updates.startTime === "string" ? { startTime: updates.startTime } : {}),
+            ...(typeof updates.duration === "string" ? { duration: updates.duration } : {}),
+            ...(typeof updates.focus === "string" ? { focus: updates.focus } : {}),
+            ...(typeof updates.roomId === "string" ? { roomId: updates.roomId } : {}),
+            notes: existingNotes ? `${existingNotes}\n${approvalLine}` : approvalLine,
+          })
+          .where(eq(therapySessions.id, current.sessionId));
+
+        const approvedRequest = { ...current, status: "approved" as const, responseNote, respondedAt: now };
+        requests[index] = approvedRequest;
+        await writeRequests(requests);
+
+        await notificationService.create({
+          type: "schedule_change_result",
+          icon: "rule",
+          title: "Perubahan jadwal/program disetujui",
+          message: `${current.originalTherapistName} menyetujui perubahan sesi ${current.childName}.`,
+          targetRole: "admin",
+          relatedId: current.id,
+        });
+        await notifyParentIfAvailable(
+          current.sessionId,
+          "Jadwal terapi diperbarui",
+          `Jadwal/program sesi ${current.childName} pada ${current.date} ${current.startTime} sudah diperbarui setelah konfirmasi terapis.`,
+          current.id,
+        );
+
+        return enrichRequest(approvedRequest);
+      }
+
       const replacementLine = `[${now}] Terapis utama menyetujui pergantian ke ${current.substituteTherapistName}. ${responseNote}`.trim();
       const session = await db.query.therapySessions.findFirst({ where: eq(therapySessions.id, current.sessionId) });
       const existingNotes = String(session?.notes || "").trim();

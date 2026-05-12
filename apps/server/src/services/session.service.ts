@@ -2,7 +2,9 @@ import { db } from "../db/index.js";
 import { reports, rescheduleRequests, sessionRatings, therapySessions } from "../db/schema.js";
 import { eq, and, gte, sql } from "drizzle-orm";
 import { generateId } from "../utils/id-generators.js";
+import { httpError } from "../utils/http-error.js";
 import { attachChildPhotoUrl, getChildPhotoUrlMap } from "./child.service.js";
+import { evaluateSessionSlot } from "./scheduling-availability.service.js";
 
 type TherapySessionInsert = typeof therapySessions.$inferInsert;
 
@@ -28,6 +30,24 @@ async function enrichSessionChildren<T extends { child?: any }>(sessions: T[]) {
     ...session,
     child: attachChildPhotoUrl(session.child, photoMap),
   }));
+}
+
+async function assertSessionAvailable(
+  values: Pick<TherapySessionInsert, "therapistId" | "childId" | "date" | "startTime"> & Partial<Pick<TherapySessionInsert, "roomId" | "duration">>,
+  excludeSessionId?: string,
+) {
+  const availability = await evaluateSessionSlot({
+    therapistId: values.therapistId,
+    childId: values.childId,
+    roomId: values.roomId,
+    date: values.date,
+    startTime: values.startTime,
+    duration: values.duration,
+  }, excludeSessionId);
+
+  if (availability.status !== "available") {
+    throw httpError(409, availability.reason || "Jadwal bentrok atau berada di luar jam operasional.", availability);
+  }
 }
 
 export const sessionService = {
@@ -96,6 +116,7 @@ export const sessionService = {
       ...pickSessionValues(data),
       status: "upcoming",
     };
+    await assertSessionAvailable(values);
     const [session] = await db.insert(therapySessions).values(values).returning();
     return session;
   },
@@ -113,6 +134,19 @@ export const sessionService = {
       ...pickSessionValues(s),
       status: "upcoming" as const,
     }));
+    const localKeys = new Set<string>();
+    for (const value of values) {
+      const therapistKey = `therapist:${value.therapistId}:${value.date}:${value.startTime}`;
+      const childKey = `child:${value.childId}:${value.date}:${value.startTime}`;
+      const roomKey = value.roomId ? `room:${value.roomId}:${value.date}:${value.startTime}` : "";
+      if (localKeys.has(therapistKey) || localKeys.has(childKey) || (roomKey && localKeys.has(roomKey))) {
+        throw httpError(409, "Jadwal massal memiliki slot yang duplikat untuk terapis, anak, atau ruangan.");
+      }
+      localKeys.add(therapistKey);
+      localKeys.add(childKey);
+      if (roomKey) localKeys.add(roomKey);
+      await assertSessionAvailable(value);
+    }
     return db.insert(therapySessions).values(values).returning();
   },
 
@@ -151,6 +185,12 @@ export const sessionService = {
   }>) {
     const values: any = pickSessionValues(updates);
     if (Object.keys(values).length === 0) return this.getById(id);
+    const existing = await db.query.therapySessions.findFirst({ where: eq(therapySessions.id, id) });
+    if (!existing) return null;
+    const next = { ...existing, ...values };
+    if (["therapistId", "childId", "roomId", "date", "startTime", "duration"].some((key) => key in values)) {
+      await assertSessionAvailable(next, id);
+    }
 
     const [updated] = await db.update(therapySessions)
       .set(values)

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authApi, sessionsApi } from '../../shared/api/client';
 import PortalProfileMenu from '../../shared/ui/PortalProfileMenu';
+import { clearTherapistUser, readTherapistUser } from '../../shared/sessionIdentity';
 
 const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -32,12 +33,7 @@ function calculateEndTime(startTime, durationStr) {
 }
 
 function getStoredTherapist() {
-    try {
-        const saved = sessionStorage.getItem('therapist_user') || localStorage.getItem('therapist_user');
-        return saved ? JSON.parse(saved) : null;
-    } catch {
-        return null;
-    }
+    return readTherapistUser();
 }
 
 function getDurationSeconds(session) {
@@ -171,8 +167,7 @@ function App({ onLogout }) {
         try {
             await authApi.signOut();
         } catch {}
-        sessionStorage.removeItem('therapist_user');
-        localStorage.removeItem('therapist_user');
+        clearTherapistUser();
         window.dispatchEvent(new CustomEvent('theracare-auth-logout'));
         navigate('/login', { replace: true });
     };
@@ -206,7 +201,7 @@ function App({ onLogout }) {
 
     return (
         <>
-            <main className="flex-1 h-screen overflow-y-auto flex flex-col relative">
+            <main className="relative flex min-h-full flex-1 flex-col">
                 {/* Header */}
                 <header className="h-16 sm:h-20 bg-white/90 dark:bg-slate-900/90 backdrop-blur border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-4 sm:px-10 sticky top-0 z-20 shrink-0">
                     <h1 className="text-xl sm:text-2xl font-bold">My Schedule</h1>

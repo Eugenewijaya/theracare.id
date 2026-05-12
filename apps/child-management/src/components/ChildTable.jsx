@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import EditChildModal from './EditChildModal';
 import { parentsApi } from '../../../shared/api/client';
+import { notifyDialog } from '../../../shared/ui/confirmDialog';
 
 const programColors = {
     emerald: 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400',
@@ -32,7 +33,7 @@ const ChildTable = ({ children, onDelete }) => {
 
     const handleContactParent = async (child) => {
         if (!child.parentId) {
-            alert('Parent ID not found for this child.');
+            await notifyDialog({ tone: 'warning', title: 'Parent belum terhubung', message: 'Parent ID tidak ditemukan untuk anak ini.' });
             return;
         }
         try {
@@ -43,11 +44,11 @@ const ChildTable = ({ children, onDelete }) => {
                 if (phone.startsWith('0')) phone = '62' + phone.substring(1);
                 window.open(`https://wa.me/${phone}`, '_blank');
             } else {
-                alert('Parent phone number not found.');
+                await notifyDialog({ tone: 'warning', title: 'Nomor orang tua belum ada', message: 'Nomor HP parent belum tersimpan di database.' });
             }
         } catch (e) {
             console.error('Failed to get parent info', e);
-            alert('Failed to get parent info.');
+            await notifyDialog({ tone: 'danger', icon: 'error', title: 'Data parent gagal dimuat', message: 'Gagal mengambil informasi parent.' });
         }
     };
 
@@ -56,15 +57,15 @@ const ChildTable = ({ children, onDelete }) => {
             {editingChild && <EditChildModal child={editingChild} onClose={() => setEditingChild(null)} />}
         <section className="rounded-xl bg-white dark:bg-slate-900 shadow-sm border border-slate-100 dark:border-slate-800 overflow-hidden mb-10">
             <div className="hidden w-full overflow-x-auto xl:block">
-                <table className="w-full min-w-[1300px] table-fixed text-left border-collapse">
+                <table className="w-full min-w-[1420px] table-fixed text-left border-collapse">
                     <colgroup>
-                        <col className="w-[230px]" />
-                        <col className="w-[90px]" />
-                        <col className="w-[170px]" />
+                        <col className="w-[260px]" />
+                        <col className="w-[110px]" />
                         <col className="w-[190px]" />
-                        <col className="w-[280px]" />
-                        <col className="w-[120px]" />
-                        <col className="w-[190px]" />
+                        <col className="w-[220px]" />
+                        <col className="w-[300px]" />
+                        <col className="w-[130px]" />
+                        <col className="w-[210px]" />
                     </colgroup>
                     <thead>
                         <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
@@ -92,7 +93,7 @@ const ChildTable = ({ children, onDelete }) => {
                                             </div>
                                         )}
                                         <div className="min-w-0">
-                                            <button type="button" onClick={() => setEditingChild(child)} className="block text-left text-sm font-bold leading-snug text-slate-900 dark:text-slate-100 group-hover:text-primary transition-colors break-words">
+                                            <button type="button" onClick={() => setEditingChild(child)} className="block max-w-full truncate text-left text-sm font-bold leading-snug text-slate-900 dark:text-slate-100 group-hover:text-primary transition-colors" title={child.name}>
                                                 {child.name}
                                             </button>
                                             <p className="text-xs text-slate-500 font-mono tracking-wide break-all">NITA: {child.id}</p>
@@ -116,7 +117,7 @@ const ChildTable = ({ children, onDelete }) => {
                                         ) : (
                                             <div className="w-6 h-6 shrink-0 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-[10px] font-bold text-slate-500">{child.therapistInitials}</div>
                                         )}
-                                        <span className="min-w-0 text-sm text-slate-700 dark:text-slate-300 break-words">{child.therapist}</span>
+                                        <span className="min-w-0 truncate text-sm text-slate-700 dark:text-slate-300" title={child.therapist}>{child.therapist}</span>
                                     </div>
                                 </td>
                                 <td className="px-5 py-4 align-middle">

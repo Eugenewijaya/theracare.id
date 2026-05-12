@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { childrenApi, meetingsApi, sessionsApi, therapistsApi } from '../../shared/api/client';
+import { readTherapistUser } from '../../shared/sessionIdentity';
 
 const MEETING_TYPES = ['In-person', 'Video Call', 'Phone Call'];
 const OBJECTIVES = ['Monthly Review', 'Quarterly Evaluation', 'Incident Follow-up', 'Goal Setting'];
@@ -24,12 +25,7 @@ function formatDate(date) {
 }
 
 function readStoredTherapist() {
-    try {
-        const saved = sessionStorage.getItem('therapist_user') || localStorage.getItem('therapist_user');
-        return saved ? JSON.parse(saved) : null;
-    } catch {
-        return null;
-    }
+    return readTherapistUser();
 }
 
 export default function App({ mode = 'therapist' }) {

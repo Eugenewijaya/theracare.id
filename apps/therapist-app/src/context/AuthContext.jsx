@@ -1,34 +1,19 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { authApi, therapistsApi } from '../../../shared/api/client';
+import { clearTherapistUser, readTherapistUser, storeTherapistUser } from '../../../shared/sessionIdentity';
 
 const AuthContext = createContext(null);
-const STORAGE_KEY = 'therapist_user';
 
 function readStoredUser() {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY) || sessionStorage.getItem(STORAGE_KEY);
-    return saved ? JSON.parse(saved) : null;
-  } catch {
-    return null;
-  }
+  return readTherapistUser();
 }
 
 function storeUser(userData, remember = true) {
-  try {
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(userData));
-    if (remember) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(userData));
-    } else {
-      localStorage.removeItem(STORAGE_KEY);
-    }
-  } catch {}
+  storeTherapistUser(userData, remember);
 }
 
 function clearStoredUser() {
-  try {
-    localStorage.removeItem(STORAGE_KEY);
-    sessionStorage.removeItem(STORAGE_KEY);
-  } catch {}
+  clearTherapistUser();
 }
 
 export function AuthProvider({ children }) {

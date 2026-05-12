@@ -58,5 +58,21 @@ export async function ensureProductionSchema() {
     CREATE INDEX IF NOT EXISTS therapy_periods_program_id_idx ON therapy_periods(program_id);
     CREATE INDEX IF NOT EXISTS therapy_sessions_therapy_period_id_idx ON therapy_sessions(therapy_period_id);
     CREATE INDEX IF NOT EXISTS reports_therapy_period_id_idx ON reports(therapy_period_id);
+
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id text PRIMARY KEY,
+      actor_user_id text REFERENCES "user"(id),
+      actor_role text,
+      action text NOT NULL,
+      entity_type text NOT NULL,
+      entity_id text,
+      summary text NOT NULL,
+      metadata jsonb,
+      created_at timestamp NOT NULL DEFAULT now()
+    );
+
+    CREATE INDEX IF NOT EXISTS audit_logs_created_at_idx ON audit_logs(created_at);
+    CREATE INDEX IF NOT EXISTS audit_logs_entity_idx ON audit_logs(entity_type, entity_id);
+    CREATE INDEX IF NOT EXISTS audit_logs_actor_user_id_idx ON audit_logs(actor_user_id);
   `);
 }

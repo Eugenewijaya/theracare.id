@@ -1,14 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { childrenApi, sessionsApi } from '../../../shared/api/client';
-
-function readParentUser() {
-    try {
-        const saved = sessionStorage.getItem('parent_user') || localStorage.getItem('parent_user');
-        return saved ? JSON.parse(saved) : null;
-    } catch {
-        return null;
-    }
-}
+import { readParentUser } from '../../../shared/sessionIdentity';
 
 function getInitials(name = '') {
     const parts = String(name || 'CH').split(' ').filter(Boolean);
@@ -189,7 +181,7 @@ export default function ProgressSummary() {
         : [4, 4, 4, 4, 4, 4];
 
     return (
-        <div className="flex h-full flex-col bg-slate-50/50 dark:bg-slate-900">
+        <div className="flex min-h-full flex-col bg-slate-50/50 dark:bg-slate-900">
             <header className="shrink-0 border-b border-slate-200 bg-white px-4 py-5 dark:border-slate-700 dark:bg-slate-800 sm:px-8">
                 <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
                     <div className="flex items-start gap-3">
@@ -212,7 +204,7 @@ export default function ProgressSummary() {
                 </div>
             </header>
 
-            <main className="flex-1 overflow-y-auto p-4 md:p-8">
+            <main className="flex-1 p-4 md:p-8">
                 <div className="mx-auto flex max-w-6xl flex-col gap-6">
                     {error && (
                         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { childrenApi, sessionsApi } from '../../../shared/api/client';
 import { uploadImageFile } from '../../../shared/uploadImage';
+import { readParentUser } from '../../../shared/sessionIdentity';
 
 export default function ChildProfile() {
     const [child, setChild] = useState(null);
@@ -11,9 +12,8 @@ export default function ChildProfile() {
 
     useEffect(() => {
         const loadProfile = async () => {
-            const saved = sessionStorage.getItem('parent_user');
-            if (!saved) return;
-            const user = JSON.parse(saved);
+            const user = readParentUser();
+            if (!user) return;
             const childId = user.childId;
             const parentId = user.parentId;
             if (!childId && !parentId) return;
@@ -83,7 +83,7 @@ export default function ChildProfile() {
     };
 
     return (
-        <div className="flex flex-col h-full bg-slate-50/50 dark:bg-slate-900">
+        <div className="flex min-h-full flex-col bg-slate-50/50 dark:bg-slate-900">
             {/* Minimal Header */}
             <header className="flex items-center gap-3 sm:gap-4 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-4 sm:px-8 py-4 sm:py-5">
                 <span className="material-symbols-outlined text-3xl text-sky-500">account_circle</span>
@@ -93,7 +93,7 @@ export default function ChildProfile() {
                 </div>
             </header>
 
-            <main className="flex-1 overflow-y-auto p-4 md:p-8">
+            <main className="flex-1 p-4 md:p-8">
                 <div className="max-w-5xl mx-auto flex flex-col gap-6">
 
                     {/* Top Identity Card */}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { authApi, childrenApi, adminApi } from '../../../shared/api/client';
+import { authApi, childrenApi, notificationsApi } from '../../../shared/api/client';
+import { clearParentUser, readParentUser, storeParentUser } from '../../../shared/sessionIdentity';
 import PortalProfileMenu from '../../../shared/ui/PortalProfileMenu';
 
 const Header = ({ title = "Dashboard", onLogout }) => {
@@ -8,7 +9,6 @@ const Header = ({ title = "Dashboard", onLogout }) => {
     const [activeChildId, setActiveChildId] = useState('');
     const [showNotif, setShowNotif]         = useState(false);
     const [notifications, setNotifications] = useState([]);
-    const [readIds, setReadIds]             = useState([]);
     const [parentUser, setParentUser]       = useState(null);
 
     const navigate    = useNavigate();
@@ -16,9 +16,8 @@ const Header = ({ title = "Dashboard", onLogout }) => {
 
     useEffect(() => {
         const load = async () => {
-            const saved = sessionStorage.getItem('parent_user');
-            if (!saved) return;
-            const user = JSON.parse(saved);
+            const user = readParentUser();
+            if (!user) return;
             setParentUser(user);
 
             const parentId = user.parentId;
@@ -32,15 +31,17 @@ const Header = ({ title = "Dashboard", onLogout }) => {
             }
 
             try {
-                const res = await adminApi.getAnnouncementsForRole('parent');
-                const anns = (res.data?.data || []).slice(0, 5);
-                setNotifications(anns);
+                const res = await notificationsApi.getAll();
+                setNotifications((res.data?.data || []).slice(0, 8));
             } catch(e) {}
-            
-            const read = JSON.parse(sessionStorage.getItem('read_notifs') || '[]');
-            setReadIds(read);
         };
         load();
+        window.addEventListener('notificationsUpdated', load);
+        const interval = window.setInterval(load, 30000);
+        return () => {
+            window.clearInterval(interval);
+            window.removeEventListener('notificationsUpdated', load);
+        };
     }, []);
 
     // Close dropdowns on outside click
@@ -54,29 +55,27 @@ const Header = ({ title = "Dashboard", onLogout }) => {
         return () => document.removeEventListener('mousedown', handleOutsideClick);
     }, []);
 
-    const markRead = (id) => {
-        const newRead = [...readIds, id];
-        setReadIds(newRead);
-        sessionStorage.setItem('read_notifs', JSON.stringify(newRead));
+    const markRead = async (id) => {
+        setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
+        await notificationsApi.markRead(id);
+        window.dispatchEvent(new Event('notificationsUpdated'));
     };
 
-    const markAllRead = () => {
-        const allIds  = notifications.map(n => n.id);
-        const newRead = [...new Set([...readIds, ...allIds])];
-        setReadIds(newRead);
-        sessionStorage.setItem('read_notifs', JSON.stringify(newRead));
+    const markAllRead = async () => {
+        setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+        await notificationsApi.markAllRead();
+        window.dispatchEvent(new Event('notificationsUpdated'));
     };
 
     const handleChildChange = (e) => {
         const childId = e.target.value;
-        const saved   = sessionStorage.getItem('parent_user');
-        if (saved) {
-            const user     = JSON.parse(saved);
+        const user = readParentUser();
+        if (user) {
             const selected = children.find(c => c.nita === childId);
             if (selected) {
                 user.childId   = selected.nita;
                 user.childName = selected.name;
-                sessionStorage.setItem('parent_user', JSON.stringify(user));
+                storeParentUser(user, !!localStorage.getItem('parent_user'));
                 window.location.reload(); // simple way to refetch dashboard
             }
         }
@@ -90,14 +89,12 @@ const Header = ({ title = "Dashboard", onLogout }) => {
         try {
             await authApi.signOut();
         } catch {}
-        sessionStorage.removeItem('parent_user');
-        localStorage.removeItem('parent_user');
-        sessionStorage.removeItem('read_notifs');
+        clearParentUser();
         window.dispatchEvent(new CustomEvent('theracare-auth-logout'));
         navigate('/login', { replace: true });
     };
 
-    const unreadCount = notifications.filter(n => !readIds.includes(n.id)).length;
+    const unreadCount = notifications.filter(n => !n.isRead).length;
 
     return (
         <header className="flex flex-col sm:flex-row items-center justify-between border-b border-border-light dark:border-border-dark bg-surface-light dark:bg-surface-dark px-6 py-4 flex-shrink-0 gap-4 mb-4">
@@ -175,7 +172,7 @@ const Header = ({ title = "Dashboard", onLogout }) => {
                                             <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">Belum ada notifikasi</p>
                                         </div>
                                     ) : notifications.map(n => {
-                                        const isRead = readIds.includes(n.id);
+                                        const isRead = !!n.isRead;
                                         return (
                                             <div
                                                 key={n.id}
@@ -187,8 +184,9 @@ const Header = ({ title = "Dashboard", onLogout }) => {
                                                     <p className={`text-xs leading-snug truncate ${isRead ? 'font-medium text-slate-600 dark:text-slate-300' : 'font-bold text-slate-900 dark:text-white'}`}>
                                                         {n.title || n.subject || 'Pengumuman Baru'}
                                                     </p>
+                                                    {n.message && <p className="mt-0.5 line-clamp-2 text-[11px] text-slate-500 dark:text-slate-400">{n.message}</p>}
                                                     <p className="text-[10px] text-slate-400 mt-0.5">
-                                                        {new Date(n.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                                        {new Date(n.createdAt || n.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
                                                     </p>
                                                 </div>
                                             </div>
@@ -201,7 +199,7 @@ const Header = ({ title = "Dashboard", onLogout }) => {
                                         onClick={() => { setShowNotif(false); navigate('/announcements'); }}
                                         className="w-full py-2 text-xs font-bold text-center text-slate-500 dark:text-slate-400 hover:text-sky-600 dark:hover:text-sky-400 transition-colors rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50"
                                     >
-                                        Lihat Semua Pengumuman →
+                                        Lihat Semua Notifikasi →
                                     </button>
                                 </div>
                             </div>

@@ -5,6 +5,7 @@ import CalendarGrid from './components/CalendarGrid';
 import Legend from './components/Legend';
 import SidePanel from './components/SidePanel';
 import { sessionsApi, childrenApi, therapistsApi, adminApi, substituteRequestsApi } from '../../shared/api/client';
+import { confirmAction } from '../../shared/ui/confirmDialog';
 
 const LEAVE_REASONS = [
     { value: 'cuti', label: 'Cuti' },
@@ -577,6 +578,74 @@ function App() {
 
     // ── Edit: save changes ─────────────────────────────────────────────
     const handleEditSave = async (sessionId, form) => {
+        const session = allSessions.find(item => item.id === sessionId) || editSession;
+        const originalTherapistName = getTherapistName(therapistsList, session?.therapistId);
+        const nextTherapistName = getTherapistName(therapistsList, form.therapistId);
+        const sensitiveChanges = [];
+        const therapistChanged = session?.therapistId !== form.therapistId;
+        if (therapistChanged) sensitiveChanges.push(`Terapis: ${originalTherapistName} ke ${nextTherapistName}`);
+        if (session?.startTime !== form.startTime) sensitiveChanges.push(`Jam: ${session?.startTime || '-'} ke ${form.startTime}`);
+        if ((session?.duration || '').replace(' mins', '') !== String(form.duration)) sensitiveChanges.push(`Durasi: ${session?.duration || '-'} ke ${form.duration} menit`);
+        if ((session?.focus || '') !== (form.program || '')) sensitiveChanges.push(`Program: ${session?.focus || '-'} ke ${form.program || '-'}`);
+        if (sensitiveChanges.length > 0) {
+            const confirmed = await confirmAction({
+                tone: 'warning',
+                icon: 'rule',
+                title: 'Konfirmasi perubahan jadwal',
+                message: therapistChanged
+                    ? 'Pergantian terapis akan dikirim sebagai permintaan konfirmasi ke terapis utama. Jadwal belum berpindah sampai disetujui.'
+                    : 'Perubahan ini akan masuk audit log dan notifikasi dikirim ke terapis utama untuk dicek.',
+                details: sensitiveChanges.join(' | '),
+                confirmText: therapistChanged ? 'Kirim konfirmasi' : 'Simpan & kirim notifikasi',
+                cancelText: 'Batal',
+            });
+            if (!confirmed) return;
+        }
+        if (therapistChanged) {
+            try {
+                const res = await substituteRequestsApi.create({
+                    sessionId,
+                    leaveType: 'cuti',
+                    substituteTherapistId: form.therapistId,
+                    note: `Admin mengajukan pergantian terapis dari ${originalTherapistName} ke ${nextTherapistName}. ${form.program !== session?.focus ? `Catatan program: ${session?.focus || '-'} ke ${form.program || '-'}.` : ''}`,
+                });
+                if (!res.ok) {
+                    showToast(res.data?.error || 'Gagal mengirim konfirmasi ke terapis utama.', 'error');
+                    return;
+                }
+                setEditSession(null);
+                showToast('Konfirmasi pergantian sudah dikirim ke terapis utama.', 'success');
+                window.dispatchEvent(new Event('notificationsUpdated'));
+                return;
+            } catch (e) {
+                showToast('Gagal mengirim konfirmasi ke terapis utama.', 'error');
+                return;
+            }
+        }
+        if (sensitiveChanges.length > 0) {
+            try {
+                const res = await substituteRequestsApi.createSessionUpdate({
+                    sessionId,
+                    updates: {
+                        focus: form.program,
+                        startTime: form.startTime,
+                        duration: `${form.duration} mins`,
+                    },
+                    note: `Admin mengajukan perubahan jadwal/program: ${sensitiveChanges.join(' | ')}`,
+                });
+                if (!res.ok) {
+                    showToast(res.data?.error || 'Gagal mengirim konfirmasi perubahan jadwal/program.', 'error');
+                    return;
+                }
+                setEditSession(null);
+                showToast('Konfirmasi perubahan jadwal/program dikirim ke terapis utama.', 'success');
+                window.dispatchEvent(new Event('notificationsUpdated'));
+                return;
+            } catch (e) {
+                showToast('Gagal mengirim konfirmasi perubahan jadwal/program.', 'error');
+                return;
+            }
+        }
         try {
             await sessionsApi.update(sessionId, {
                 therapistId: form.therapistId,
@@ -596,7 +665,14 @@ function App() {
 
     // ── Edit: delete session ───────────────────────────────────────────
     const handleEditDelete = async (sessionId) => {
-        if (!window.confirm('Yakin ingin menghapus sesi ini? Tindakan ini tidak dapat dibatalkan.')) return;
+        const confirmed = await confirmAction({
+            tone: 'danger',
+            title: 'Hapus sesi ini?',
+            message: 'Tindakan ini akan masuk audit log dan tidak bisa dibatalkan dari halaman ini.',
+            confirmText: 'Hapus sesi',
+            cancelText: 'Batal',
+        });
+        if (!confirmed) return;
         try {
             await sessionsApi.delete(sessionId);
             setEditSession(null);
@@ -610,7 +686,14 @@ function App() {
     };
 
     const handleMarkTherapistLeave = async (sessionId) => {
-        if (!window.confirm('Tandai sesi ini merah karena terapis cuti? Orang tua perlu diarahkan ke reschedule atau terapis pendamping.')) return;
+        const confirmed = await confirmAction({
+            tone: 'warning',
+            title: 'Tandai terapis off?',
+            message: 'Sesi akan ditandai merah. Pastikan orang tua diarahkan untuk reschedule atau gunakan terapis pendamping.',
+            confirmText: 'Tandai off',
+            cancelText: 'Batal',
+        });
+        if (!confirmed) return;
         try {
             await sessionsApi.updateStatus(sessionId, 'cancelled', 'Terapis cuti - sarankan reschedule atau jadwalkan dengan terapis pendamping.');
             setEditSession(null);

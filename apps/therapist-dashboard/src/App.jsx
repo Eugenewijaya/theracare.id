@@ -5,14 +5,10 @@ import TimelineList from './components/TimelineList';
 import RecentActivity from './components/RecentActivity';
 import { authApi } from '../../shared/api/client';
 import PortalProfileMenu from '../../shared/ui/PortalProfileMenu';
+import { clearTherapistUser, readTherapistUser } from '../../shared/sessionIdentity';
 
 function readStoredTherapist() {
-    try {
-        const saved = sessionStorage.getItem('therapist_user') || localStorage.getItem('therapist_user');
-        return saved ? JSON.parse(saved) : null;
-    } catch {
-        return null;
-    }
+    return readTherapistUser();
 }
 
 function App({ onLogout }) {
@@ -27,8 +23,7 @@ function App({ onLogout }) {
         try {
             await authApi.signOut();
         } catch {}
-        sessionStorage.removeItem('therapist_user');
-        localStorage.removeItem('therapist_user');
+        clearTherapistUser();
         window.dispatchEvent(new CustomEvent('theracare-auth-logout'));
         navigate('/login', { replace: true });
     };

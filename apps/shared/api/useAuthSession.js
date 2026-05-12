@@ -3,41 +3,18 @@
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { authApi } from './client.js';
-
-function getStorageKey(role) {
-  return `theracare_auth_${role || 'user'}`;
-}
+import { clearPortalUser, readPortalUser, storePortalUser } from '../sessionIdentity.js';
 
 function readStoredUser(role) {
-  const key = getStorageKey(role);
-  try {
-    const saved = localStorage.getItem(key) || sessionStorage.getItem(key);
-    return saved ? JSON.parse(saved) : null;
-  } catch {
-    return null;
-  }
+  return readPortalUser(role);
 }
 
 function storeUser(role, user, remember = true) {
-  const key = getStorageKey(role);
-  const payload = JSON.stringify(user);
-  try {
-    if (remember) {
-      localStorage.setItem(key, payload);
-      sessionStorage.removeItem(key);
-    } else {
-      sessionStorage.setItem(key, payload);
-      localStorage.removeItem(key);
-    }
-  } catch {}
+  storePortalUser(role, user, remember);
 }
 
 function clearStoredUser(role) {
-  const key = getStorageKey(role);
-  try {
-    localStorage.removeItem(key);
-    sessionStorage.removeItem(key);
-  } catch {}
+  clearPortalUser(role);
 }
 
 /**

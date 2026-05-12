@@ -233,6 +233,7 @@ export const substituteRequestsApi = {
   getAll: () => api.get('/substitute-requests'),
   getMine: () => api.get('/substitute-requests/therapist/me'),
   create: (data) => api.post('/substitute-requests', data),
+  createSessionUpdate: (data) => api.post('/substitute-requests/session-update', data),
   therapistResponse: (id, data) => api.patch(`/substitute-requests/${id}/therapist-response`, data),
 };
 
@@ -254,6 +255,16 @@ export const notificationsApi = {
   markRead: (id) => api.patch(`/notifications/${id}/read`),
   markAllRead: () => api.post('/notifications/read-all'),
   delete: (id) => api.delete(`/notifications/${id}`),
+};
+
+export const auditLogsApi = {
+  getAll: (filters = {}) => {
+    const params = new URLSearchParams();
+    if (filters.entityType) params.set('entityType', filters.entityType);
+    if (filters.entityId) params.set('entityId', filters.entityId);
+    const query = params.toString();
+    return api.get(`/audit-logs${query ? `?${query}` : ''}`);
+  },
 };
 
 export const uploadsApi = {

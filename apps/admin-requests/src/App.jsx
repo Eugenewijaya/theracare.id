@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Header from './components/Header';
 import RequestCard from './components/RequestCard';
 import { meetingsApi, rescheduleApi } from '../../shared/api/client';
+import { confirmAction } from '../../shared/ui/confirmDialog';
 
 // ── Notification Popup Component ──────────────────────────────────
 function NotificationPopup({ isOpen, message, type, onClose, onConfirm, showConfirmButtons }) {
@@ -383,7 +384,14 @@ function App() {
     };
 
     const handleDelete = async (req) => {
-        if (!window.confirm(`Hapus riwayat request ${req.name}?`)) return;
+        const confirmed = await confirmAction({
+            tone: 'danger',
+            title: 'Hapus riwayat request?',
+            message: `Riwayat request ${req.name} akan dihapus dari daftar admin.`,
+            confirmText: 'Hapus riwayat',
+            cancelText: 'Batal',
+        });
+        if (!confirmed) return;
         if (req.kind === 'meeting') await meetingsApi.delete(req.id);
         else await rescheduleApi.delete(req.id);
         await refreshData({ silent: true });

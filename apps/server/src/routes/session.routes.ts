@@ -2,6 +2,8 @@ import { Router } from "express";
 import { requireAuth, requireRole } from "../middleware/auth.middleware.js";
 import { sessionService } from "../services/session.service.js";
 import { therapistService } from "../services/therapist.service.js";
+import { auditLogService } from "../services/audit-log.service.js";
+import { notificationService } from "../services/notification.service.js";
 import { ok, created, notFound, badRequest, conflict } from "../utils/response.js";
 
 const router = Router();
@@ -57,14 +59,31 @@ router.post("/", requireAuth, requireRole("admin"), async (req, res, next) => {
   try {
     const { therapistId, childId, date, startTime } = req.body;
     if (!therapistId || !childId || !date || !startTime) return badRequest(res, "Data sesi tidak lengkap");
-    created(res, await sessionService.create(req.body), "Sesi berhasil dibuat");
+    const session = await sessionService.create(req.body);
+    await auditLogService.create({
+      actor: req.user,
+      action: "session.create",
+      entityType: "session",
+      entityId: session.id,
+      summary: `Sesi dibuat untuk ${childId} pada ${date} ${startTime}`,
+      metadata: req.body,
+    });
+    created(res, session, "Sesi berhasil dibuat");
   } catch (e) { next(e); }
 });
 
 router.post("/bulk", requireAuth, requireRole("admin"), async (req, res, next) => {
   try {
     if (!Array.isArray(req.body.sessions)) return badRequest(res, "Format data tidak valid");
-    created(res, await sessionService.createBulk(req.body.sessions), "Jadwal massal berhasil dibuat");
+    const sessions = await sessionService.createBulk(req.body.sessions);
+    await auditLogService.create({
+      actor: req.user,
+      action: "session.bulk_create",
+      entityType: "session",
+      summary: `${sessions.length} jadwal massal dibuat`,
+      metadata: { count: sessions.length },
+    });
+    created(res, sessions, "Jadwal massal berhasil dibuat");
   } catch (e) { next(e); }
 });
 
@@ -75,6 +94,14 @@ router.patch("/:id/status", requireAuth, async (req, res, next) => {
     if (access.session === null && req.user!.role !== "admin") return notFound(res);
     const result = await sessionService.updateStatus(req.params.id as string, req.body.status, req.body.cancelReason);
     if (!result) return notFound(res);
+    await auditLogService.create({
+      actor: req.user,
+      action: "session.status.update",
+      entityType: "session",
+      entityId: req.params.id as string,
+      summary: `Status sesi diubah menjadi ${req.body.status}`,
+      metadata: { status: req.body.status, cancelReason: req.body.cancelReason },
+    });
     ok(res, result);
   } catch (e) { next(e); }
 });
@@ -92,9 +119,32 @@ router.patch("/:id/notes", requireAuth, async (req, res, next) => {
 
 router.patch("/:id", requireAuth, requireRole("admin"), async (req, res, next) => {
   try {
+    const before = await sessionService.getById(req.params.id as string);
     const result = await sessionService.update(req.params.id as string, req.body);
     if (!result) return notFound(res);
-    ok(res, result);
+    const after = await sessionService.getById(req.params.id as string);
+    const sensitiveFields = ["therapistId", "childId", "roomId", "date", "startTime", "duration", "focus"];
+    const changedFields = sensitiveFields.filter((field) => Object.prototype.hasOwnProperty.call(req.body || {}, field));
+    await auditLogService.create({
+      actor: req.user,
+      action: "session.update",
+      entityType: "session",
+      entityId: req.params.id as string,
+      summary: `Sesi ${req.params.id} diperbarui`,
+      metadata: { changedFields, before: before ? { therapistId: before.therapistId, date: before.date, startTime: before.startTime, focus: before.focus } : null, requested: req.body },
+    });
+    if (before?.therapist?.userId && changedFields.length > 0) {
+      await notificationService.create({
+        type: "schedule_change_confirmation",
+        icon: "rule",
+        title: "Perubahan jadwal perlu dicek",
+        message: `Admin mengubah sesi ${before.child?.name || before.childId} pada ${before.date} ${before.startTime}. Perubahan: ${changedFields.join(", ")}. Silakan cek pembaruan jadwal dan beri respons jika tidak sesuai.`,
+        targetRole: "therapist",
+        targetUserId: before.therapist.userId,
+        relatedId: req.params.id as string,
+      });
+    }
+    ok(res, after || result);
   } catch (e) { next(e); }
 });
 
@@ -103,6 +153,14 @@ router.delete("/:id", requireAuth, requireRole("admin"), async (req, res, next) 
     const result = await sessionService.delete(req.params.id as string);
     if (!result) return notFound(res);
     if ("blocked" in result && result.blocked) return conflict(res, result.reason, result);
+    await auditLogService.create({
+      actor: req.user,
+      action: "session.delete",
+      entityType: "session",
+      entityId: req.params.id as string,
+      summary: `Sesi ${req.params.id} dihapus`,
+      metadata: {},
+    });
     ok(res, result);
   } catch (e) { next(e); }
 });

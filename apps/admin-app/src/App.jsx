@@ -6,6 +6,8 @@ import Sidebar from './components/Sidebar';
 import LoginPage from './pages/LoginPage';
 import LegalPage from '../../shared/ui/LegalPage';
 import ClinicLogoMark from '../../shared/ui/ClinicLogoMark';
+import NotificationToastHost from '../../shared/ui/NotificationToastHost';
+import FriendlyLoader from '../../shared/ui/FriendlyLoader';
 import { setClinicPortalTitle } from '../../shared/clinicSettings';
 
 const ClinicAdmin = lazy(() => import('../../clinic-admin/src/App'));
@@ -30,12 +32,7 @@ const TherapistLeaveRequests = lazy(() => import('./pages/TherapistLeaveRequests
 
 function Loading() {
   return (
-    <div className="flex items-center justify-center flex-1 h-full">
-      <div className="flex flex-col items-center gap-3">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-        <p className="text-sm text-slate-500 font-medium">Loading...</p>
-      </div>
-    </div>
+    <FriendlyLoader compact title="Sebentar ya" message="Dashboard admin sedang disiapkan." />
   );
 }
 
@@ -43,11 +40,8 @@ function ProtectedRoute({ children }) {
   const { isAuthenticated, loading } = useAuth();
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-slate-50">
-        <div className="flex flex-col items-center gap-3">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-          <p className="text-sm text-slate-500 font-medium">Memverifikasi sesi...</p>
-        </div>
+      <div className="flex h-[100dvh] items-center justify-center bg-slate-50">
+        <FriendlyLoader title="Kami cek aksesmu dulu" message="Sebentar, ruang admin akan terbuka setelah sesi aman." />
       </div>
     );
   }
@@ -91,13 +85,16 @@ function MobileTopBar({ onMenuOpen }) {
 
 function DashboardLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { user } = useAuth();
+  const navigate = useNavigate();
 
   return (
-    <div className="flex h-screen w-full overflow-hidden">
+    <div className="flex h-[100dvh] w-full overflow-hidden">
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <MobileTopBar onMenuOpen={() => setSidebarOpen(true)} />
-        <div className="flex-1 overflow-y-auto bg-background-light dark:bg-background-dark">
+        <NotificationToastHost user={user} role="admin" onOpenNotifications={() => navigate('/notifications')} />
+        <div className="min-h-0 flex-1 overflow-y-auto bg-background-light dark:bg-background-dark">
           <Suspense fallback={<Loading />}>
             <Routes>
               <Route index element={<ClinicAdmin />} />

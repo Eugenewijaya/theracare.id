@@ -2,7 +2,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { children, programs, therapists, therapyPeriods, therapyPrograms, therapySessions } from "../db/schema.js";
 import { generateId } from "../utils/id-generators.js";
-import { evaluateTherapistSlot } from "./scheduling-availability.service.js";
+import { evaluateSessionSlot } from "./scheduling-availability.service.js";
 import { notificationService } from "./notification.service.js";
 
 type TherapyPeriodInsert = typeof therapyPeriods.$inferInsert;
@@ -380,7 +380,14 @@ export const therapyPeriodService = {
         const date = toDateString(cursor);
         const key = `${date}|${rule.startTime}|${rule.therapistId}`;
         if (existingKeys.has(key)) continue;
-        const availability = await evaluateTherapistSlot(rule.therapistId!, { date, time: rule.startTime });
+        const availability = await evaluateSessionSlot({
+          therapistId: rule.therapistId!,
+          childId: period.childId,
+          roomId: rule.roomId || null,
+          date,
+          startTime: rule.startTime,
+          duration: rule.duration || "60 mins",
+        });
         if (availability.status !== "available") {
           skipped.push({ date, startTime: rule.startTime, therapistId: rule.therapistId!, reason: availability.reason });
           continue;

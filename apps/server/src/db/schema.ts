@@ -347,6 +347,18 @@ export const notificationReads = pgTable(
   (t) => [primaryKey({ columns: [t.notificationId, t.userId] })]
 );
 
+export const auditLogs = pgTable("audit_logs", {
+  id: text("id").primaryKey(),
+  actorUserId: text("actor_user_id").references(() => user.id),
+  actorRole: text("actor_role"),
+  action: text("action").notNull(),
+  entityType: text("entity_type").notNull(),
+  entityId: text("entity_id"),
+  summary: text("summary").notNull(),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 // ── Announcements ──────────────────────────────────────────────────
 
 export const announcements = pgTable("announcements", {

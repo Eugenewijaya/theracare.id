@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authApi, notificationsApi } from '../../../shared/api/client';
 import PortalProfileMenu from '../../../shared/ui/PortalProfileMenu';
+import { clearTherapistUser, readTherapistUser } from '../../../shared/sessionIdentity';
 
 // Dashboard header search: navigates to /child-progress with a ?q= param
 // so the child-progress page can pre-filter on mount.
@@ -12,12 +13,7 @@ const Header = ({ searchValue = '', onSearchChange, onLogout }) => {
     const [unreadCount, setUnreadCount] = useState(0);
 
     useEffect(() => {
-        try {
-            const saved = sessionStorage.getItem('therapist_user') || localStorage.getItem('therapist_user');
-            setCurrentUser(saved ? JSON.parse(saved) : null);
-        } catch {
-            setCurrentUser(null);
-        }
+        setCurrentUser(readTherapistUser());
     }, []);
 
     useEffect(() => {
@@ -48,8 +44,7 @@ const Header = ({ searchValue = '', onSearchChange, onLogout }) => {
         try {
             await authApi.signOut();
         } catch {}
-        sessionStorage.removeItem('therapist_user');
-        localStorage.removeItem('therapist_user');
+        clearTherapistUser();
         window.dispatchEvent(new CustomEvent('theracare-auth-logout'));
         navigate('/login', { replace: true });
     };

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { therapistsApi, adminApi, childrenApi } from '../../../shared/api/client';
+import { confirmAction, notifyDialog } from '../../../shared/ui/confirmDialog';
 
 const EditChildModal = ({ child, onClose }) => {
     const navigate = useNavigate();
@@ -40,6 +41,26 @@ const EditChildModal = ({ child, onClose }) => {
     };
 
     const handleSave = async () => {
+        const changedFields = Object.keys(formData).filter(key => String(formData[key] || '') !== String({
+            firstName: child.firstName || child.name?.split(' ')[0] || '',
+            lastName: child.lastName || child.name?.split(' ').slice(1).join(' ') || '',
+            dob: child.dob || '',
+            diagnosis: child.diagnosis || '',
+            program: child.programs?.[0]?.name || child.program || '',
+            therapistId: child.therapistId || '',
+        }[key] || ''));
+        if (changedFields.length > 0) {
+            const confirmed = await confirmAction({
+                tone: 'warning',
+                icon: 'manage_accounts',
+                title: 'Simpan perubahan profil anak?',
+                message: 'Perubahan data anak akan masuk audit log dan membuat notifikasi internal admin.',
+                details: `Field berubah: ${changedFields.join(', ')}`,
+                confirmText: 'Simpan perubahan',
+                cancelText: 'Batal',
+            });
+            if (!confirmed) return;
+        }
         setIsSaving(true);
         // Build updates
         const updates = { ...formData };
@@ -58,7 +79,12 @@ const EditChildModal = ({ child, onClose }) => {
             onClose();
         } catch (e) {
             console.error('Failed to update child', e);
-            alert('Failed to save changes.');
+            await notifyDialog({
+                tone: 'danger',
+                icon: 'error',
+                title: 'Perubahan belum tersimpan',
+                message: 'Gagal menyimpan perubahan data anak.',
+            });
         } finally {
             setIsSaving(false);
         }

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Header from './components/Header';
 import { childrenApi, sessionsApi } from '../../shared/api/client';
+import { readTherapistUser } from '../../shared/sessionIdentity';
 
 // ── Helpers ──────────────────────────────────────────────────────────
 const guessTherapyType = (focus = '') => {
@@ -21,12 +22,7 @@ const PROGRAM_COLORS = ['#30e8c9', '#facc15', '#4ade80', '#60a5fa', '#f472b6'];
 const PROGRAM_ICONS  = ['front_hand', 'psychology', 'extension', 'record_voice_over', 'directions_walk'];
 
 function readStoredTherapist() {
-    try {
-        const stored = sessionStorage.getItem('therapist_user') || localStorage.getItem('therapist_user');
-        return stored ? JSON.parse(stored) : null;
-    } catch {
-        return null;
-    }
+    return readTherapistUser();
 }
 
 function isDone(session) {

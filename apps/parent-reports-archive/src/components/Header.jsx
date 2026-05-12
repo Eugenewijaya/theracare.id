@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { authApi, childrenApi, adminApi } from '../../../shared/api/client';
+import { authApi, childrenApi, notificationsApi } from '../../../shared/api/client';
+import { clearParentUser, readParentUser, storeParentUser } from '../../../shared/sessionIdentity';
 import PortalProfileMenu from '../../../shared/ui/PortalProfileMenu';
 
 const Header = ({ title = "Reports Archive", onLogout }) => {
@@ -8,64 +9,63 @@ const Header = ({ title = "Reports Archive", onLogout }) => {
     const [activeChildId, setActiveChildId] = useState('');
     const [showNotif, setShowNotif] = useState(false);
     const [notifications, setNotifications] = useState([]);
-    const [readIds, setReadIds] = useState([]);
     const [parentUser, setParentUser] = useState(null);
     const navigate = useNavigate();
 
-    useEffect(() => {
-        const load = async () => {
-            const saved = sessionStorage.getItem('parent_user');
-            if (!saved) return;
-            const user = JSON.parse(saved);
-            setParentUser(user);
-            const parentId = user.parentId;
-            if (parentId) {
-                try {
-                    const cRes = await childrenApi.getByParent(parentId);
-                    const list = cRes.data?.data || [];
-                    setChildren(list);
-                    setActiveChildId(user.childId || list[0]?.nita || '');
-                } catch(e) {}
-            }
-            
+    const loadNotifications = async () => {
+        const user = readParentUser();
+        if (!user) return;
+        setParentUser(user);
+        const parentId = user.parentId;
+        if (parentId) {
             try {
-                const aRes = await adminApi.getAnnouncementsForRole('parent');
-                const anns = (aRes.data?.data || []).slice(0, 5);
-                setNotifications(anns);
+                const cRes = await childrenApi.getByParent(parentId);
+                const list = cRes.data?.data || [];
+                setChildren(list);
+                setActiveChildId(user.childId || list[0]?.nita || '');
             } catch(e) {}
+        }
 
-            const read = JSON.parse(sessionStorage.getItem('read_notifs') || '[]');
-            setReadIds(read);
+        try {
+            const res = await notificationsApi.getAll();
+            setNotifications((res.data?.data || []).slice(0, 8));
+        } catch(e) {}
+    };
+
+    useEffect(() => {
+        loadNotifications();
+        window.addEventListener('notificationsUpdated', loadNotifications);
+        const interval = window.setInterval(loadNotifications, 30000);
+        return () => {
+            window.clearInterval(interval);
+            window.removeEventListener('notificationsUpdated', loadNotifications);
         };
-        load();
     }, []);
 
-    const markRead = (id) => {
-        const newRead = [...readIds, id];
-        setReadIds(newRead);
-        sessionStorage.setItem('read_notifs', JSON.stringify(newRead));
+    const markRead = async (id) => {
+        setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
+        await notificationsApi.markRead(id);
+        window.dispatchEvent(new Event('notificationsUpdated'));
     };
 
-    const markAllRead = () => {
-        const allIds = notifications.map(n => n.id);
-        const newRead = [...new Set([...readIds, ...allIds])];
-        setReadIds(newRead);
-        sessionStorage.setItem('read_notifs', JSON.stringify(newRead));
+    const markAllRead = async () => {
+        setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+        await notificationsApi.markAllRead();
+        window.dispatchEvent(new Event('notificationsUpdated'));
     };
 
-    const unreadCount = notifications.filter(n => !readIds.includes(n.id)).length;
+    const unreadCount = notifications.filter(n => !n.isRead).length;
 
     const handleChildChange = (e) => {
         const childId = e.target.value;
         setActiveChildId(childId);
-        const saved = sessionStorage.getItem('parent_user');
-        if (saved) {
-            const user = JSON.parse(saved);
+        const user = readParentUser();
+        if (user) {
             const selected = children.find(c => c.nita === childId);
             if (selected) {
                 user.childId = selected.nita;
                 user.childName = selected.name;
-                sessionStorage.setItem('parent_user', JSON.stringify(user));
+                storeParentUser(user, !!localStorage.getItem('parent_user'));
                 window.dispatchEvent(new CustomEvent('parentChildSelectionChanged'));
             }
         }
@@ -79,9 +79,7 @@ const Header = ({ title = "Reports Archive", onLogout }) => {
         try {
             await authApi.signOut();
         } catch {}
-        sessionStorage.removeItem('parent_user');
-        localStorage.removeItem('parent_user');
-        sessionStorage.removeItem('read_notifs');
+        clearParentUser();
         window.dispatchEvent(new CustomEvent('theracare-auth-logout'));
         navigate('/login', { replace: true });
     };
@@ -151,14 +149,15 @@ const Header = ({ title = "Reports Archive", onLogout }) => {
                                         <div className="p-6 text-center text-slate-500 dark:text-slate-400 text-sm">Belum ada notifikasi.</div>
                                     ) : (
                                         notifications.map(n => {
-                                            const isRead = readIds.includes(n.id);
+                                            const isRead = !!n.isRead;
                                             return (
-                                                <div key={n.id} onClick={() => { markRead(n.id); setShowNotif(false); navigate('/announcements'); }} className={`p-4 border-b border-slate-100 dark:border-slate-700 last:border-b-0 cursor-pointer transition-colors ${isRead ? 'bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/50' : 'bg-sky-50/50 dark:bg-sky-900/10 hover:bg-sky-50 dark:hover:bg-sky-900/20'}`}>
+                                                <div key={n.id} onClick={async () => { await markRead(n.id); setShowNotif(false); navigate('/announcements'); }} className={`p-4 border-b border-slate-100 dark:border-slate-700 last:border-b-0 cursor-pointer transition-colors ${isRead ? 'bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/50' : 'bg-sky-50/50 dark:bg-sky-900/10 hover:bg-sky-50 dark:hover:bg-sky-900/20'}`}>
                                                     <div className="flex gap-3">
                                                         <div className={`w-2 h-2 mt-1.5 rounded-full shrink-0 ${isRead ? 'bg-transparent' : 'bg-sky-500'}`}></div>
-                                                        <div>
+                                                        <div className="min-w-0">
                                                             <p className={`text-xs mb-1 ${isRead ? 'font-medium text-slate-700 dark:text-slate-300' : 'font-bold text-slate-900 dark:text-white'}`}>{n.title || n.subject || 'Pengumuman Baru'}</p>
-                                                            <p className="text-[10px] text-slate-500 dark:text-slate-400">{new Date(n.date).toLocaleDateString('id-ID', {day: 'numeric', month: 'short'})}</p>
+                                                            {n.message && <p className="mb-1 line-clamp-2 text-[11px] text-slate-500 dark:text-slate-400">{n.message}</p>}
+                                                            <p className="text-[10px] text-slate-500 dark:text-slate-400">{new Date(n.createdAt || n.date).toLocaleDateString('id-ID', {day: 'numeric', month: 'short', year: 'numeric'})}</p>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -168,7 +167,7 @@ const Header = ({ title = "Reports Archive", onLogout }) => {
                                 </div>
                                 <div className="p-2 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-700">
                                     <button onClick={() => { setShowNotif(false); navigate('/announcements'); }} className="w-full py-2 text-xs font-bold text-center text-slate-600 dark:text-slate-400 hover:text-primary transition-colors">
-                                        Lihat Semua Pengumuman
+                                        Lihat Semua Notifikasi
                                     </button>
                                 </div>
                             </div>

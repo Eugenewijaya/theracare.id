@@ -225,8 +225,8 @@ function App() {
     return (
         <>
             <TopNavBar />
-            <div className="flex flex-1 overflow-hidden">
-                <main className="flex-1 flex flex-col overflow-y-auto bg-slate-50 dark:bg-slate-900 p-6 sm:p-8 lg:p-12 items-center">
+            <div className="flex min-h-full flex-1 overflow-hidden">
+                <main className="flex flex-1 flex-col items-center bg-slate-50 p-6 dark:bg-slate-900 sm:p-8 lg:p-12">
                     <div className="w-full max-w-4xl bg-white dark:bg-background-dark rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col">
 
                         {/* Header with Stepper */}

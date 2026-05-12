@@ -4,6 +4,8 @@ import { announcementService } from "../services/announcement.service.js";
 import { adminService } from "../services/admin.service.js";
 import { centerClosureService } from "../services/center-closure.service.js";
 import { storageService } from "../services/storage.service.js";
+import { auditLogService } from "../services/audit-log.service.js";
+import { notificationService } from "../services/notification.service.js";
 import { ok, created, notFound, badRequest, conflict } from "../utils/response.js";
 
 const router = Router();
@@ -58,13 +60,46 @@ router.get("/programs", requireAuth, async (req, res, next) => {
 router.post("/programs", requireAuth, requireRole("admin"), async (req, res, next) => {
   try {
     if (!req.body?.name) return badRequest(res, "Nama program wajib diisi");
-    created(res, await adminService.createProgram(req.body));
+    const program = await adminService.createProgram(req.body);
+    await auditLogService.create({
+      actor: req.user,
+      action: "program.create",
+      entityType: "program",
+      entityId: program.id,
+      summary: `Program layanan ${program.name} dibuat`,
+      metadata: req.body,
+    });
+    await notificationService.create({
+      type: "program_catalog_update",
+      icon: "library_books",
+      title: "Program layanan diperbarui",
+      message: `Admin menambahkan program layanan ${program.name}.`,
+      targetRole: "admin",
+      relatedId: program.id,
+    });
+    created(res, program);
   } catch (e) { next(e); }
 });
 router.patch("/programs/:id", requireAuth, requireRole("admin"), async (req, res, next) => {
   try {
     const result = await adminService.updateProgram(req.params.id as string, req.body);
     if (!result) return notFound(res);
+    await auditLogService.create({
+      actor: req.user,
+      action: "program.update",
+      entityType: "program",
+      entityId: result.id,
+      summary: `Program layanan ${result.name} diperbarui`,
+      metadata: { changedFields: Object.keys(req.body || {}), requested: req.body },
+    });
+    await notificationService.create({
+      type: "program_catalog_update",
+      icon: "library_books",
+      title: "Program layanan diperbarui",
+      message: `Admin memperbarui program layanan ${result.name}.`,
+      targetRole: "admin",
+      relatedId: result.id,
+    });
     ok(res, result);
   } catch (e) { next(e); }
 });
@@ -73,6 +108,14 @@ router.delete("/programs/:id", requireAuth, requireRole("admin"), async (req, re
     const result = await adminService.deleteProgram(req.params.id as string);
     if (!result) return notFound(res);
     if ("blocked" in result && result.blocked) return conflict(res, result.reason, result);
+    await auditLogService.create({
+      actor: req.user,
+      action: "program.delete",
+      entityType: "program",
+      entityId: req.params.id as string,
+      summary: `Program layanan ${req.params.id} dihapus`,
+      metadata: {},
+    });
     ok(res, result);
   } catch (e) { next(e); }
 });

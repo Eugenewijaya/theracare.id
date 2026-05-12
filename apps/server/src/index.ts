@@ -23,6 +23,7 @@ import leaveRequestRoutes from "./routes/leave-request.routes.js";
 import substituteRequestRoutes from "./routes/substitute-request.routes.js";
 import meetingRoutes from "./routes/meeting.routes.js";
 import notificationRoutes from "./routes/notification.routes.js";
+import auditLogRoutes from "./routes/audit-log.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 import uploadRoutes from "./routes/upload.routes.js";
 
@@ -193,6 +194,7 @@ app.use("/api/leave-requests", leaveRequestRoutes);
 app.use("/api/substitute-requests", substituteRequestRoutes);
 app.use("/api/meetings", meetingRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/audit-logs", auditLogRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/uploads", uploadRoutes);
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from './components/Header';
 import { sessionsApi, childrenApi, adminApi } from '../../shared/api/client';
+import { readParentUser } from '../../shared/sessionIdentity';
 
 // ── Helpers ────────────────────────────────────────────────────────
 const formatDate = (dateStr) => {
@@ -55,9 +56,8 @@ function App({ onLogout }) {
 
     useEffect(() => {
         const fetchData = async () => {
-            const saved = sessionStorage.getItem('parent_user');
-            if (!saved) return;
-            const user = JSON.parse(saved);
+            const user = readParentUser();
+            if (!user) return;
             setParentUser(user);
 
             const childId  = user.childId;

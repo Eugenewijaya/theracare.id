@@ -3,6 +3,7 @@ import Header from './components/Header';
 import { sessionsApi, reportsApi } from '../../shared/api/client';
 import { useClinicSettings } from '../../shared/clinicSettings';
 import { openReportPdf } from '../../shared/reportPdf';
+import { readTherapistUser } from '../../shared/sessionIdentity';
 
 // ── Shared data store helpers ──────────
 
@@ -741,7 +742,7 @@ function ReportDetail({ report, onBack }) {
 // ── Main App ─────────────────────────────────────────────────────────
 function App() {
     const [currentUser, setCurrentUser] = useState(() => {
-        try { return JSON.parse(sessionStorage.getItem('therapist_user')); } catch { return null; }
+        return readTherapistUser();
     });
     const initialDailyContext = getDailyContextFromRoute();
 
@@ -793,10 +794,10 @@ function App() {
     const childrenData = getChildrenFromSessions(sessions);
 
     return (
-        <div className="relative flex h-screen w-full flex-col overflow-hidden bg-slate-50 dark:bg-background-dark font-sans text-slate-900 dark:text-slate-100">
-            <main className="flex-1 flex flex-col overflow-hidden">
+        <div className="relative flex min-h-full w-full flex-col bg-slate-50 dark:bg-background-dark font-sans text-slate-900 dark:text-slate-100">
+            <main className="flex min-h-full flex-1 flex-col">
                 <Header />
-                <div className="flex-1 overflow-y-auto">
+                <div className="flex-1">
                     {loadingData ? (
                         <div className="flex justify-center p-10"><span className="text-slate-500">Loading data...</span></div>
                     ) : (

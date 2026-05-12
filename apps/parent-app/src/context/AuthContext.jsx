@@ -1,34 +1,19 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { authApi, parentsApi } from '../../../shared/api/client';
+import { clearParentUser, readParentUser, storeParentUser } from '../../../shared/sessionIdentity';
 
 const AuthContext = createContext(null);
-const STORAGE_KEY = 'parent_user';
 
 function readStoredUser() {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY) || sessionStorage.getItem(STORAGE_KEY);
-    return saved ? JSON.parse(saved) : null;
-  } catch {
-    return null;
-  }
+  return readParentUser();
 }
 
 function storeUser(userData, remember = true) {
-  try {
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(userData));
-    if (remember) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(userData));
-    } else {
-      localStorage.removeItem(STORAGE_KEY);
-    }
-  } catch {}
+  storeParentUser(userData, remember);
 }
 
 function clearStoredUser() {
-  try {
-    localStorage.removeItem(STORAGE_KEY);
-    sessionStorage.removeItem(STORAGE_KEY);
-  } catch {}
+  clearParentUser();
 }
 
 export function AuthProvider({ children }) {

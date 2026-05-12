@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { adminApi } from '../../shared/api/client';
+import { confirmAction } from '../../shared/ui/confirmDialog';
 
 const normalizeProgram = (program) => ({
   ...program,
@@ -125,6 +126,16 @@ function App() {
     if (editingProgram?.code && editingProgram.code !== nextCode) {
       delete nextPricing[editingProgram.code];
     }
+    const confirmed = await confirmAction({
+      tone: 'warning',
+      icon: 'library_books',
+      title: editingProgram ? 'Simpan perubahan program?' : 'Buat program baru?',
+      message: 'Perubahan program layanan akan masuk audit log dan mempengaruhi pilihan program anak.',
+      details: `${cleanedData.name} (${nextCode})`,
+      confirmText: editingProgram ? 'Simpan program' : 'Buat program',
+      cancelText: 'Batal',
+    });
+    if (!confirmed) return;
 
     try {
       let saveRes;
@@ -213,8 +224,8 @@ function App() {
           {toast.msg}
         </div>
       )}
-    <div className="flex h-screen bg-slate-50 dark:bg-slate-900 w-full overflow-hidden text-slate-900 dark:text-slate-100 font-sans">
-      <main className="flex-1 flex flex-col h-full overflow-hidden">
+    <div className="flex min-h-full bg-slate-50 dark:bg-slate-900 w-full overflow-hidden text-slate-900 dark:text-slate-100 font-sans">
+      <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {/* Header */}
         <header className="px-4 sm:px-8 py-4 sm:py-6 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between shrink-0">
           <div>

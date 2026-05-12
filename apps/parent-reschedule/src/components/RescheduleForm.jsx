@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { sessionsApi, rescheduleApi, adminApi } from '../../../shared/api/client';
+import { readParentUser } from '../../../shared/sessionIdentity';
 
 const formatDate = (dateStr) => {
     if (!dateStr) return '';
@@ -155,9 +156,8 @@ const RescheduleForm = () => {
 
     useEffect(() => {
         const load = async () => {
-            const saved = sessionStorage.getItem('parent_user');
-            if (!saved) return;
-            const user  = JSON.parse(saved);
+            const user = readParentUser();
+            if (!user) return;
             const childId = getPrimaryChildId(user);
             if (!childId) return;
 
@@ -197,8 +197,7 @@ const RescheduleForm = () => {
         if (pendingRequest) { setError('Masih ada pengajuan yang sedang diproses. Tunggu keputusan admin terlebih dahulu.'); return; }
         setError('');
 
-        const saved  = sessionStorage.getItem('parent_user');
-        const user   = saved ? JSON.parse(saved) : {};
+        const user = readParentUser() || {};
         const childId = getPrimaryChildId(user);
         if (!childId) { setError('Data anak tidak ditemukan untuk akun orang tua ini.'); return; }
         const proposedSlots = slots.filter(s => s.date && s.time);

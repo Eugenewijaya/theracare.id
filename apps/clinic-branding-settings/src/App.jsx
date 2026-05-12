@@ -3,6 +3,7 @@ import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import { adminApi } from '../../shared/api/client';
 import { DEFAULT_CLINIC_SETTINGS, useClinicSettings } from '../../shared/clinicSettings';
+import { confirmAction } from '../../shared/ui/confirmDialog';
 
 const ASSET_ACCEPT = 'image/png,image/jpeg,image/webp,image/svg+xml,image/gif,image/x-icon,image/vnd.microsoft.icon,.ico';
 const MAX_ASSET_SIZE = 5 * 1024 * 1024;
@@ -278,7 +279,13 @@ function App() {
     };
 
     const handleResetDefault = async () => {
-        const confirmed = window.confirm('Atur semula branding ke bawaan Special Needs Center? Logo, favicon, foto, nama, warna, dan informasi publik akan dikembalikan.');
+        const confirmed = await confirmAction({
+            tone: 'warning',
+            title: 'Atur semula branding?',
+            message: 'Logo, favicon, foto, nama, warna, dan informasi publik akan dikembalikan ke bawaan Special Needs Center.',
+            confirmText: 'Atur semula',
+            cancelText: 'Batal',
+        });
         if (!confirmed) return;
         try {
             const next = await save(DEFAULT_CLINIC_SETTINGS);
@@ -330,7 +337,13 @@ function App() {
             showToast('Pilih minimal satu tanggal merah untuk diterapkan.', 'error');
             return;
         }
-        const confirmed = window.confirm(`Terapkan ${selected.length} tanggal merah sebagai jadwal off center dan kirim notifikasi ke semua role?`);
+        const confirmed = await confirmAction({
+            tone: 'warning',
+            title: 'Terapkan tanggal merah?',
+            message: `${selected.length} tanggal merah akan menjadi jadwal off center dan notifikasi dikirim ke semua role.`,
+            confirmText: 'Terapkan',
+            cancelText: 'Batal',
+        });
         if (!confirmed) return;
 
         try {
@@ -365,6 +378,14 @@ function App() {
             showToast('Judul jadwal off wajib diisi.', 'error');
             return;
         }
+        const confirmed = await confirmAction({
+            tone: 'warning',
+            title: type === 'temporary_closure' ? 'Aktifkan tutup sementara?' : 'Tambah jadwal off center?',
+            message: `${source.title} akan disimpan dan notifikasi dikirim ke semua role.`,
+            confirmText: 'Simpan & kirim notif',
+            cancelText: 'Batal',
+        });
+        if (!confirmed) return;
 
         try {
             setClosureLoading(true);
@@ -393,9 +414,15 @@ function App() {
 
     const handleToggleClosure = async (closure) => {
         const nextActive = !closure.isActive;
-        const confirmed = window.confirm(nextActive
-            ? `Aktifkan kembali jadwal off "${closure.title}"?`
-            : `Nonaktifkan jadwal off "${closure.title}" agar center kembali aktif pada tanggal tersebut?`);
+        const confirmed = await confirmAction({
+            tone: nextActive ? 'warning' : 'info',
+            title: nextActive ? 'Aktifkan jadwal off?' : 'Nonaktifkan jadwal off?',
+            message: nextActive
+                ? `Aktifkan kembali jadwal off "${closure.title}"?`
+                : `Nonaktifkan jadwal off "${closure.title}" agar center kembali aktif pada tanggal tersebut?`,
+            confirmText: nextActive ? 'Aktifkan' : 'Nonaktifkan',
+            cancelText: 'Batal',
+        });
         if (!confirmed) return;
 
         try {
@@ -416,7 +443,13 @@ function App() {
     };
 
     const handleDeleteClosure = async (closure) => {
-        const confirmed = window.confirm(`Hapus jadwal off "${closure.title}"?`);
+        const confirmed = await confirmAction({
+            tone: 'danger',
+            title: 'Hapus jadwal off?',
+            message: `Jadwal off "${closure.title}" akan dihapus.`,
+            confirmText: 'Hapus',
+            cancelText: 'Batal',
+        });
         if (!confirmed) return;
         try {
             setClosureLoading(true);
@@ -446,7 +479,7 @@ function App() {
                 {toast.msg}
             </div>
         )}
-        <div className="flex flex-col min-h-screen relative pb-24 bg-background-light dark:bg-background-dark">
+        <div className="relative flex min-h-full flex-col bg-background-light pb-24 dark:bg-background-dark">
             <Header />
 
             <div className="flex flex-1 w-full max-w-[1200px] mx-auto pt-6 px-4 md:px-8 gap-8">

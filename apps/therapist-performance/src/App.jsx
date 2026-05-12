@@ -3,16 +3,12 @@ import Header from './components/Header';
 import TherapistProfile from './components/TherapistProfile';
 import { sessionsApi, reportsApi, therapistsApi } from '../../shared/api/client';
 import { uploadImageFile } from '../../shared/uploadImage';
+import { readTherapistUser, storeTherapistUser } from '../../shared/sessionIdentity';
 
 const MONTH_FORMATTER = new Intl.DateTimeFormat('en-US', { month: 'short' });
 
 function readStoredTherapist() {
-    try {
-        const storedUser = sessionStorage.getItem('therapist_user') || localStorage.getItem('therapist_user');
-        return storedUser ? JSON.parse(storedUser) : null;
-    } catch {
-        return null;
-    }
+    return readTherapistUser();
 }
 
 function normalizeCertification(cert, index) {
@@ -33,10 +29,7 @@ function normalizeCertifications(certifications = []) {
 }
 
 function storeTherapist(user) {
-    sessionStorage.setItem('therapist_user', JSON.stringify(user));
-    if (localStorage.getItem('therapist_user')) {
-        localStorage.setItem('therapist_user', JSON.stringify(user));
-    }
+    storeTherapistUser(user, !!localStorage.getItem('therapist_user'));
 }
 
 function formatRelativeDate(dateStr) {

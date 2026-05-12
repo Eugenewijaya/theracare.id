@@ -129,8 +129,8 @@ function App() {
           {toast.msg}
         </div>
       )}
-    <div className="flex h-screen bg-slate-50 dark:bg-slate-900 w-full overflow-hidden text-slate-900 dark:text-slate-100 font-sans">
-      <main className="flex-1 flex flex-col h-full overflow-hidden">
+    <div className="flex min-h-full bg-slate-50 dark:bg-slate-900 w-full overflow-hidden text-slate-900 dark:text-slate-100 font-sans">
+      <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {/* Header */}
         <header className="px-4 sm:px-8 py-4 sm:py-6 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between shrink-0">
           <div>
@@ -167,7 +167,7 @@ function App() {
         </div>
 
         {/* Data Table */}
-        <div className="flex-1 min-w-0 overflow-y-auto p-4 sm:p-8">
+        <div className="min-h-0 flex-1 min-w-0 overflow-y-auto p-4 sm:p-8">
           <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
             <div className="block divide-y divide-slate-100 dark:divide-slate-700/50 sm:hidden">
               {filteredRooms.length === 0 ? (

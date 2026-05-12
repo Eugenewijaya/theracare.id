@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { leaveRequestsApi } from '../../../shared/api/client';
+import { confirmAction } from '../../../shared/ui/confirmDialog';
 import {
   ADMIN_GATE_PASSWORD,
   LEAVE_REQUESTS_UNLOCK_KEY,
@@ -90,15 +91,33 @@ export default function TherapistLeaveRequestsPage() {
 
   const updateStatus = async (request, status) => {
     if (status === 'approved') {
-      const confirmed = window.confirm('Setujui pengajuan ini? Jika ada anak yang tetap hadir, lanjutkan atur terapis pengganti melalui Penjadwalan Tunggal.');
+      const confirmed = await confirmAction({
+        tone: 'warning',
+        title: 'Setujui pengajuan cuti?',
+        message: 'Jika ada anak yang tetap hadir, lanjutkan atur terapis pengganti melalui Penjadwalan Tunggal.',
+        confirmText: 'Setujui',
+        cancelText: 'Batal',
+      });
       if (!confirmed) return;
     }
     if (request.status === 'approved' && status === 'pending') {
-      const confirmed = window.confirm('Batalkan status approved dan kembalikan pengajuan ini ke Pending? Gunakan ini jika terapis batal cuti atau perlu direview ulang.');
+      const confirmed = await confirmAction({
+        tone: 'info',
+        title: 'Kembalikan ke pending?',
+        message: 'Gunakan ini jika terapis batal cuti atau perlu direview ulang.',
+        confirmText: 'Kembalikan',
+        cancelText: 'Batal',
+      });
       if (!confirmed) return;
     }
     if (request.status === 'approved' && status === 'rejected') {
-      const confirmed = window.confirm('Tandai pengajuan ini sebagai batal/tidak disetujui? Pastikan terapis terkait sudah dihubungi.');
+      const confirmed = await confirmAction({
+        tone: 'danger',
+        title: 'Tolak pengajuan ini?',
+        message: 'Pastikan terapis terkait sudah dihubungi sebelum status diubah.',
+        confirmText: 'Tolak',
+        cancelText: 'Batal',
+      });
       if (!confirmed) return;
     }
     const res = await leaveRequestsApi.updateStatus(request.id, status, reviewNotes[request.id] || '');

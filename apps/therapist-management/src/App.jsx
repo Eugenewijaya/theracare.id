@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Header from './components/Header';
 import TherapistCard from './components/TherapistCard';
 import { therapistsApi, adminApi } from '../../shared/api/client';
+import { confirmAction } from '../../shared/ui/confirmDialog';
 
 function App() {
     const navigate = useNavigate();
@@ -62,7 +63,13 @@ function App() {
 
     const handleDeleteTherapist = async (therapist) => {
         if (!therapist?.id) return;
-        const confirmed = window.confirm(`Hapus terapis ${therapist.name}? Jika sudah punya sesi/laporan, akun akan diarsipkan agar histori klinis tetap aman.`);
+        const confirmed = await confirmAction({
+            tone: 'danger',
+            title: `Hapus terapis ${therapist.name}?`,
+            message: 'Jika sudah punya sesi/laporan, akun akan diarsipkan agar histori klinis tetap aman.',
+            confirmText: 'Hapus / arsipkan',
+            cancelText: 'Batal',
+        });
         if (!confirmed) return;
 
         const res = await therapistsApi.delete(therapist.id);

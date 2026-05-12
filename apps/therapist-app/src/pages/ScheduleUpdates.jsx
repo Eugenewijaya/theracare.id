@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { rescheduleApi, notificationsApi, sessionsApi, substituteRequestsApi } from '../../../shared/api/client';
+import { readTherapistUser } from '../../../shared/sessionIdentity';
+import { confirmAction, notifyDialog } from '../../../shared/ui/confirmDialog';
 
 const formatDate = (dateStr) => {
     if (!dateStr) return '';
@@ -13,18 +15,96 @@ const formatDateTime = (dateStr) => {
     return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 };
 
+const describeProposedUpdates = (updates = {}) => {
+    const labels = {
+        date: 'Tanggal',
+        startTime: 'Jam',
+        duration: 'Durasi',
+        focus: 'Program',
+        roomId: 'Ruang',
+    };
+    const entries = Object.entries(updates)
+        .filter(([, value]) => value !== undefined && value !== null && value !== '')
+        .map(([key, value]) => `${labels[key] || key}: ${value}`);
+    return entries.length > 0 ? entries.join(', ') : 'Detail perubahan belum tersedia.';
+};
+
+const DECLINE_TEMPLATES = [
+    'Saya belum menyetujui karena terapis pengganti belum sesuai dengan kebutuhan anak.',
+    'Saya sedang perlu koordinasi ulang karena ada catatan klinis yang harus dijelaskan dulu.',
+    'Saya menyarankan terapis lain yang lebih sesuai dengan program sesi ini.',
+];
+
+function DeclineSubstituteModal({ request, suggestedSubstituteId, onSubmit, onClose }) {
+    const [reason, setReason] = useState('');
+    const canSubmit = reason.trim().length >= 8;
+
+    return (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
+            <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900" style={{ animation: 'theracareDeclineIn 180ms ease-out' }}>
+                <div className="flex items-start justify-between gap-4 border-b border-slate-100 p-5 dark:border-slate-800">
+                    <div>
+                        <h2 className="text-lg font-black text-slate-950 dark:text-white">Alasan tidak setuju</h2>
+                        <p className="mt-1 text-sm font-medium text-slate-500 dark:text-slate-400">
+                            {request.childName} - {formatDate(request.date)} pukul {request.startTime}
+                        </p>
+                    </div>
+                    <button onClick={onClose} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800">
+                        <span className="material-symbols-outlined text-[18px]">close</span>
+                    </button>
+                </div>
+                <div className="p-5">
+                    <div className="mb-3 flex flex-wrap gap-2">
+                        {DECLINE_TEMPLATES.map(template => (
+                            <button
+                                key={template}
+                                onClick={() => setReason(template)}
+                                className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] font-black text-slate-600 transition hover:border-teal-200 hover:bg-teal-50 hover:text-teal-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                            >
+                                Template
+                            </button>
+                        ))}
+                    </div>
+                    <textarea
+                        value={reason}
+                        onChange={e => setReason(e.target.value)}
+                        rows={5}
+                        placeholder="Tulis alasan jelas agar admin bisa menindaklanjuti dengan benar..."
+                        className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-900 outline-none transition focus:border-teal-400 focus:ring-4 focus:ring-teal-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                        autoFocus
+                    />
+                    {suggestedSubstituteId && (
+                        <p className="mt-2 text-xs font-semibold text-slate-500">Saran terapis pengganti ikut dikirim bersama alasan ini.</p>
+                    )}
+                </div>
+                <div className="flex flex-col-reverse gap-2 border-t border-slate-100 p-4 dark:border-slate-800 sm:flex-row sm:justify-end">
+                    <button onClick={onClose} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-black text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">Batal</button>
+                    <button
+                        onClick={() => canSubmit && onSubmit(reason.trim())}
+                        disabled={!canSubmit}
+                        className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-black text-white shadow-sm transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                        Kirim Penolakan
+                    </button>
+                </div>
+                <style>{`@keyframes theracareDeclineIn { from { opacity:0; transform:translateY(10px) scale(.97); } to { opacity:1; transform:translateY(0) scale(1); } }`}</style>
+            </div>
+        </div>
+    );
+}
+
 export default function ScheduleUpdates() {
     const [updates, setUpdates] = useState([]);
     const [substituteRequests, setSubstituteRequests] = useState([]);
     const [suggestedSubstitutes, setSuggestedSubstitutes] = useState({});
     const [respondingId, setRespondingId] = useState('');
+    const [declineRequest, setDeclineRequest] = useState(null);
     const [filter, setFilter] = useState('all'); // 'all' | 'approved' | 'rejected'
 
     useEffect(() => {
         const load = async () => {
-            const saved = sessionStorage.getItem('therapist_user') || localStorage.getItem('therapist_user');
-            if (!saved) return;
-            const user = JSON.parse(saved);
+            const user = readTherapistUser();
+            if (!user) return;
 
             try {
                 const [reqRes, notifRes, sessRes, substituteRes] = await Promise.all([
@@ -40,7 +120,7 @@ export default function ScheduleUpdates() {
                 const substituteRows = substituteRes.data?.data || [];
                 setSubstituteRequests(substituteRows.filter(item => item.status === 'pending_primary' && item.originalTherapistId === user.id));
 
-                const scheduleNotifTypes = ['schedule_change', 'new_session', 'program_enrollment', 'substitute_confirmation', 'substitute_result'];
+                const scheduleNotifTypes = ['schedule_change', 'schedule_change_confirmation', 'program_change_confirmation', 'new_session', 'program_enrollment', 'substitute_confirmation', 'substitute_result'];
                 const unreadNotifs = notifs.filter(n => scheduleNotifTypes.includes(n.type) && !n.isRead && !(n.readBy || []).includes(user.id));
                 for (const n of unreadNotifs) {
                     await notificationsApi.markRead(n.id);
@@ -76,23 +156,43 @@ export default function ScheduleUpdates() {
         load();
     }, []);
 
-    const handleSubstituteResponse = async (request, decision) => {
+    const handleSubstituteResponse = async (request, decision, responseNote = '') => {
+        if (decision === 'approve') {
+            const isSessionUpdate = request.requestKind === 'session_update';
+            const confirmed = await confirmAction({
+                tone: 'success',
+                icon: isSessionUpdate ? 'rule' : 'assignment_turned_in',
+                title: isSessionUpdate ? 'Setujui perubahan jadwal/program?' : 'Setujui terapis pengganti?',
+                message: isSessionUpdate
+                    ? `Perubahan untuk sesi ${request.childName} akan diterapkan setelah Anda setujui.`
+                    : `Sesi ${request.childName} akan berpindah ke ${request.substituteTherapistName}.`,
+                confirmText: 'Setujui',
+                cancelText: 'Batal',
+            });
+            if (!confirmed) return;
+        }
         setRespondingId(request.id);
         try {
             const payload = {
                 decision,
                 suggestedSubstituteId: decision === 'decline' ? suggestedSubstitutes[request.id] || '' : '',
                 responseNote: decision === 'decline'
-                    ? 'Terapis utama tidak menyetujui pengganti yang diajukan.'
+                    ? responseNote
                     : 'Terapis utama menyetujui pergantian tugas.',
             };
             const res = await substituteRequestsApi.therapistResponse(request.id, payload);
             if (!res.ok) throw new Error(res.data?.error || 'Gagal merespons konfirmasi');
             setSubstituteRequests(prev => prev.filter(item => item.id !== request.id));
+            setDeclineRequest(null);
             window.dispatchEvent(new Event('notificationsUpdated'));
             window.dispatchEvent(new Event('sessionUpdated'));
         } catch (err) {
-            alert(err.message || 'Gagal merespons konfirmasi');
+            await notifyDialog({
+                tone: 'danger',
+                icon: 'error',
+                title: 'Respons belum terkirim',
+                message: err.message || 'Gagal merespons konfirmasi',
+            });
         } finally {
             setRespondingId('');
         }
@@ -115,7 +215,7 @@ export default function ScheduleUpdates() {
     const reviewCount = updates.filter(u => u.outcome === 'review').length;
 
     return (
-        <div className="flex flex-col h-full bg-slate-50/50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 lg:border-t-0">
+        <div className="flex min-h-full flex-col bg-slate-50/50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 lg:border-t-0">
             {/* Header */}
             <header className="flex items-center gap-3 sm:gap-4 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-4 sm:px-8 py-4 sm:py-5 shrink-0">
                 <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-teal-500 to-cyan-600 flex items-center justify-center text-white shadow-md shadow-teal-500/20">
@@ -162,28 +262,38 @@ export default function ScheduleUpdates() {
                 </div>
             </div>
 
-            <main className="flex-1 overflow-y-auto p-4 md:p-8">
+            <main className="flex-1 p-4 md:p-8">
                 <div className="max-w-4xl mx-auto flex flex-col gap-4">
                     {substituteRequests.length > 0 && (
                         <section className="bg-white dark:bg-slate-800 rounded-2xl border border-amber-200 dark:border-amber-800/50 shadow-sm overflow-hidden">
                             <div className="px-5 py-4 border-b border-amber-100 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-900/10">
                                 <h2 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
                                     <span className="material-symbols-outlined text-amber-600">assignment_ind</span>
-                                    Konfirmasi Terapis Pengganti
+                                    Konfirmasi Jadwal
                                 </h2>
                                 <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mt-1">
-                                    Admin meminta persetujuan Anda sebelum jadwal berpindah ke terapis pengganti.
+                                    Admin meminta persetujuan Anda sebelum perubahan sensitif diterapkan.
                                 </p>
                             </div>
                             <div className="divide-y divide-slate-100 dark:divide-slate-700">
-                                {substituteRequests.map(request => (
+                                {substituteRequests.map(request => {
+                                    const isSessionUpdate = request.requestKind === 'session_update';
+                                    return (
                                     <div key={request.id} className="p-5 flex flex-col gap-4">
                                         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                                             <div>
                                                 <p className="text-sm font-black text-slate-900 dark:text-white">{request.childName}</p>
                                                 <p className="text-sm text-slate-600 dark:text-slate-300">{formatDate(request.date)} • {request.startTime} • {request.focus || 'Therapy'}</p>
                                                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                                                    Usulan admin: <strong>{request.substituteTherapistName}</strong>. {request.note || ''}
+                                                    {isSessionUpdate ? (
+                                                        <>
+                                                            Usulan perubahan: <strong>{describeProposedUpdates(request.proposedUpdates)}</strong>. {request.note || ''}
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            Usulan admin: <strong>{request.substituteTherapistName}</strong>. {request.note || ''}
+                                                        </>
+                                                    )}
                                                 </p>
                                             </div>
                                             <span className="self-start rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 px-3 py-1 text-[11px] font-black">
@@ -197,23 +307,25 @@ export default function ScheduleUpdates() {
                                                 disabled={respondingId === request.id}
                                                 className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-black hover:bg-emerald-700 disabled:opacity-50"
                                             >
-                                                Setujui Pengganti
+                                                {isSessionUpdate ? 'Setujui Perubahan' : 'Setujui Pengganti'}
                                             </button>
                                             <div className="flex-1 flex flex-col sm:flex-row gap-2">
-                                                <select
-                                                    value={suggestedSubstitutes[request.id] || ''}
-                                                    onChange={e => setSuggestedSubstitutes(prev => ({ ...prev, [request.id]: e.target.value }))}
-                                                    className="flex-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
-                                                >
-                                                    <option value="">Sarankan terapis lain (opsional)</option>
-                                                    {(request.availableTherapists || []).map(therapist => (
-                                                        <option key={therapist.id} value={therapist.id} disabled={therapist.status !== 'available'}>
-                                                            {therapist.name}{therapist.status !== 'available' ? ` - ${therapist.reason || 'Bentrok'}` : ''}
-                                                        </option>
-                                                    ))}
-                                                </select>
+                                                {!isSessionUpdate && (
+                                                    <select
+                                                        value={suggestedSubstitutes[request.id] || ''}
+                                                        onChange={e => setSuggestedSubstitutes(prev => ({ ...prev, [request.id]: e.target.value }))}
+                                                        className="flex-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
+                                                    >
+                                                        <option value="">Sarankan terapis lain (opsional)</option>
+                                                        {(request.availableTherapists || []).map(therapist => (
+                                                            <option key={therapist.id} value={therapist.id} disabled={therapist.status !== 'available'}>
+                                                                {therapist.name}{therapist.status !== 'available' ? ` - ${therapist.reason || 'Bentrok'}` : ''}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                )}
                                                 <button
-                                                    onClick={() => handleSubstituteResponse(request, 'decline')}
+                                                    onClick={() => setDeclineRequest(request)}
                                                     disabled={respondingId === request.id}
                                                     className="px-4 py-2 rounded-lg border border-red-200 bg-red-50 text-red-700 text-sm font-black hover:bg-red-100 disabled:opacity-50"
                                                 >
@@ -222,7 +334,8 @@ export default function ScheduleUpdates() {
                                             </div>
                                         </div>
                                     </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         </section>
                     )}
@@ -261,6 +374,14 @@ export default function ScheduleUpdates() {
                     )}
                 </div>
             </main>
+            {declineRequest && (
+                <DeclineSubstituteModal
+                    request={declineRequest}
+                    suggestedSubstituteId={suggestedSubstitutes[declineRequest.id] || ''}
+                    onClose={() => setDeclineRequest(null)}
+                    onSubmit={(reason) => handleSubstituteResponse(declineRequest, 'decline', reason)}
+                />
+            )}
         </div>
     );
 }

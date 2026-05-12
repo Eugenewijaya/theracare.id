@@ -543,7 +543,7 @@ function App() {
     ];
 
     return (
-        <main className="min-h-screen bg-background-light dark:bg-background-dark">
+        <main className="min-h-full bg-background-light dark:bg-background-dark">
             <PopupNotif popup={popup} onClose={closePopup} />
 
             {/* Header */}

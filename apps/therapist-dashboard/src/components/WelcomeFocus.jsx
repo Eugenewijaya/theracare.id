@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { reportsApi, sessionsApi } from '../../../shared/api/client';
+import { readTherapistUser } from '../../../shared/sessionIdentity';
 
 function todayKey() {
     const now = new Date();
@@ -11,12 +12,7 @@ function todayKey() {
 }
 
 function getStoredTherapist() {
-    try {
-        const saved = sessionStorage.getItem('therapist_user') || localStorage.getItem('therapist_user');
-        return saved ? JSON.parse(saved) : null;
-    } catch {
-        return null;
-    }
+    return readTherapistUser();
 }
 
 const WelcomeFocus = () => {

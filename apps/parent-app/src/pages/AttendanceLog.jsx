@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { childrenApi, adminApi, sessionsApi, therapistsApi } from '../../../shared/api/client';
+import { readParentUser } from '../../../shared/sessionIdentity';
 
 // Calculate end time from startTime + duration string (e.g. "09:00" + "60 mins")
 const calculateEndTime = (startTime, duration) => {
@@ -21,9 +22,8 @@ export default function AttendanceLog() {
 
     useEffect(() => {
         const loadData = async () => {
-            const saved = sessionStorage.getItem('parent_user');
-            if (!saved) return;
-            const user = JSON.parse(saved);
+            const user = readParentUser();
+            if (!user) return;
             const childId = user.childId;
             const parentId = user.parentId;
             if (!childId && !parentId) return;
@@ -159,7 +159,7 @@ export default function AttendanceLog() {
     );
 
     return (
-        <div className="flex flex-col h-full bg-slate-50/50 dark:bg-slate-900">
+        <div className="flex min-h-full flex-col bg-slate-50/50 dark:bg-slate-900">
             {/* Minimal Header */}
             <header className="flex items-center gap-3 sm:gap-4 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-4 sm:px-8 py-4 sm:py-5 shrink-0">
                 <span className="material-symbols-outlined text-2xl sm:text-3xl text-sky-500">co_present</span>
@@ -169,7 +169,7 @@ export default function AttendanceLog() {
                 </div>
             </header>
 
-            <main className="flex-1 overflow-y-auto p-4 md:p-8">
+            <main className="flex-1 p-4 md:p-8">
                 <div className="max-w-5xl mx-auto flex flex-col gap-6">
 
                     {/* Stats Header */}

@@ -18,15 +18,12 @@ import LeaveRequests from './pages/LeaveRequests';
 import { setClinicPortalTitle, useClinicSettings } from '../../shared/clinicSettings';
 import LegalPage from '../../shared/ui/LegalPage';
 import ClinicLogoMark from '../../shared/ui/ClinicLogoMark';
+import NotificationToastHost from '../../shared/ui/NotificationToastHost';
+import FriendlyLoader from '../../shared/ui/FriendlyLoader';
 
 function Loading() {
   return (
-    <div className="flex items-center justify-center flex-1 h-full">
-      <div className="flex flex-col items-center gap-3">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
-        <p className="text-sm text-slate-500 font-medium">Loading...</p>
-      </div>
-    </div>
+    <FriendlyLoader compact title="Sebentar ya" message="Dashboard terapis sedang disiapkan." />
   );
 }
 
@@ -35,11 +32,8 @@ function ProtectedRoute({ children }) {
   const location = useLocation();
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-slate-50 dark:bg-slate-900">
-        <div className="flex flex-col items-center gap-3">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
-          <p className="text-sm text-slate-500 font-medium">Memverifikasi sesi...</p>
-        </div>
+      <div className="flex h-[100dvh] items-center justify-center bg-slate-50 dark:bg-slate-900">
+        <FriendlyLoader title="Kami cek aksesmu dulu" message="Sebentar, jadwal terapi akan segera tampil." />
       </div>
     );
   }
@@ -84,7 +78,7 @@ function MobileTopBar({ onMenuOpen }) {
 }
 
 function DashboardLayout() {
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const handlePortalLogout = useCallback(async () => {
@@ -98,11 +92,12 @@ function DashboardLayout() {
   }, [handlePortalLogout]);
 
   return (
-    <div className="flex h-screen w-full overflow-hidden" data-build-scope="therapist-progress-refresh">
+    <div className="flex h-[100dvh] w-full overflow-hidden" data-build-scope="therapist-progress-refresh">
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <MobileTopBar onMenuOpen={() => setSidebarOpen(true)} />
-        <div className="flex-1 overflow-y-auto bg-background-light dark:bg-background-dark">
+        <NotificationToastHost user={user} role="therapist" onOpenNotifications={() => navigate('/announcements')} />
+        <div className="min-h-0 flex-1 overflow-y-auto bg-background-light dark:bg-background-dark">
           <Suspense fallback={<Loading />}>
             <Routes>
               <Route index element={<TherapistDashboard onLogout={handlePortalLogout} />} />

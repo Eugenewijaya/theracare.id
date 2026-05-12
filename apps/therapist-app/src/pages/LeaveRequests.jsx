@@ -92,7 +92,7 @@ export default function LeaveRequests() {
   };
 
   return (
-    <div className="flex h-full flex-col bg-slate-50/50 dark:bg-slate-900">
+    <div className="flex min-h-full flex-col bg-slate-50/50 dark:bg-slate-900">
       {toast && (
         <div className="fixed bottom-5 left-4 right-4 z-50 sm:left-auto sm:right-6 sm:w-[360px]">
           <div className={`rounded-2xl border px-4 py-3 text-sm font-bold shadow-xl ${
@@ -117,7 +117,7 @@ export default function LeaveRequests() {
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto p-4 md:p-8">
+      <main className="flex-1 p-4 md:p-8">
         <div className="mx-auto grid w-full max-w-6xl gap-6 lg:grid-cols-[380px_1fr]">
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-800">
             <h2 className="text-base font-black text-slate-900 dark:text-white">Buat Pengajuan</h2>

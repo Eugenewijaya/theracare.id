@@ -3,6 +3,7 @@ import Header from './components/Header';
 import { sessionsApi, reportsApi, adminApi, childrenApi } from '../../shared/api/client';
 import { useClinicSettings } from '../../shared/clinicSettings';
 import { openReportPdf } from '../../shared/reportPdf';
+import { readParentUser } from '../../shared/sessionIdentity';
 
 // ── Constants ─────────────────────────────────────────────────────────
 const SCALE_MAP = { 1: 'Sangat Kurang', 2: 'Kurang', 3: 'Cukup', 4: 'Baik', 5: 'Sangat Baik' };
@@ -339,13 +340,12 @@ function App({ onLogout }) {
     const typeColors = React.useMemo(() => buildTypeColors(programsList), [programsList]);
 
     const loadReports = async () => {
-        const saved = sessionStorage.getItem('parent_user');
+        const user = readParentUser();
         let childId = selectedChild;
         let availableChildren = childrenList;
 
-        if (saved && !childId) {
+        if (user && !childId) {
             try {
-                const user = JSON.parse(saved);
                 let children = [];
                 if (user.parentId) {
                     const childRes = await childrenApi.getByParent(user.parentId);
@@ -375,7 +375,7 @@ function App({ onLogout }) {
 
         if (!childId) return;
 
-        const savedUser = saved ? (() => { try { return JSON.parse(saved); } catch { return {}; } })() : {};
+        const savedUser = user || {};
 
         try {
             const rRes = await reportsApi.getForChild(childId);

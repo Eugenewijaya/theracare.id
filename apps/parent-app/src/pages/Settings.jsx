@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { parentsApi } from '../../../shared/api/client';
+import { readParentUser } from '../../../shared/sessionIdentity';
 
 export default function Settings() {
     const [theme, setTheme] = useState('light');
@@ -13,10 +14,9 @@ export default function Settings() {
         if (document.documentElement.classList.contains('dark')) setTheme('dark');
         
         const load = async () => {
-            const saved = sessionStorage.getItem('parent_user');
-            if (saved) {
+            const user = readParentUser();
+            if (user) {
                 try {
-                    const user = JSON.parse(saved);
                     const res = await parentsApi.getById(user.parentId);
                     const parent = res.data?.data;
                     if (parent) {
@@ -47,7 +47,7 @@ export default function Settings() {
     };
 
     return (
-        <div className="flex flex-col h-full bg-slate-50/50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 lg:border-t-0">
+        <div className="flex min-h-full flex-col bg-slate-50/50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 lg:border-t-0">
             {/* Page Header */}
             <header className="flex items-center gap-3 sm:gap-4 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-4 sm:px-8 py-4 sm:py-5 shrink-0">
                 <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-slate-500 to-slate-700 flex items-center justify-center text-white shadow-md shadow-slate-500/20">
@@ -59,7 +59,7 @@ export default function Settings() {
                 </div>
             </header>
 
-            <main className="flex-1 overflow-y-auto p-4 md:p-8 relative">
+            <main className="relative flex-1 p-4 md:p-8">
                 {/* Toast Notification */}
                 {toast && (
                     <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-emerald-50 text-emerald-700 border border-emerald-200 px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 z-50 animate-fadeIn">

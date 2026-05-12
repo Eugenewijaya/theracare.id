@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { parentsApi, therapistsApi } from '../../../shared/api/client';
+import { confirmAction } from '../../../shared/ui/confirmDialog';
 import {
     ADMIN_GATE_PASSWORD,
     USER_MANAGEMENT_UNLOCK_KEY,
@@ -114,7 +115,13 @@ export default function UserManagementPage() {
 
     const handleDelete = async (user, type) => {
         const label = type === 'parents' ? 'parent' : 'therapist';
-        const confirmed = window.confirm(`Hapus akun ${label} ${user.name}? Data yang sudah punya anak, sesi, atau laporan akan ditolak oleh server.`);
+        const confirmed = await confirmAction({
+            tone: 'danger',
+            title: `Hapus akun ${user.name}?`,
+            message: `Akun ${label} yang sudah punya anak, sesi, atau laporan akan ditolak server atau diarsipkan agar histori tetap aman.`,
+            confirmText: 'Hapus akun',
+            cancelText: 'Batal',
+        });
         if (!confirmed) return;
 
         const res = type === 'parents'
@@ -277,14 +284,14 @@ export default function UserManagementPage() {
                     {/* Table */}
                     <div className="bg-white dark:bg-primary/5 border border-slate-200 dark:border-primary/20 rounded-xl overflow-hidden shadow-sm">
                         <div className="overflow-x-auto">
-                            <table className="w-full min-w-[1160px] table-fixed text-left">
+                            <table className="w-full min-w-[1240px] table-fixed text-left">
                                 <colgroup>
-                                    <col className="w-[200px]" />
                                     <col className="w-[220px]" />
-                                    <col className="w-[160px]" />
-                                    <col className="w-[250px]" />
-                                    <col className="w-[110px]" />
-                                    <col className="w-[220px]" />
+                                    <col className="w-[230px]" />
+                                    <col className="w-[170px]" />
+                                    <col className="w-[270px]" />
+                                    <col className="w-[120px]" />
+                                    <col className="w-[230px]" />
                                 </colgroup>
                                 <thead>
                                     <tr className="border-b border-slate-200 dark:border-primary/20 bg-slate-50 dark:bg-background-dark/50">
@@ -360,7 +367,7 @@ export default function UserManagementPage() {
                                                 </td>
                                                 <td className="px-5 py-4 align-middle">
                                                     <div className="flex items-center gap-2 min-w-0">
-                                                        <code className="min-w-[120px] max-w-[150px] rounded-lg bg-slate-100 dark:bg-slate-800 px-3 py-2 text-sm font-mono leading-5 text-slate-700 dark:text-slate-300 break-words">
+                                                        <code className="min-w-[130px] max-w-[170px] truncate rounded-lg bg-slate-100 dark:bg-slate-800 px-3 py-2 text-sm font-mono leading-5 text-slate-700 dark:text-slate-300" title={passVisible ? displayPassword : ''}>
                                                             {displayPassword}
                                                         </code>
                                                         <button onClick={() => setShowPass(prev => ({ ...prev, [user.id]: !passVisible }))}
@@ -382,7 +389,7 @@ export default function UserManagementPage() {
                                                     </div>
                                                 </td>
                                                 <td className="px-5 py-4 align-middle">
-                                                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
+                                                    <span className={`inline-flex items-center whitespace-nowrap px-2.5 py-1 rounded-full text-xs font-semibold ${isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
                                                         {isActive ? 'Active' : 'Suspended'}
                                                     </span>
                                                 </td>

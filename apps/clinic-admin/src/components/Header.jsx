@@ -33,7 +33,11 @@ const Header = () => {
     useEffect(() => {
         refreshNotifications();
         const interval = setInterval(refreshNotifications, 60000);
-        return () => clearInterval(interval);
+        window.addEventListener('notificationsUpdated', refreshNotifications);
+        return () => {
+            clearInterval(interval);
+            window.removeEventListener('notificationsUpdated', refreshNotifications);
+        };
     }, []);
 
     const unreadCount = notifications.filter(n => !n.read).length;
@@ -41,11 +45,13 @@ const Header = () => {
     const markAllRead = async () => {
         await notificationsApi.markAllRead();
         setNotifications(notifications.map(n => ({ ...n, read: true })));
+        window.dispatchEvent(new Event('notificationsUpdated'));
     };
 
     const markRead = async (id) => {
         await notificationsApi.markRead(id);
         setNotifications(notifications.map(n => n.id === id ? { ...n, read: true } : n));
+        window.dispatchEvent(new Event('notificationsUpdated'));
     };
 
     useEffect(() => {

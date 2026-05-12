@@ -1,14 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { notificationsApi } from '../../../shared/api/client';
+import { readTherapistUser } from '../../../shared/sessionIdentity';
 
 function readStoredTherapist() {
-    try {
-        const saved = sessionStorage.getItem('therapist_user') || localStorage.getItem('therapist_user');
-        return saved ? JSON.parse(saved) : null;
-    } catch {
-        return null;
-    }
+    return readTherapistUser();
 }
 
 const Header = () => {

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Header from './components/Header';
 import ChildTable from './components/ChildTable';
 import { childrenApi, adminApi } from '../../shared/api/client';
+import { confirmAction, notifyDialog } from '../../shared/ui/confirmDialog';
 
 function App() {
     const navigate = useNavigate();
@@ -45,16 +46,32 @@ function App() {
     }, []);
 
     const handleDeleteChild = async (child) => {
-        const confirmed = window.confirm(`Hapus data anak ${child.name}? Data yang sudah punya sesi, laporan, rating, atau request akan ditolak oleh server.`);
+        const confirmed = await confirmAction({
+            tone: 'danger',
+            title: `Hapus data ${child.name}?`,
+            message: 'Data yang sudah punya sesi, laporan, rating, atau request akan ditolak server. Tindakan ini juga masuk audit log.',
+            confirmText: 'Hapus data anak',
+            cancelText: 'Batal',
+        });
         if (!confirmed) return;
         const res = await childrenApi.delete(child.id);
         if (!res.ok) {
-            alert(res.data?.error || res.data?.message || res.data?.data?.reason || 'Gagal menghapus data anak.');
+            await notifyDialog({
+                tone: 'danger',
+                icon: 'error',
+                title: 'Data anak belum terhapus',
+                message: res.data?.error || res.data?.message || res.data?.data?.reason || 'Gagal menghapus data anak.',
+            });
             return;
         }
         setAllChildren(prev => prev.filter(item => item.id !== child.id));
         window.dispatchEvent(new Event('childUpdated'));
-        alert(`Data anak ${child.name} berhasil dihapus.`);
+        await notifyDialog({
+            tone: 'success',
+            icon: 'check_circle',
+            title: 'Data anak terhapus',
+            message: `Data anak ${child.name} berhasil dihapus dan tercatat di audit log.`,
+        });
     };
 
     const filtered = allChildren.filter(child => {

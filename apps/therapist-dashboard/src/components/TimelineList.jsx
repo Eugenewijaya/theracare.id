@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { sessionsApi } from '../../../shared/api/client';
 import ChildProfileModal from './ChildProfileModal';
+import { readTherapistUser } from '../../../shared/sessionIdentity';
 
 function todayKey() {
     const now = new Date();
@@ -12,12 +13,7 @@ function todayKey() {
 }
 
 function getStoredTherapist() {
-    try {
-        const saved = sessionStorage.getItem('therapist_user') || localStorage.getItem('therapist_user');
-        return saved ? JSON.parse(saved) : null;
-    } catch {
-        return null;
-    }
+    return readTherapistUser();
 }
 
 function getDurationSeconds(session) {
