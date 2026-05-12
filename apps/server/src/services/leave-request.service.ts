@@ -23,6 +23,9 @@ type TherapistLeaveRequest = {
   status: LeaveRequestStatus;
   reviewNote?: string;
   reviewedAt?: string;
+  wasApproved?: boolean;
+  postApprovalChangeCount?: number;
+  history?: Array<{ status: LeaveRequestStatus; note?: string; createdAt: string }>;
   createdAt: string;
 };
 
@@ -84,6 +87,9 @@ export const leaveRequestService = {
       endDate: data.endDate,
       reason: (data.reason || "").trim(),
       status: "pending",
+      wasApproved: false,
+      postApprovalChangeCount: 0,
+      history: [{ status: "pending", note: "Pengajuan dibuat oleh terapis.", createdAt: new Date().toISOString() }],
       createdAt: new Date().toISOString(),
     };
 
@@ -111,11 +117,28 @@ export const leaveRequestService = {
     const index = requests.findIndex((request) => request.id === id);
     if (index === -1) return null;
 
+    const current = requests[index];
+    const hasStatusChange = current.status !== status;
+    const wasAlreadyApproved = current.wasApproved || current.status === "approved";
+    const wasApproved = wasAlreadyApproved || status === "approved";
+    const nextChangeCount = wasAlreadyApproved && hasStatusChange
+      ? Number(current.postApprovalChangeCount || 0) + 1
+      : Number(current.postApprovalChangeCount || 0);
+    if (nextChangeCount > 3) {
+      throw new Error("Status cuti ini sudah diubah 3x setelah approval. Buat pengajuan baru agar log tetap aman.");
+    }
+
     const next: TherapistLeaveRequest = {
       ...requests[index],
       status,
       reviewNote: (reviewNote || "").trim(),
       reviewedAt: new Date().toISOString(),
+      wasApproved,
+      postApprovalChangeCount: nextChangeCount,
+      history: [
+        ...(Array.isArray(current.history) ? current.history : []),
+        { status, note: (reviewNote || "").trim(), createdAt: new Date().toISOString() },
+      ],
     };
     requests[index] = next;
     await writeRequests(requests);

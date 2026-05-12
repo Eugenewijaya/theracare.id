@@ -106,6 +106,7 @@ const ProgramForm = ({ data, onChange, errors }) => {
                                 programGoal: Array.isArray(prog.goals) ? prog.goals[0] || '' : '',
                                 programPricePerSession: pricing.pricePerSession || 0,
                                 programPricePerMonth: pricing.pricePerMonth || 0,
+                                totalPrice: data.totalPrice || pricing.totalPrice || 0,
                                 billingMode: data.billingMode || 'per_session',
                                 periodStartDate: data.periodStartDate || todayString(),
                                 totalSessions: data.totalSessions || 12,
@@ -155,7 +156,7 @@ const ProgramForm = ({ data, onChange, errors }) => {
                 </div>
                 <div>
                     <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">
-                        Jumlah Sesi <span className="text-red-500">*</span>
+                        {data.billingMode === 'package' ? 'Jumlah Sesi Paket' : 'Jumlah Sesi'} <span className="text-red-500">*</span>
                     </label>
                     <input
                         type="number"
@@ -163,8 +164,11 @@ const ProgramForm = ({ data, onChange, errors }) => {
                         value={data.totalSessions || ''}
                         onChange={(e) => onChange({ ...data, totalSessions: e.target.value })}
                         className={`w-full h-11 px-3 rounded-lg border ${errors?.totalSessions ? 'border-red-500 focus:ring-red-500' : 'border-slate-300 dark:border-slate-700 focus:ring-primary focus:border-primary'} bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-opacity-50`}
-                        placeholder="12"
+                        placeholder={data.billingMode === 'package' ? '8' : '12'}
                     />
+                    {data.billingMode === 'package' && (
+                        <p className="mt-1 text-xs text-slate-500">Contoh: paket 8 sesi, isi 8 di sini lalu isi harga paket di bawah.</p>
+                    )}
                     {errors?.totalSessions && <p className="text-xs text-red-500 mt-1">{errors.totalSessions}</p>}
                 </div>
                 <div>
@@ -181,7 +185,7 @@ const ProgramForm = ({ data, onChange, errors }) => {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/40 sm:grid-cols-2">
+            <div className={`grid grid-cols-1 gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/40 ${data.billingMode === 'package' ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
                 <div>
                     <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">Harga per Sesi</label>
                     <input
@@ -202,6 +206,20 @@ const ProgramForm = ({ data, onChange, errors }) => {
                         className="w-full h-11 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-opacity-50 focus:border-primary"
                     />
                 </div>
+                {data.billingMode === 'package' && (
+                    <div>
+                        <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">Harga Paket</label>
+                        <input
+                            type="number"
+                            min="0"
+                            value={data.totalPrice || ''}
+                            onChange={(e) => onChange({ ...data, totalPrice: Number(e.target.value || 0) })}
+                            className="w-full h-11 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-opacity-50 focus:border-primary"
+                            placeholder="4000000"
+                        />
+                        <p className="mt-1 text-xs text-slate-500">Contoh: 8 sesi = Rp 4.000.000.</p>
+                    </div>
+                )}
             </div>
 
             <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">

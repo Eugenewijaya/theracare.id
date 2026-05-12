@@ -192,8 +192,12 @@ export const sessionService = {
       await assertSessionAvailable(next, id);
     }
 
+    const scheduleChanged = ["therapistId", "childId", "roomId", "date", "startTime", "duration"].some((key) => key in values);
     const [updated] = await db.update(therapySessions)
-      .set(values)
+      .set({
+        ...values,
+        ...(scheduleChanged && existing.status !== "cancelled" ? { status: "upcoming", startedAt: null, endedAt: null } : {}),
+      })
       .where(eq(therapySessions.id, id))
       .returning();
     return updated;

@@ -1,5 +1,5 @@
 import { db } from "../db/index.js";
-import { children, parents, reports, therapySessions } from "../db/schema.js";
+import { children, parents, reports, rooms as clinicRooms, therapySessions } from "../db/schema.js";
 import { eq, and, inArray, sql } from "drizzle-orm";
 import { generateSeqId } from "../utils/id-generators.js";
 import { notificationService } from "./notification.service.js";
@@ -9,6 +9,34 @@ type ReportQueryOptions = { visibleToParentOnly?: boolean; therapistId?: string 
 type ReportUpdateOptions = { allowStatus?: boolean };
 
 const PARENT_VISIBLE_REPORT_STATUSES = ["approved", "published", "ready_for_parent"];
+
+function cleanStringList(value: unknown) {
+  if (!Array.isArray(value)) return undefined;
+  return value
+    .filter((item): item is string => typeof item === "string" && !!item.trim())
+    .map((item) => item.trim());
+}
+
+function appendReviewLog(existing: unknown, entry: { status: string; note?: string; actorRole?: string }) {
+  const current = Array.isArray(existing) ? existing : [];
+  return [
+    ...current,
+    {
+      ...entry,
+      createdAt: new Date().toISOString(),
+    },
+  ];
+}
+
+async function filterActiveRoomNames(input: unknown) {
+  const requested = cleanStringList(input);
+  if (!requested?.length) return [];
+  const activeRooms = await db.select({ name: clinicRooms.name })
+    .from(clinicRooms)
+    .where(and(inArray(clinicRooms.name, requested), eq(clinicRooms.status, "active")));
+  const allowed = new Set(activeRooms.map((room) => room.name));
+  return requested.filter((roomName) => allowed.has(roomName));
+}
 
 function formatReport(report: any) {
   if (!report) return null;
@@ -29,10 +57,14 @@ function pickReportValues(data: any, options: ReportUpdateOptions = { allowStatu
     ...(options.allowStatus !== false && typeof data.status === "string" ? { status: data.status } : {}),
     ...(typeof data.date === "string" ? { date: data.date } : {}),
     ...(typeof data.sessionFocus === "string" ? { sessionFocus: data.sessionFocus } : {}),
+    ...(typeof data.sessionType === "string" ? { sessionType: data.sessionType } : {}),
     ...(Array.isArray(data.aspects) ? { aspects: data.aspects } : {}),
     ...(data.evaluations && typeof data.evaluations === "object" ? { evaluations: data.evaluations } : {}),
     ...(Number.isFinite(Number(data.sessionScore)) ? { sessionScore: Number(data.sessionScore) } : {}),
     ...(typeof data.description === "string" ? { description: data.description } : {}),
+    ...(Array.isArray(data.toysUsed) ? { toysUsed: cleanStringList(data.toysUsed) } : {}),
+    ...(Array.isArray(data.roomsUsed) ? { roomsUsed: cleanStringList(data.roomsUsed) } : {}),
+    ...(Array.isArray(data.toolsUsed) ? { toolsUsed: cleanStringList(data.toolsUsed) } : {}),
     ...(typeof data.childResponse === "string" ? { childResponse: data.childResponse } : {}),
     ...(typeof data.obstacles === "string" ? { obstacles: data.obstacles } : {}),
     ...(typeof data.recommendations === "string" ? { recommendations: data.recommendations } : {}),
@@ -113,6 +145,9 @@ export const reportService = {
 
   async save(data: any) {
     const now = new Date();
+    if (Array.isArray(data.roomsUsed)) {
+      data.roomsUsed = await filterActiveRoomNames(data.roomsUsed);
+    }
     let therapyPeriodId = typeof data.therapyPeriodId === "string" ? data.therapyPeriodId : "";
     if (!therapyPeriodId && data.sessionId) {
       const session = await db.query.therapySessions.findFirst({ where: eq(therapySessions.id, data.sessionId) });
@@ -121,8 +156,12 @@ export const reportService = {
 
     // Check if updating existing report
     if (data.id) {
+      const existing = await db.query.reports.findFirst({ where: eq(reports.id, data.id) });
+      const logUpdate = existing?.status === "needs_revision"
+        ? { reviewLog: appendReviewLog(existing.reviewLog, { status: "resubmitted", note: "Terapis mengirim revisi laporan.", actorRole: "therapist" }) }
+        : {};
       const [updated] = await db.update(reports)
-        .set({ ...pickReportValues({ ...data, therapyPeriodId }, { allowStatus: false }), status: "pending_review", updatedAt: now })
+        .set({ ...pickReportValues({ ...data, therapyPeriodId }, { allowStatus: false }), ...logUpdate, status: "pending_review", updatedAt: now })
         .where(eq(reports.id, data.id))
         .returning();
       return formatReport(updated);
@@ -134,8 +173,11 @@ export const reportService = {
         where: and(eq(reports.type, "harian"), eq(reports.sessionId, data.sessionId)),
       });
       if (existing) {
+        const logUpdate = existing.status === "needs_revision"
+          ? { reviewLog: appendReviewLog(existing.reviewLog, { status: "resubmitted", note: "Terapis mengirim revisi laporan.", actorRole: "therapist" }) }
+          : {};
         const [updated] = await db.update(reports)
-          .set({ ...pickReportValues({ ...data, therapyPeriodId }, { allowStatus: false }), status: "pending_review", updatedAt: now })
+          .set({ ...pickReportValues({ ...data, therapyPeriodId }, { allowStatus: false }), ...logUpdate, status: "pending_review", updatedAt: now })
           .where(eq(reports.id, existing.id))
           .returning();
         return formatReport(updated);
@@ -167,9 +209,24 @@ export const reportService = {
     return formatReport(report);
   },
 
-  async updateStatus(id: string, status: string) {
+  async updateStatus(id: string, status: string, reviewNote?: string, actorRole?: string) {
+    const existing = await db.query.reports.findFirst({
+      where: eq(reports.id, id),
+      with: { therapist: { with: { user: true } }, child: true },
+    });
+    if (!existing) return null;
+
+    const note = String(reviewNote || "").trim();
+    if (["approved", "published", "ready_for_parent"].includes(existing.status) && status === "needs_revision" && note.length < 8) {
+      throw new Error("Alasan revisi wajib diisi sebelum laporan yang sudah disetujui dikembalikan ke terapis.");
+    }
+
     const [updated] = await db.update(reports)
-      .set({ status, updatedAt: new Date() })
+      .set({
+        status,
+        reviewLog: appendReviewLog(existing.reviewLog, { status, note, actorRole }),
+        updatedAt: new Date(),
+      })
       .where(eq(reports.id, id))
       .returning();
     if (updated && ["approved", "published", "ready_for_parent"].includes(status)) {
@@ -187,10 +244,24 @@ export const reportService = {
         });
       }
     }
+    if (updated && status === "needs_revision" && existing.therapist?.userId) {
+      await notificationService.create({
+        type: "report_revision_requested",
+        icon: "rate_review",
+        title: "Laporan perlu revisi",
+        message: note || `Admin meminta revisi laporan ${existing.child?.name || "anak"}.`,
+        targetRole: "therapist",
+        targetUserId: existing.therapist.userId,
+        relatedId: id,
+      });
+    }
     return updated;
   },
 
   async update(id: string, updates: any, options: ReportUpdateOptions = {}) {
+    if (Array.isArray(updates.roomsUsed)) {
+      updates.roomsUsed = await filterActiveRoomNames(updates.roomsUsed);
+    }
     const values: any = pickReportValues(updates, options);
     if (Object.keys(values).length === 0) return this.getById(id);
 

@@ -254,14 +254,24 @@ export const reports = pgTable("reports", {
   // Daily report fields
   date: date("date"),
   sessionFocus: text("session_focus"),
+  sessionType: text("session_type"),
   aspects: jsonb("aspects").$type<string[]>(),
   evaluations: jsonb("evaluations").$type<Record<string, number>>(),
   sessionScore: integer("session_score"),
   description: text("description"),
+  toysUsed: jsonb("toys_used").$type<string[]>(),
+  roomsUsed: jsonb("rooms_used").$type<string[]>(),
+  toolsUsed: jsonb("tools_used").$type<string[]>(),
   childResponse: text("child_response"),
   obstacles: text("obstacles"),
   recommendations: text("recommendations"),
   internalNotes: text("internal_notes"),
+  reviewLog: jsonb("review_log").$type<Array<{
+    status: string;
+    note?: string;
+    actorRole?: string;
+    createdAt: string;
+  }>>(),
   // Periodic report fields
   dateFrom: date("date_from"),
   dateTo: date("date_to"),

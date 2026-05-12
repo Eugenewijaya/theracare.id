@@ -90,7 +90,12 @@ router.post("/", requireAuth, requireRole("therapist"), async (req, res, next) =
 
 router.patch("/:id/status", requireAuth, requireRole("admin"), async (req, res, next) => {
   try {
-    const result = await reportService.updateStatus(req.params.id as string, req.body.status);
+    const result = await reportService.updateStatus(
+      req.params.id as string,
+      req.body.status,
+      req.body.reviewNote,
+      req.user?.role,
+    );
     if (!result) return notFound(res);
     ok(res, result);
   } catch (e) { next(e); }

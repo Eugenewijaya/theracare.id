@@ -28,7 +28,7 @@ router.delete("/announcements/:id", requireAuth, requireRole("admin"), async (re
 });
 
 // ── Rooms ──
-router.get("/rooms", requireAuth, requireRole("admin"), async (req, res, next) => {
+router.get("/rooms", requireAuth, requireRole("admin", "therapist"), async (req, res, next) => {
   try { ok(res, await adminService.getAllRooms()); } catch (e) { next(e); }
 });
 router.post("/rooms", requireAuth, requireRole("admin"), async (req, res, next) => {
@@ -146,7 +146,7 @@ router.get("/stats", requireAuth, requireRole("admin"), async (req, res, next) =
 });
 
 // ── Center operational closures ──
-router.get("/center-closures", requireAuth, requireRole("admin"), async (_req, res, next) => {
+router.get("/center-closures", requireAuth, requireRole("admin", "therapist"), async (_req, res, next) => {
   try { ok(res, await centerClosureService.getAll()); } catch (e) { next(e); }
 });
 router.get("/center-closures/indonesia-holidays", requireAuth, requireRole("admin"), async (req, res, next) => {

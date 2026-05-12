@@ -34,6 +34,13 @@ export async function ensureProductionSchema() {
     ALTER TABLE reports
       ADD COLUMN IF NOT EXISTS therapy_period_id text;
 
+    ALTER TABLE reports
+      ADD COLUMN IF NOT EXISTS session_type text,
+      ADD COLUMN IF NOT EXISTS toys_used jsonb,
+      ADD COLUMN IF NOT EXISTS rooms_used jsonb,
+      ADD COLUMN IF NOT EXISTS tools_used jsonb,
+      ADD COLUMN IF NOT EXISTS review_log jsonb;
+
     DO $$
     BEGIN
       IF NOT EXISTS (

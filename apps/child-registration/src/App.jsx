@@ -39,6 +39,7 @@ const EMPTY_CHILD  = {
     sessionStartTime: '09:00',
     sessionDuration: '60',
     billingMode: 'per_session',
+    totalPrice: 0,
 };
 
 const STEP_META = {
@@ -188,6 +189,7 @@ function App() {
                     endDate: child.periodEndDate || null,
                     pricePerSession: Number(child.programPricePerSession || 0),
                     pricePerMonth: Number(child.programPricePerMonth || 0),
+                    totalPrice: Number(child.totalPrice || 0),
                     billingMode: child.billingMode || 'per_session',
                     scheduleRules,
                     generateSessions: scheduleRules.length > 0,

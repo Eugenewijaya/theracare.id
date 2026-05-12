@@ -258,20 +258,8 @@ export default function ProgramEnrollmentPage() {
 
             <ProgramForm data={form} onChange={setForm} errors={errors} />
 
-            <div className="mt-4 grid grid-cols-1 gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950 sm:grid-cols-2">
-              {form.billingMode === 'package' && (
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">Harga Paket / Periode</label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={form.totalPrice || ''}
-                    onChange={e => setForm(prev => ({ ...prev, totalPrice: Number(e.target.value || 0) }))}
-                    className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                  />
-                </div>
-              )}
-              <div className={form.billingMode === 'package' ? '' : 'sm:col-span-2'}>
+            <div className="mt-4 grid grid-cols-1 gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
+              <div>
                 <label className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">Target / Tujuan Periode</label>
                 <input
                   value={form.programGoal || ''}

@@ -208,7 +208,7 @@ export const reportsApi = {
   getSessionReport: (sessionId) => api.get(`/reports/session/${sessionId}`),
   save: (data) => api.post('/reports', data),
   update: (id, data) => api.patch(`/reports/${id}`, data),
-  updateStatus: (id, status) => api.patch(`/reports/${id}/status`, { status }),
+  updateStatus: (id, status, reviewNote = '') => api.patch(`/reports/${id}/status`, { status, reviewNote }),
   delete: (id) => api.delete(`/reports/${id}`),
 };
 

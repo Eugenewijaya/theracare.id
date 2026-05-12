@@ -3,6 +3,7 @@ import ReportCard from './components/ReportCard';
 import { useClinicSettings } from '../../shared/clinicSettings';
 import { openReportPdf } from '../../shared/reportPdf';
 import { adminApi, childrenApi, reportsApi, sessionsApi, therapistsApi } from '../../shared/api/client';
+import { confirmAction } from '../../shared/ui/confirmDialog';
 
 const toDateValue = (date) => date.toISOString().split('T')[0];
 
@@ -53,6 +54,7 @@ function App() {
     const [timeframe, setTimeframe] = useState('7H'); // 7 Hari
     const [customRange, setCustomRange] = useState({ from: '', to: '' });
     const [toast, setToast] = useState(null);
+    const [reviewNotes, setReviewNotes] = useState({});
     const [data, setData] = useState({ children: [], sessions: [], therapists: [], programs: [], stats: {}, pendingReports: [] });
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -82,7 +84,7 @@ function App() {
                 ['data anak', childrenApi.getAll()],
                 ['terapis', therapistsApi.getAll()],
                 ['program', adminApi.getPrograms()],
-                ['review laporan', reportsApi.getAll('pending_review')],
+                ['review laporan', reportsApi.getAll()],
             ];
             const results = await Promise.all(requests.map(([, request]) => request));
             const [statsRes, sessionsRes, childrenRes, therapistsRes, programsRes, pendingReportsRes] = results;
@@ -95,7 +97,7 @@ function App() {
                 children: childrenRes.ok ? childrenRes.data?.data || [] : [],
                 therapists: therapistsRes.ok ? therapistsRes.data?.data || [] : [],
                 programs: programsRes.ok ? programsRes.data?.data || [] : [],
-                pendingReports: pendingReportsRes.ok ? pendingReportsRes.data?.data || [] : [],
+                pendingReports: pendingReportsRes.ok ? (pendingReportsRes.data?.data || []).filter(report => ['pending_review', 'needs_revision', 'approved', 'published', 'ready_for_parent'].includes(report.status)).slice(0, 12) : [],
             });
             if (failedLabels.length > 0) {
                 setError(`Sebagian data belum bisa dimuat: ${failedLabels.join(', ')}. Metrik lain tetap ditampilkan dari data yang tersedia.`);
@@ -225,12 +227,34 @@ function App() {
         );
     };
 
-    const handleReviewReport = async (reportId, status) => {
-        const res = await reportsApi.updateStatus(reportId, status);
+    const handleReviewReport = async (report, status) => {
+        const note = (reviewNotes[report.id] || '').trim();
+        if (status === 'needs_revision' && ['approved', 'published', 'ready_for_parent'].includes(report.status) && note.length < 8) {
+            showToast('Isi alasan revisi sebelum laporan yang sudah disetujui dikembalikan ke terapis.', 'info');
+            return;
+        }
+        if (status === 'approved' && report.status === 'needs_revision') {
+            showToast('Tunggu terapis mengirim revisi dulu. Setelah disubmit ulang, status akan kembali menunggu review.', 'info');
+            return;
+        }
+        const confirmed = await confirmAction({
+            tone: status === 'approved' ? 'success' : 'warning',
+            icon: status === 'approved' ? 'verified' : 'rate_review',
+            title: status === 'approved' ? 'Setujui laporan?' : 'Kirim permintaan revisi?',
+            message: status === 'approved'
+                ? 'Laporan akan tersedia di portal orang tua.'
+                : 'Terapis utama akan menerima notifikasi revisi dan log review tersimpan.',
+            confirmText: status === 'approved' ? 'Setujui' : 'Kirim Revisi',
+            cancelText: 'Batal',
+        });
+        if (!confirmed) return;
+
+        const res = await reportsApi.updateStatus(report.id, status, note);
         if (!res.ok) {
             showToast(res.data?.error || 'Status laporan gagal diperbarui.', 'info');
             return;
         }
+        setReviewNotes(prev => ({ ...prev, [report.id]: '' }));
         showToast(status === 'approved' ? 'Laporan disetujui dan tersedia di portal orang tua.' : 'Laporan dikirim kembali untuk revisi.', 'success');
         loadReportData();
     };
@@ -368,13 +392,34 @@ function App() {
                                             {report.childName || 'Anak'} - {report.therapistName || 'Terapis'} - {report.date || report.dateFrom || '-'}
                                         </p>
                                     </div>
-                                    <span className="rounded-full bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300 px-2 py-1 text-[11px] font-bold">
-                                        Pending
+                                    <span className={`rounded-full px-2 py-1 text-[11px] font-bold ${
+                                        ['approved', 'published', 'ready_for_parent'].includes(report.status)
+                                            ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300'
+                                            : report.status === 'needs_revision'
+                                                ? 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-300'
+                                                : 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300'
+                                    }`}>
+                                        {report.status === 'pending_review' ? 'Pending' : report.status === 'needs_revision' ? 'Revisi' : 'Disetujui'}
                                     </span>
                                 </div>
                                 <p className="text-xs text-slate-600 dark:text-slate-300 line-clamp-2">
                                     {report.description || report.summary || report.parentNotes || 'Belum ada ringkasan yang ditampilkan.'}
                                 </p>
+                                {Array.isArray(report.reviewLog) && report.reviewLog.length > 0 && (
+                                    <div className="rounded-lg bg-slate-50 p-3 text-[11px] font-semibold text-slate-500 dark:bg-slate-900/60 dark:text-slate-400">
+                                        <p className="mb-1 font-black text-slate-700 dark:text-slate-200">Log review terakhir</p>
+                                        {report.reviewLog.slice(-2).map((log, index) => (
+                                            <p key={`${log.createdAt}-${index}`}>{log.status}: {log.note || 'Tanpa catatan'}</p>
+                                        ))}
+                                    </div>
+                                )}
+                                <textarea
+                                    value={reviewNotes[report.id] || ''}
+                                    onChange={e => setReviewNotes(prev => ({ ...prev, [report.id]: e.target.value }))}
+                                    rows={2}
+                                    placeholder="Catatan review / alasan revisi untuk terapis..."
+                                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-primary/30 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                                />
                                 <div className="flex flex-col sm:flex-row gap-2">
                                     <button
                                         type="button"
@@ -385,14 +430,15 @@ function App() {
                                     </button>
                                     <button
                                         type="button"
-                                        onClick={() => handleReviewReport(report.id, 'approved')}
+                                        onClick={() => handleReviewReport(report, 'approved')}
+                                        disabled={['approved', 'published', 'ready_for_parent'].includes(report.status)}
                                         className="flex-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700"
                                     >
                                         Setujui
                                     </button>
                                     <button
                                         type="button"
-                                        onClick={() => handleReviewReport(report.id, 'needs_revision')}
+                                        onClick={() => handleReviewReport(report, 'needs_revision')}
                                         className="flex-1 rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700"
                                     >
                                         Minta Revisi

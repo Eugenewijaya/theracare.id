@@ -287,6 +287,7 @@ export const substituteRequestService = {
             ...(typeof updates.duration === "string" ? { duration: updates.duration } : {}),
             ...(typeof updates.focus === "string" ? { focus: updates.focus } : {}),
             ...(typeof updates.roomId === "string" ? { roomId: updates.roomId } : {}),
+            status: "upcoming",
             notes: existingNotes ? `${existingNotes}\n${approvalLine}` : approvalLine,
           })
           .where(eq(therapySessions.id, current.sessionId));

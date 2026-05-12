@@ -114,17 +114,22 @@ function normalizeReport(report = {}) {
     ...report,
     isPeriodic: periodic,
     reportTypeLabel: periodic ? 'Laporan Periodik' : 'Laporan Harian',
-    title: report.title || report.sessionFocus || (periodic ? 'Laporan Periodik Terapi' : 'Laporan Harian Terapi'),
+    title: report.title || report.sessionType || report.sessionFocus || (periodic ? 'Laporan Periodik Terapi' : 'Laporan Harian Terapi'),
     childName: report.childName || report.child?.name || report.childId || 'Anak',
     therapistName: report.therapistName || report.therapist || report.therapist?.name || '-',
-    therapyType: periodic ? (report.program || report.sessionFocus || '-') : (report.therapyType || report.program || report.type || '-'),
+    therapyType: periodic ? (report.program || report.sessionFocus || '-') : (report.sessionType || report.therapyType || report.type || '-'),
     dateLabel: periodic
       ? compact([formatDate(report.dateFrom), formatDate(report.dateTo)]).join(' - ')
       : formatDate(report.date),
     statusLabel: getStatusLabel(report.status),
+    aspects: asList(report.aspects),
     evaluations: report.evaluations || {},
     progressPoints: asList(report.progressPoints),
     improvementPoints: asList(report.improvementPoints),
+    toysUsed: asList(report.toysUsed),
+    roomsUsed: asList(report.roomsUsed),
+    toolsUsed: asList(report.toolsUsed),
+    reviewLog: Array.isArray(report.reviewLog) ? report.reviewLog : [],
   };
 }
 
@@ -224,8 +229,10 @@ function buildReportHtml(reportInput, settingsInput) {
     }
     .brand-header {
       display: flex;
+      flex-direction: column;
       gap: 18px;
-      align-items: flex-start;
+      align-items: center;
+      text-align: center;
       padding-bottom: 18px;
       border-bottom: 4px solid ${center.primaryColor};
     }
@@ -336,11 +343,15 @@ function buildReportHtml(reportInput, settingsInput) {
       ${renderMeta('Nama Anak', report.childName)}
       ${renderMeta('Terapis', report.therapistName)}
       ${renderMeta(report.isPeriodic ? 'Periode' : 'Tanggal Sesi', report.dateLabel)}
-      ${renderMeta('Program / Fokus Terapi', report.therapyType)}
+      ${renderMeta(report.isPeriodic ? 'Program / Periode' : 'Jenis Sesi', report.therapyType)}
     </section>
 
     ${renderEvaluations(report.evaluations)}
-    ${renderTextSection('Catatan Deskriptif', report.description || report.summary)}
+    ${renderListSection('Aspek Terapi yang Ditangani', report.aspects)}
+    ${renderTextSection(report.isPeriodic ? 'Kesimpulan & Evaluasi Deskriptif' : 'Goals / Aktivitas Hari Ini', report.description || report.summary)}
+    ${renderListSection('Mainan yang Digunakan', report.toysUsed)}
+    ${renderListSection('Ruang yang Dipakai', report.roomsUsed)}
+    ${renderListSection('Alat Peraga / Media Terapi', report.toolsUsed)}
     ${renderTextSection('Respons Anak Saat Sesi', report.childResponse)}
     ${renderTextSection('Kendala / Observasi Lanjutan', report.obstacles)}
     ${renderListSection('Pencapaian Periode Ini', report.progressPoints, 'positive')}
@@ -408,7 +419,8 @@ function buildPreviewHtml(html, title) {
       .print-toolbar { position: static; align-items: flex-start; flex-direction: column; }
       .print-toolbar-actions, .print-toolbar button { width: 100%; }
       .document { width: 100%; min-height: auto; padding: 22px 18px; }
-      .brand-header, .report-title, .footer { flex-direction: column; align-items: flex-start; }
+      .brand-header { flex-direction: column; align-items: center; text-align: center; }
+      .report-title, .footer { flex-direction: column; align-items: flex-start; }
       .meta-grid, .evaluation-grid { grid-template-columns: 1fr; }
     }
     @media print {

@@ -116,7 +116,58 @@ function EvalBar({ label, value }) {
 }
 
 // ── DailyReportCard ────────────────────────────────────────────────────
-function DailyReportCard({ report, onRate, onDownload, typeColors = {} }) {
+function ReportDetailModal({ report, onClose, onDownload }) {
+    if (!report) return null;
+    const list = (title, items) => Array.isArray(items) && items.length ? (
+        <div>
+            <p className="text-xs font-black uppercase tracking-wider text-slate-500">{title}</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+                {items.map(item => <span key={item} className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600 dark:bg-slate-700 dark:text-slate-200">{item}</span>)}
+            </div>
+        </div>
+    ) : null;
+    return (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm" onClick={onClose}>
+            <article className="max-h-[88vh] w-full max-w-3xl overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl dark:bg-slate-900" onClick={e => e.stopPropagation()}>
+                <div className="mb-5 flex items-start justify-between gap-4">
+                    <div>
+                        <p className="text-xs font-black uppercase tracking-wider text-sky-600">Detail Laporan</p>
+                        <h2 className="mt-1 text-2xl font-black text-slate-900 dark:text-white">{report.title || report.sessionFocus || 'Laporan Terapi'}</h2>
+                        <p className="mt-1 text-sm font-semibold text-slate-500">
+                            {formatDate(report.date || report.dateFrom)}{report.dateTo ? ` s/d ${formatDate(report.dateTo)}` : ''} - {report.therapist || report.therapistName || 'Terapis'}
+                        </p>
+                    </div>
+                    <button onClick={onClose} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800">
+                        <span className="material-symbols-outlined">close</span>
+                    </button>
+                </div>
+                <div className="grid gap-5">
+                    <div>
+                        <p className="text-xs font-black uppercase tracking-wider text-slate-500">
+                            {report.type === 'periodik' ? 'Kesimpulan Periode' : 'Goals / Aktivitas Hari Ini'}
+                        </p>
+                        <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-700 dark:text-slate-300">
+                            {report.description || report.summary || 'Belum ada ringkasan.'}
+                        </p>
+                    </div>
+                    {report.childResponse && <div><p className="text-xs font-black uppercase tracking-wider text-slate-500">Respons Anak</p><p className="mt-2 whitespace-pre-wrap text-sm text-slate-700 dark:text-slate-300">{report.childResponse}</p></div>}
+                    {report.obstacles && <div><p className="text-xs font-black uppercase tracking-wider text-slate-500">Kendala / Observasi</p><p className="mt-2 whitespace-pre-wrap text-sm text-slate-700 dark:text-slate-300">{report.obstacles}</p></div>}
+                    {list('Aspek terapi', report.aspects)}
+                    {list('Mainan', report.toysUsed)}
+                    {list('Ruang dipakai', report.roomsUsed)}
+                    {list('Alat peraga', report.toolsUsed)}
+                    {report.parentNotes && <div className="rounded-2xl border border-green-100 bg-green-50 p-4 dark:border-green-900/30 dark:bg-green-900/10"><p className="text-xs font-black uppercase tracking-wider text-green-700">Masukan untuk Orang Tua</p><p className="mt-2 whitespace-pre-wrap text-sm text-green-800 dark:text-green-200">{report.parentNotes}</p></div>}
+                </div>
+                <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                    <button onClick={onClose} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300">Tutup</button>
+                    <button onClick={() => onDownload(report)} className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:opacity-90 dark:bg-white dark:text-slate-900">Cetak / PDF</button>
+                </div>
+            </article>
+        </div>
+    );
+}
+
+function DailyReportCard({ report, onRate, onDownload, onView, typeColors = {} }) {
     return (
         <div className="flex flex-col border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden bg-white dark:bg-slate-800 hover:border-sky-300 dark:hover:border-sky-700 transition-colors shadow-sm">
             {/* Top Row */}
@@ -176,7 +227,7 @@ function DailyReportCard({ report, onRate, onDownload, typeColors = {} }) {
 
                 {/* Description */}
                 <div>
-                    <span className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">Catatan Deskriptif:</span>
+                    <span className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">Goals / Aktivitas Hari Ini:</span>
                     <p className={`text-sm leading-relaxed ${report.hasNotes ? 'text-slate-600 dark:text-slate-400' : 'italic text-slate-400 dark:text-slate-500'}`}>
                         {report.description}
                     </p>
@@ -196,11 +247,18 @@ function DailyReportCard({ report, onRate, onDownload, typeColors = {} }) {
                 {/* Actions */}
                 <div className="flex gap-3 pt-1">
                     <button
+                        onClick={() => onView(report)}
+                        className="flex items-center gap-2 h-9 px-4 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors text-xs font-bold"
+                    >
+                        <span className="material-symbols-outlined text-[16px]">visibility</span>
+                        Lihat Detail
+                    </button>
+                    <button
                         onClick={() => onDownload(report)}
                         className="flex items-center gap-2 h-9 px-4 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:opacity-90 transition-opacity text-xs font-bold shadow-md"
                     >
                         <span className="material-symbols-outlined text-[16px]">picture_as_pdf</span>
-                        Unduh PDF
+                        Cetak / PDF
                     </button>
                 </div>
             </div>
@@ -209,7 +267,7 @@ function DailyReportCard({ report, onRate, onDownload, typeColors = {} }) {
 }
 
 // ── PeriodicReportCard ─────────────────────────────────────────────────
-function PeriodicReportCard({ report, onDownload }) {
+function PeriodicReportCard({ report, onDownload, onView }) {
     return (
         <div className="border border-amber-200 dark:border-amber-800/50 rounded-2xl overflow-hidden bg-white dark:bg-slate-800 shadow-sm">
             {/* Header */}
@@ -295,11 +353,18 @@ function PeriodicReportCard({ report, onDownload }) {
 
                 <div className="flex gap-3 pt-1">
                     <button
+                        onClick={() => onView(report)}
+                        className="flex items-center gap-2 h-9 px-4 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors text-xs font-bold"
+                    >
+                        <span className="material-symbols-outlined text-[16px]">visibility</span>
+                        Lihat Detail
+                    </button>
+                    <button
                         onClick={() => onDownload(report)}
                         className="flex items-center gap-2 h-9 px-4 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:opacity-90 transition-opacity text-xs font-bold shadow-md"
                     >
                         <span className="material-symbols-outlined text-[16px]">picture_as_pdf</span>
-                        Unduh PDF
+                        Cetak / PDF
                     </button>
                 </div>
             </div>
@@ -335,6 +400,7 @@ function App({ onLogout }) {
     const [ratingModal, setRatingModal] = useState(null);
     const [hoverRating, setHoverRating] = useState(0);
     const [ratingComment, setRatingComment] = useState('');
+    const [selectedReportDetail, setSelectedReportDetail] = useState(null);
     const centerSettings = useClinicSettings();
 
     const typeColors = React.useMemo(() => buildTypeColors(programsList), [programsList]);
@@ -417,11 +483,19 @@ function App({ onLogout }) {
                     type:         guessTherapyType(savedReport.sessionFocus || savedReport.program || s?.focus, allProg),
                     title:        savedReport.sessionFocus || s?.focus || 'Laporan Harian Terapi',
                     therapist:    savedReport.therapistName || s?.therapist?.name || 'Terapis',
+                    sessionType:  savedReport.sessionType || savedReport.sessionFocus || '',
                     parentRating: rating?.rating || null,
                     ratingComment: rating?.comment || '',
-                    description:  savedReport.description || savedReport.summary || 'Laporan sudah tersedia, namun catatan deskriptif belum diisi.',
+                    description:  savedReport.description || savedReport.summary || 'Laporan sudah tersedia, namun Goals / Aktivitas Hari Ini belum diisi.',
                     hasNotes:     !!(savedReport.description || savedReport.summary || '').trim(),
+                    aspects:      savedReport.aspects || [],
                     evaluations:  savedReport.evaluations || {},
+                    childResponse: savedReport.childResponse || '',
+                    obstacles:    savedReport.obstacles || '',
+                    toysUsed:     savedReport.toysUsed || [],
+                    roomsUsed:    savedReport.roomsUsed || [],
+                    toolsUsed:    savedReport.toolsUsed || [],
+                    reviewLog:    savedReport.reviewLog || [],
                     parentNotes:  savedReport.recommendations || savedReport.parentNotes || '',
                     status:       savedReport.status,
                     statusLabel:  getReportStatusLabel(savedReport),
@@ -592,6 +666,7 @@ function App({ onLogout }) {
                                                     typeColors={typeColors}
                                                     onRate={r => { setRatingModal(r); setHoverRating(0); setRatingComment(''); }}
                                                     onDownload={handleDownload}
+                                                    onView={setSelectedReportDetail}
                                                 />
                                             ))}
                                         </div>
@@ -632,7 +707,7 @@ function App({ onLogout }) {
                                     {periodicReports.length > 0 ? (
                                         <div className="flex flex-col gap-5">
                                             {periodicReports.map((r, idx) => (
-                                                <PeriodicReportCard key={idx} report={r} onDownload={handleDownload} />
+                                                <PeriodicReportCard key={idx} report={r} onDownload={handleDownload} onView={setSelectedReportDetail} />
                                             ))}
                                         </div>
                                     ) : (
@@ -648,6 +723,13 @@ function App({ onLogout }) {
                     </div>
                 </div>
             </div>
+
+            {/* Report Detail Modal */}
+            <ReportDetailModal
+                report={selectedReportDetail}
+                onClose={() => setSelectedReportDetail(null)}
+                onDownload={handleDownload}
+            />
 
             {/* Rating Modal */}
             {ratingModal && (

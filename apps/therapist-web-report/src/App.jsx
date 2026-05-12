@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Header from './components/Header';
-import { sessionsApi, reportsApi } from '../../shared/api/client';
+import { sessionsApi, reportsApi, adminApi } from '../../shared/api/client';
 import { useClinicSettings } from '../../shared/clinicSettings';
 import { openReportPdf } from '../../shared/reportPdf';
 import { readTherapistUser } from '../../shared/sessionIdentity';
@@ -35,6 +35,11 @@ const buildEvaluationMap = (values) => {
     });
     return result;
 };
+
+const parseCommaList = (value) => String(value || '')
+    .split(',')
+    .map(item => item.trim())
+    .filter(Boolean);
 
 const getDailyContextFromRoute = () => {
     if (typeof window === 'undefined') return { openComposer: false, childId: '', sessionId: '' };
@@ -318,13 +323,37 @@ function DailyReportForm({ childId, sessionId, onBack, onSaved, currentUser, chi
 
     const [aspects, setAspects] = useState({});
     const [rating, setRating] = useState(4);
+    const [sessionType, setSessionType] = useState('Sesi harian');
     const [description, setDescription] = useState('');
+    const [toysText, setToysText] = useState('');
+    const [toolsText, setToolsText] = useState('');
+    const [rooms, setRooms] = useState([]);
+    const [roomsUsed, setRoomsUsed] = useState([]);
     const [childResponse, setChildResponse] = useState('');
     const [obstacles, setObstacles] = useState('');
     const [recommendations, setRecommendations] = useState('');
     const [internalNotes, setInternalNotes] = useState('');
     const [submitted, setSubmitted] = useState(false);
     const toggleAspect = (key) => setAspects(prev => ({ ...prev, [key]: !prev[key] }));
+    const activeRooms = rooms.filter(room => room.status === 'active');
+    const toggleRoom = (roomName) => setRoomsUsed(prev => (
+        prev.includes(roomName) ? prev.filter(item => item !== roomName) : [...prev, roomName]
+    ));
+
+    useEffect(() => {
+        let active = true;
+        const loadRooms = async () => {
+            try {
+                const res = await adminApi.getRooms();
+                if (active) setRooms(res.data?.data || []);
+            } catch (e) {
+                console.error(e);
+                if (active) setRooms([]);
+            }
+        };
+        loadRooms();
+        return () => { active = false; };
+    }, []);
 
     const handleSubmit = async () => {
         const report = {
@@ -335,11 +364,15 @@ function DailyReportForm({ childId, sessionId, onBack, onSaved, currentUser, chi
             therapistName: currentUser?.name || '',
             sessionId: linkedSession?.id || sessionId || '',
             sessionFocus: linkedSession?.focus || child?.program || 'Therapy Session',
+            sessionType,
             date: linkedSession?.date || new Date().toISOString().split('T')[0],
             aspects: Object.keys(aspects).filter(k => aspects[k]),
             evaluations: buildEvaluationMap({}),
             sessionScore: rating,
             description,
+            toysUsed: parseCommaList(toysText),
+            toolsUsed: parseCommaList(toolsText),
+            roomsUsed: roomsUsed.filter(roomName => activeRooms.some(room => room.name === roomName)),
             childResponse,
             obstacles,
             recommendations,
@@ -399,11 +432,84 @@ function DailyReportForm({ childId, sessionId, onBack, onSaved, currentUser, chi
                 </div>
             </section>
 
+            <section className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-5">
+                <div>
+                    <h3 className="font-bold text-lg">Jenis Sesi & Media Bermain</h3>
+                    <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                        Program utama tetap mengikuti periode anak. Bagian ini hanya mencatat jenis sesi dan media yang dipakai hari ini.
+                    </p>
+                </div>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div>
+                        <label className="mb-2 block text-sm font-bold text-slate-700 dark:text-slate-300">Jenis Sesi</label>
+                        <select
+                            value={sessionType}
+                            onChange={e => setSessionType(e.target.value)}
+                            className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-teal-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                        >
+                            <option>Sesi harian</option>
+                            <option>Sesi pengganti / reschedule</option>
+                            <option>Observasi</option>
+                            <option>Evaluasi target</option>
+                            <option>Parent coaching</option>
+                            <option>One time visit</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label className="mb-2 block text-sm font-bold text-slate-700 dark:text-slate-300">Mainan yang Digunakan</label>
+                        <input
+                            value={toysText}
+                            onChange={e => setToysText(e.target.value)}
+                            className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-teal-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                            placeholder="Contoh: puzzle, balok, bola sensori"
+                        />
+                    </div>
+                    <div>
+                        <label className="mb-2 block text-sm font-bold text-slate-700 dark:text-slate-300">Alat Peraga / Media Terapi</label>
+                        <input
+                            value={toolsText}
+                            onChange={e => setToolsText(e.target.value)}
+                            className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-teal-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                            placeholder="Contoh: kartu emosi, weighted lap pad"
+                        />
+                    </div>
+                    <div>
+                        <label className="mb-2 block text-sm font-bold text-slate-700 dark:text-slate-300">Ruang yang Dipakai</label>
+                        <div className="flex min-h-[44px] flex-wrap gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-900">
+                            {rooms.length === 0 ? (
+                                <span className="px-2 py-1 text-xs font-semibold text-slate-400">Data ruangan belum tersedia.</span>
+                            ) : rooms.map(room => {
+                                const disabled = room.status !== 'active';
+                                const selected = roomsUsed.includes(room.name);
+                                return (
+                                    <button
+                                        key={room.id}
+                                        type="button"
+                                        disabled={disabled}
+                                        onClick={() => toggleRoom(room.name)}
+                                        className={`rounded-lg border px-3 py-1.5 text-xs font-black transition-colors ${
+                                            disabled
+                                                ? 'cursor-not-allowed border-red-100 bg-red-50 text-red-300'
+                                                : selected
+                                                    ? 'border-teal-300 bg-teal-50 text-teal-700'
+                                                    : 'border-slate-200 bg-white text-slate-600 hover:border-teal-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                                        }`}
+                                        title={disabled ? 'Ruangan maintenance tidak bisa dipilih' : room.name}
+                                    >
+                                        {room.name}{disabled ? ' (maintenance)' : ''}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             {/* Activity Description */}
             <section className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
-                <h3 className="font-bold text-lg mb-4">Deskripsi Aktivitas Sesi</h3>
+                <h3 className="font-bold text-lg mb-4">Goals / Aktivitas Hari Ini</h3>
                 <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-teal-500/50 transition-all">
-                    <textarea value={description} onChange={e => setDescription(e.target.value)} className="w-full bg-transparent p-4 min-h-[120px] resize-y text-slate-900 dark:text-slate-100 focus:ring-0 outline-none placeholder:text-slate-400 text-sm" placeholder="Jelaskan aktivitas yang dilakukan selama sesi..." />
+                    <textarea value={description} onChange={e => setDescription(e.target.value)} className="w-full bg-transparent p-4 min-h-[120px] resize-y text-slate-900 dark:text-slate-100 focus:ring-0 outline-none placeholder:text-slate-400 text-sm" placeholder="Tuliskan goals dan aktivitas utama hari ini sesuai kebutuhan anak..." />
                 </div>
             </section>
 
@@ -712,9 +818,23 @@ function ReportDetail({ report, onBack }) {
     const handleDownload = () => {
         openReportPdf(report, centerSettings.settings || centerSettings);
     };
+    const renderList = (title, items) => {
+        const list = Array.isArray(items) ? items.filter(Boolean) : [];
+        if (!list.length) return null;
+        return (
+            <div className="mt-4">
+                <p className="font-bold">{title}:</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                    {list.map(item => (
+                        <span key={item} className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600 dark:bg-slate-700 dark:text-slate-200">{item}</span>
+                    ))}
+                </div>
+            </div>
+        );
+    };
 
     return (
-        <div className="max-w-2xl mx-auto p-6 bg-white dark:bg-slate-800 rounded-xl shadow-lg mt-6">
+        <div className="max-w-3xl mx-auto p-6 bg-white dark:bg-slate-800 rounded-xl shadow-lg mt-6">
             <div className="flex items-start justify-between gap-4 mb-4">
                 <button onClick={onBack} className="text-sm text-primary hover:underline font-bold flex items-center gap-1">
                     <span className="material-symbols-outlined text-[18px]">arrow_back</span> Kembali
@@ -724,16 +844,35 @@ function ReportDetail({ report, onBack }) {
                     className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-white text-xs font-bold shadow-md hover:bg-primary/90 transition-colors"
                 >
                     <span className="material-symbols-outlined text-[16px]">picture_as_pdf</span>
-                    Download PDF
+                    Cetak / PDF
                 </button>
             </div>
             <h2 className="text-2xl font-bold mb-4">Detail {report.type === 'periodik' ? 'Laporan Periodik' : 'Laporan Harian'}</h2>
             <div className="space-y-3">
                 <p><strong>Nama Anak:</strong> {report.childName || report.childId}</p>
                 <p><strong>Tanggal:</strong> {report.date || report.dateFrom || '—'}</p>
+                <p><strong>Jenis Sesi:</strong> {report.sessionType || report.sessionFocus || report.type || '-'}</p>
                 <p><strong>Status:</strong> <span className={`px-2 py-1 rounded font-bold text-xs ${isReady ? 'bg-green-100 text-green-700' : report.status === 'needs_revision' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>{statusLabel(report.status)}</span></p>
                 {report.summary && <div className="mt-4"><p><strong>Ringkasan:</strong></p><p className="mt-1 text-slate-600 dark:text-slate-300">{report.summary}</p></div>}
-                {report.description && <div className="mt-4"><p><strong>Deskripsi:</strong></p><p className="mt-1 text-slate-600 dark:text-slate-300">{report.description}</p></div>}
+                {report.description && <div className="mt-4"><p><strong>Goals / Aktivitas Hari Ini:</strong></p><p className="mt-1 whitespace-pre-wrap text-slate-600 dark:text-slate-300">{report.description}</p></div>}
+                {report.childResponse && <div className="mt-4"><p><strong>Respons Anak:</strong></p><p className="mt-1 whitespace-pre-wrap text-slate-600 dark:text-slate-300">{report.childResponse}</p></div>}
+                {report.obstacles && <div className="mt-4"><p><strong>Kendala / Observasi:</strong></p><p className="mt-1 whitespace-pre-wrap text-slate-600 dark:text-slate-300">{report.obstacles}</p></div>}
+                {renderList('Aspek terapi', report.aspects)}
+                {renderList('Mainan', report.toysUsed)}
+                {renderList('Ruang dipakai', report.roomsUsed)}
+                {renderList('Alat peraga', report.toolsUsed)}
+                {Array.isArray(report.reviewLog) && report.reviewLog.length > 0 && (
+                    <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900/60">
+                        <p className="text-sm font-black">Log Review</p>
+                        <div className="mt-3 space-y-2">
+                            {report.reviewLog.map((log, index) => (
+                                <div key={`${log.createdAt}-${index}`} className="text-xs text-slate-500 dark:text-slate-400">
+                                    <strong className="text-slate-700 dark:text-slate-200">{log.status}</strong> - {log.note || 'Tanpa catatan'} <span className="opacity-70">({log.createdAt})</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );

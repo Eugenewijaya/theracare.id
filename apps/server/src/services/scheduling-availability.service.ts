@@ -21,6 +21,26 @@ type CenterClosure = {
   isActive?: boolean;
 };
 
+type TherapistSchedule = Record<string, { start?: string; end?: string } | null | undefined>;
+
+type TherapistLeaveRequest = {
+  therapistId?: string;
+  type?: string;
+  startDate?: string;
+  endDate?: string;
+  status?: string;
+};
+
+const DAY_SCHEDULE_KEYS: Record<number, string[]> = {
+  0: ["Minggu", "minggu", "Sunday", "sunday"],
+  1: ["Senin", "senin", "Monday", "monday"],
+  2: ["Selasa", "selasa", "Tuesday", "tuesday"],
+  3: ["Rabu", "rabu", "Wednesday", "wednesday"],
+  4: ["Kamis", "kamis", "Thursday", "thursday"],
+  5: ["Jumat", "jumat", "Friday", "friday"],
+  6: ["Sabtu", "sabtu", "Saturday", "saturday"],
+};
+
 function parseJsonArray(value?: string | null) {
   try {
     const parsed = JSON.parse(value || "[]");
@@ -102,6 +122,51 @@ function operationalConflict(settings: Record<string, string | null>, date: stri
   return "";
 }
 
+function getLeaveTypeLabel(type?: string) {
+  if (type === "sakit") return "sakit";
+  if (type === "unpaid_leave") return "unpaid leave";
+  return "cuti";
+}
+
+function therapistLeaveConflict(settings: Record<string, string | null>, therapistId: string, date: string) {
+  const requests = parseJsonArray(settings.therapistLeaveRequests) as TherapistLeaveRequest[];
+  const activeLeave = requests.find((request) => (
+    request?.status === "approved"
+    && request?.therapistId === therapistId
+    && typeof request.startDate === "string"
+    && date >= request.startDate
+    && date <= (request.endDate || request.startDate)
+  ));
+  if (!activeLeave) return "";
+  return `Terapis sedang ${getLeaveTypeLabel(activeLeave.type)} pada tanggal tersebut.`;
+}
+
+function getTherapistScheduleForDate(schedule: TherapistSchedule | null | undefined, date: string) {
+  if (!schedule || typeof schedule !== "object") return null;
+  const hasSchedule = Object.values(schedule).some(Boolean);
+  if (!hasSchedule) return null;
+  const day = new Date(`${date}T00:00:00`).getDay();
+  const keys = DAY_SCHEDULE_KEYS[day] || [];
+  return keys.map((key) => schedule[key]).find(Boolean) || undefined;
+}
+
+function therapistScheduleConflict(schedule: TherapistSchedule | null | undefined, slot: { date: string; time: string; duration?: string }) {
+  if (!schedule || typeof schedule !== "object" || !Object.values(schedule).some(Boolean)) return "";
+
+  const daySchedule = getTherapistScheduleForDate(schedule, slot.date);
+  if (!daySchedule) return "Terapis sedang off pada hari tersebut.";
+
+  const start = parseMinutes(daySchedule.start);
+  const end = parseMinutes(daySchedule.end);
+  const slotStart = parseMinutes(slot.time);
+  const duration = parseDurationMinutes(slot.duration);
+  if (start === null || end === null || slotStart === null || end <= start) return "";
+  if (slotStart < start || slotStart + duration > end) {
+    return "Slot berada di luar jadwal kerja terapis.";
+  }
+  return "";
+}
+
 async function findSessionOverlap(
   field: "therapistId" | "childId" | "roomId",
   entityId: string,
@@ -147,6 +212,17 @@ export async function evaluateTherapistSlot(
   const therapist = await db.query.therapists.findFirst({ where: eq(therapists.id, therapistId) });
   if (!therapist) {
     return { ...slot, status: "conflict", reason: "Terapis tidak ditemukan.", kind: "therapist" };
+  }
+
+  const settings = await getSettingsMap();
+  const leaveReason = therapistLeaveConflict(settings, therapistId, slot.date);
+  if (leaveReason) {
+    return { ...slot, status: "conflict", reason: leaveReason, kind: "therapist" };
+  }
+
+  const scheduleReason = therapistScheduleConflict(therapist.schedule, slot);
+  if (scheduleReason) {
+    return { ...slot, status: "conflict", reason: scheduleReason, kind: "therapist" };
   }
 
   const conflict = await findSessionOverlap("therapistId", therapistId, slot, excludeSessionId);
