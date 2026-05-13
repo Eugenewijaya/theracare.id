@@ -67,9 +67,16 @@ function formatWeekLabel(monday) {
   return `${formatDateShort(monday)} - ${formatDateShort(saturday)} ${saturday.getFullYear()}`;
 }
 
+function normalizeClockValue(value) {
+  const match = String(value || '').trim().match(/^(\d{1,2})[:.](\d{2})$/);
+  if (!match) return '';
+  return `${match[1].padStart(2, '0')}:${match[2]}`;
+}
+
 function parseMinutes(value) {
-  if (!value || !/^\d{1,2}:\d{2}$/.test(String(value))) return null;
-  const [hour, minute] = String(value).split(':').map(Number);
+  const normalized = normalizeClockValue(value);
+  if (!normalized) return null;
+  const [hour, minute] = normalized.split(':').map(Number);
   if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null;
   return hour * 60 + minute;
 }
@@ -137,14 +144,16 @@ function parseWorkWindow(value) {
   if (Array.isArray(value)) return parseWorkWindow(value.find(Boolean));
   if (typeof value === 'string') {
     if (/off|libur|tutup|inactive/i.test(value)) return null;
-    const match = value.match(/(\d{1,2}:\d{2}).*?(\d{1,2}:\d{2})/);
-    return match ? { start: match[1], end: match[2] } : null;
+    const match = value.match(/(\d{1,2}[:.]\d{2}).*?(\d{1,2}[:.]\d{2})/);
+    return match ? { start: normalizeClockValue(match[1]), end: normalizeClockValue(match[2]) } : null;
   }
   if (typeof value === 'object') {
     if (value.active === false || value.enabled === false || value.isActive === false) return null;
+    const start = value.start || value.startTime || value.start_time || value.from || value.open || value.clockIn || value.jamMulai || value.mulai || value.begin;
+    const end = value.end || value.endTime || value.end_time || value.to || value.close || value.clockOut || value.jamSelesai || value.selesai || value.finish;
     return {
-      start: value.start || value.startTime || value.from || value.open || value.clockIn,
-      end: value.end || value.endTime || value.to || value.close || value.clockOut,
+      start: normalizeClockValue(start) || start,
+      end: normalizeClockValue(end) || end,
     };
   }
   return null;

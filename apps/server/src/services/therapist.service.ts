@@ -1,11 +1,11 @@
 import { db } from "../db/index.js";
 import { account, authSession, notificationReads, notifications, reports, therapists, therapySessions, user } from "../db/schema.js";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { auth } from "../auth.js";
-import { verifyPassword } from "better-auth/crypto";
 import { randomBytes } from "node:crypto";
 import { generateId, generatePortalResetPassword, generateTempPassword, generateNIT } from "../utils/id-generators.js";
-import { setCredentialPassword } from "./auth-password.service.js";
+import { setCredentialPassword, verifyCredentialPassword } from "./auth-password.service.js";
+import { notifyTherapistScheduleConflicts } from "./schedule-conflict-notification.service.js";
 
 type TherapistProfileInput = {
   name?: string;
@@ -111,16 +111,6 @@ async function createPortalSession(userId: string) {
   return token;
 }
 
-async function verifyCredentialPassword(userId: string, password: string) {
-  const [credential] = await db
-    .select()
-    .from(account)
-    .where(and(eq(account.userId, userId), eq(account.providerId, "credential")))
-    .limit(1);
-  if (!credential?.password) return false;
-  return verifyPassword({ hash: credential.password, password });
-}
-
 async function archiveUser(userId: string, reason: string) {
   await db.update(user)
     .set({
@@ -220,6 +210,7 @@ export const therapistService = {
     if (!therapist) return null;
 
     const therapistUpdates = pickTherapistProfileValues(updates);
+    const scheduleChanged = Object.prototype.hasOwnProperty.call(therapistUpdates, "schedule");
     if (Object.keys(therapistUpdates).length > 0) {
       await db.update(therapists).set(therapistUpdates).where(eq(therapists.id, id));
     }
@@ -232,6 +223,9 @@ export const therapistService = {
     if (typeof updates.status === "string") userUpdates.status = updates.status;
     if (Object.keys(userUpdates).length > 0) {
       await db.update(user).set({ ...userUpdates, updatedAt: new Date() }).where(eq(user.id, therapist.userId));
+    }
+    if (scheduleChanged) {
+      await notifyTherapistScheduleConflicts(id);
     }
     return this.getById(id);
   },

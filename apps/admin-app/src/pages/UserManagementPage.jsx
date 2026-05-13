@@ -4,6 +4,7 @@ import { confirmAction } from '../../../shared/ui/confirmDialog';
 import {
     ADMIN_GATE_PASSWORD,
     USER_MANAGEMENT_UNLOCK_KEY,
+    clearSessionUnlockState,
     getSessionUnlockState,
     markSessionUnlocked,
 } from '../config/accessGate';
@@ -43,6 +44,25 @@ export default function UserManagementPage() {
     useEffect(() => {
         if (!isUnlocked) return;
         load();
+    }, [isUnlocked]);
+
+    useEffect(() => {
+        if (!isUnlocked) return undefined;
+        const lockIfExpired = () => {
+            if (getSessionUnlockState(USER_MANAGEMENT_UNLOCK_KEY)) return;
+            clearSessionUnlockState(USER_MANAGEMENT_UNLOCK_KEY);
+            setIsUnlocked(false);
+            setGatePassword('');
+            setGateError('Sesi super admin sudah habis. Masukkan password lagi.');
+        };
+        const interval = window.setInterval(lockIfExpired, 5000);
+        window.addEventListener('focus', lockIfExpired);
+        document.addEventListener('visibilitychange', lockIfExpired);
+        return () => {
+            window.clearInterval(interval);
+            window.removeEventListener('focus', lockIfExpired);
+            document.removeEventListener('visibilitychange', lockIfExpired);
+        };
     }, [isUnlocked]);
 
     const showToast = (msg, type = 'success') => {
@@ -187,6 +207,7 @@ export default function UserManagementPage() {
                                 <h2 className="text-lg font-black text-slate-900 dark:text-white">User Management Terkunci</h2>
                                 <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
                                     Masukkan password super admin untuk membuka halaman ini.
+                                    Akses otomatis terkunci lagi setelah 5 menit.
                                 </p>
                             </div>
                         </div>

@@ -3,6 +3,7 @@ import { db } from "../db/index.js";
 import { clinicSettings } from "../db/schema.js";
 import { generateId } from "../utils/id-generators.js";
 import { notificationService } from "./notification.service.js";
+import { notifyCenterClosureSessionConflicts } from "./schedule-conflict-notification.service.js";
 
 const CENTER_CLOSURES_KEY = "centerClosures";
 const VALID_TYPES = new Set(["public_holiday", "manual_off", "temporary_closure"]);
@@ -187,7 +188,16 @@ export const centerClosureService = {
     const closure = normalizeClosure(data, createdBy);
     const closures = await readClosures();
     await writeClosures(sortClosures([closure, ...closures]));
-    if (data.notify !== false) await sendClosureNotification(closure, "Pengumuman otomatis dikirim ke portal admin, terapis, dan orang tua.");
+    if (data.notify !== false) {
+      await sendClosureNotification(closure, "Pengumuman otomatis dikirim ke portal admin, terapis, dan orang tua.");
+      if (closure.isActive) {
+        await notifyCenterClosureSessionConflicts(
+          closure.startDate,
+          closure.endDate,
+          `center off: ${closure.title}`,
+        );
+      }
+    }
     return closure;
   },
 
@@ -225,6 +235,13 @@ export const centerClosureService = {
         message: `${nextItems.length} tanggal merah tahun ${year} diterapkan sebagai jadwal off center. Jadwal terapi pada tanggal tersebut perlu dikonfirmasi admin.`,
         targetRole: "all",
       });
+      for (const closure of nextItems) {
+        await notifyCenterClosureSessionConflicts(
+          closure.startDate,
+          closure.endDate,
+          `center off: ${closure.title}`,
+        );
+      }
     }
 
     return { added: nextItems.length, closures };
@@ -239,6 +256,13 @@ export const centerClosureService = {
     await writeClosures(sortClosures(closures));
     if (updates.notify !== false) {
       await sendClosureNotification(closure, closure.isActive ? "Jadwal off center diaktifkan." : "Jadwal off center dinonaktifkan dan center kembali aktif sesuai jadwal operasional.");
+      if (closure.isActive) {
+        await notifyCenterClosureSessionConflicts(
+          closure.startDate,
+          closure.endDate,
+          `center off: ${closure.title}`,
+        );
+      }
     }
     return closure;
   },

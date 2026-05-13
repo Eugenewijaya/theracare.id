@@ -4,6 +4,7 @@ import { confirmAction } from '../../../shared/ui/confirmDialog';
 import {
   ADMIN_GATE_PASSWORD,
   LEAVE_REQUESTS_UNLOCK_KEY,
+  clearSessionUnlockState,
   getSessionUnlockState,
   markSessionUnlocked,
 } from '../config/accessGate';
@@ -66,6 +67,25 @@ export default function TherapistLeaveRequestsPage() {
       window.clearInterval(interval);
       window.removeEventListener('notificationsUpdated', refreshSilently);
       window.removeEventListener('leaveRequestsUpdated', refreshSilently);
+    };
+  }, [isUnlocked]);
+
+  useEffect(() => {
+    if (!isUnlocked) return undefined;
+    const lockIfExpired = () => {
+      if (getSessionUnlockState(LEAVE_REQUESTS_UNLOCK_KEY)) return;
+      clearSessionUnlockState(LEAVE_REQUESTS_UNLOCK_KEY);
+      setIsUnlocked(false);
+      setGatePassword('');
+      setGateError('Sesi super admin sudah habis. Masukkan password lagi.');
+    };
+    const interval = window.setInterval(lockIfExpired, 5000);
+    window.addEventListener('focus', lockIfExpired);
+    document.addEventListener('visibilitychange', lockIfExpired);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', lockIfExpired);
+      document.removeEventListener('visibilitychange', lockIfExpired);
     };
   }, [isUnlocked]);
 
@@ -161,6 +181,7 @@ export default function TherapistLeaveRequestsPage() {
                 <h2 className="text-lg font-black text-slate-900 dark:text-white">Pengajuan Cuti Terkunci</h2>
                 <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
                   Masukkan password super admin untuk membuka halaman ini.
+                  Akses otomatis terkunci lagi setelah 5 menit.
                 </p>
               </div>
             </div>

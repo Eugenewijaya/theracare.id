@@ -1,11 +1,10 @@
 import { db } from "../db/index.js";
 import { account, authSession, children, notificationReads, notifications, parents, rescheduleRequests, sessionRatings, user } from "../db/schema.js";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { auth } from "../auth.js";
-import { verifyPassword } from "better-auth/crypto";
 import { randomBytes } from "node:crypto";
 import { generateId, generatePortalResetPassword, generateSeqId, generateTempPassword } from "../utils/id-generators.js";
-import { setCredentialPassword } from "./auth-password.service.js";
+import { setCredentialPassword, verifyCredentialPassword } from "./auth-password.service.js";
 
 function normalizePhone(phone?: string) {
   const digits = (phone || "").replace(/\D/g, "");
@@ -61,16 +60,6 @@ async function createPortalSession(userId: string) {
     expiresAt,
   });
   return token;
-}
-
-async function verifyCredentialPassword(userId: string, password: string) {
-  const [credential] = await db
-    .select()
-    .from(account)
-    .where(and(eq(account.userId, userId), eq(account.providerId, "credential")))
-    .limit(1);
-  if (!credential?.password) return false;
-  return verifyPassword({ hash: credential.password, password });
 }
 
 async function archiveUser(userId: string, reason: string) {

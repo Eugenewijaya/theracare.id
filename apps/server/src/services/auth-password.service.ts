@@ -4,15 +4,31 @@ import { db } from "../db/index.js";
 import { account, authSession } from "../db/schema.js";
 import { generateId } from "../utils/id-generators.js";
 
+export async function verifyCredentialPassword(userId: string, password: string) {
+  const credentialRows = await db
+    .select()
+    .from(account)
+    .where(and(eq(account.userId, userId), eq(account.providerId, "credential")));
+  const credentials = credentialRows.length > 0
+    ? credentialRows
+    : await db.select().from(account).where(eq(account.userId, userId));
+  const passwordChecks = await Promise.all(
+    credentials.map((credential) =>
+      credential.password ? verifyPassword({ hash: credential.password, password }) : false
+    )
+  );
+  return passwordChecks.some(Boolean);
+}
+
 export async function setCredentialPassword(userId: string, password: string) {
   const passwordHash = await hashPassword(password);
-  const credentialFilter = and(eq(account.userId, userId), eq(account.providerId, "credential"));
-  const credentials = await db.select().from(account).where(credentialFilter);
+  const userAccountFilter = eq(account.userId, userId);
+  const credentials = await db.select().from(account).where(userAccountFilter);
 
   if (credentials.length > 0) {
     await db.update(account)
       .set({ password: passwordHash, updatedAt: new Date() })
-      .where(credentialFilter);
+      .where(userAccountFilter);
   } else {
     await db.insert(account).values({
       id: generateId("ACC"),
@@ -23,14 +39,7 @@ export async function setCredentialPassword(userId: string, password: string) {
     });
   }
 
-  const updatedCredentials = await db.select().from(account).where(credentialFilter);
-  const passwordChecks = await Promise.all(
-    updatedCredentials.map((credential) =>
-      credential.password ? verifyPassword({ hash: credential.password, password }) : false
-    )
-  );
-
-  if (!passwordChecks.some(Boolean)) {
+  if (!(await verifyCredentialPassword(userId, password))) {
     throw new Error("Password reset failed verification");
   }
 

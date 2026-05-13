@@ -3,13 +3,12 @@ import express from "express";
 import cors, { type CorsOptions } from "cors";
 import { fromNodeHeaders, toNodeHandler } from "better-auth/node";
 import { and, eq, gt } from "drizzle-orm";
-import { verifyPassword } from "better-auth/crypto";
 import { auth } from "./auth.js";
 import { ensureProductionSchema } from "./db/production-schema.js";
 import { db } from "./db/index.js";
-import { account, authSession, user as userTable } from "./db/schema.js";
+import { authSession, user as userTable } from "./db/schema.js";
 import { errorHandler } from "./middleware/error.middleware.js";
-import { setCredentialPassword } from "./services/auth-password.service.js";
+import { setCredentialPassword, verifyCredentialPassword } from "./services/auth-password.service.js";
 
 // Routes
 import parentRoutes from "./routes/parent.routes.js";
@@ -138,16 +137,7 @@ app.post("/api/auth/change-password", express.json({ limit: "1mb" }), async (req
       return res.status(401).json({ success: false, error: "Unauthorized — silakan login terlebih dahulu" });
     }
 
-    const credentials = await db
-      .select()
-      .from(account)
-      .where(and(eq(account.userId, session.user.id), eq(account.providerId, "credential")));
-    const checks = await Promise.all(
-      credentials.map((credential) =>
-        credential.password ? verifyPassword({ hash: credential.password, password: currentPassword }) : false
-      )
-    );
-    if (!checks.some(Boolean)) {
+    if (!(await verifyCredentialPassword(session.user.id, currentPassword))) {
       return res.status(400).json({ success: false, error: "Password lama tidak valid" });
     }
 

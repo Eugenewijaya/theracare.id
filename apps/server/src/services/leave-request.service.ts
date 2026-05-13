@@ -3,6 +3,7 @@ import { db } from "../db/index.js";
 import { clinicSettings } from "../db/schema.js";
 import { generateId } from "../utils/id-generators.js";
 import { notificationService } from "./notification.service.js";
+import { notifyTherapistScheduleConflicts } from "./schedule-conflict-notification.service.js";
 
 const LEAVE_REQUESTS_KEY = "therapistLeaveRequests";
 const VALID_TYPES = new Set(["cuti", "sakit", "unpaid_leave"]);
@@ -153,6 +154,10 @@ export const leaveRequestService = {
         targetUserId: next.therapistUserId,
         relatedId: next.id,
       });
+    }
+
+    if (status === "approved") {
+      await notifyTherapistScheduleConflicts(next.therapistId);
     }
 
     return next;
