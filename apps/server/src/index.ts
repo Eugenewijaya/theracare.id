@@ -9,6 +9,7 @@ import { db } from "./db/index.js";
 import { authSession, user as userTable } from "./db/schema.js";
 import { errorHandler } from "./middleware/error.middleware.js";
 import { setCredentialPassword, verifyCredentialPassword } from "./services/auth-password.service.js";
+import { syncService } from "./services/sync.service.js";
 
 // Routes
 import parentRoutes from "./routes/parent.routes.js";
@@ -25,6 +26,7 @@ import notificationRoutes from "./routes/notification.routes.js";
 import auditLogRoutes from "./routes/audit-log.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 import uploadRoutes from "./routes/upload.routes.js";
+import syncRoutes from "./routes/sync.routes.js";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -52,6 +54,35 @@ const corsOptions: CorsOptions = {
   },
   credentials: true,
 };
+
+function shouldTrackMutation(req: express.Request) {
+  if (!["POST", "PATCH", "DELETE"].includes(req.method)) return false;
+  const path = req.path || req.originalUrl || "";
+  if (!path.startsWith("/api/")) return false;
+  if (path.startsWith("/api/sync")) return false;
+  if (path.startsWith("/api/health")) return false;
+  if (path.startsWith("/api/auth/sign-in") || path.startsWith("/api/auth/sign-out") || path.startsWith("/api/auth/get-session")) {
+    return false;
+  }
+  if (path === "/api/notifications/read-all" || /^\/api\/notifications\/[^/]+\/read$/.test(path)) {
+    return false;
+  }
+  return true;
+}
+
+function trackMutationRevision(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const shouldTrack = shouldTrackMutation(req);
+  if (shouldTrack) {
+    res.on("finish", () => {
+      if (res.statusCode >= 200 && res.statusCode < 400) {
+        void syncService.bump(`${req.method} ${req.path}`).catch((error) => {
+          console.error("[sync] failed to bump system revision", error);
+        });
+      }
+    });
+  }
+  next();
+}
 
 await ensureProductionSchema();
 
@@ -142,6 +173,9 @@ app.post("/api/auth/change-password", express.json({ limit: "1mb" }), async (req
     }
 
     await setCredentialPassword(session.user.id, newPassword);
+    void syncService.bump("POST /api/auth/change-password").catch((error) => {
+      console.error("[sync] failed to bump system revision", error);
+    });
     res.json({ success: true, message: "Password berhasil diubah. Silakan login kembali." });
   } catch (e) {
     next(e);
@@ -162,6 +196,7 @@ app.get("/api/auth/get-session", async (req, res, next) => {
 app.all("/api/auth/*", toNodeHandler(auth));
 
 app.use(express.json({ limit: "10mb" }));
+app.use(trackMutationRevision);
 
 // ── Health Check ───────────────────────────────────────
 app.get("/api/health", (_req, res) => {
@@ -173,6 +208,7 @@ app.get("/api/health", (_req, res) => {
 });
 
 // ── API Routes ─────────────────────────────────────────
+app.use("/api/sync", syncRoutes);
 app.use("/api/parents", parentRoutes);
 app.use("/api/children", childRoutes);
 app.use("/api/therapists", therapistRoutes);

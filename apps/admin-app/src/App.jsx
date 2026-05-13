@@ -7,6 +7,7 @@ import LoginPage from './pages/LoginPage';
 import LegalPage from '../../shared/ui/LegalPage';
 import ClinicLogoMark from '../../shared/ui/ClinicLogoMark';
 import NotificationToastHost from '../../shared/ui/NotificationToastHost';
+import AutoRefreshHost from '../../shared/ui/AutoRefreshHost';
 import FriendlyLoader from '../../shared/ui/FriendlyLoader';
 import { setClinicPortalTitle } from '../../shared/clinicSettings';
 
@@ -85,6 +86,7 @@ function MobileTopBar({ onMenuOpen }) {
 
 function DashboardLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
   const { user } = useAuth();
   const navigate = useNavigate();
 
@@ -93,10 +95,15 @@ function DashboardLayout() {
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <MobileTopBar onMenuOpen={() => setSidebarOpen(true)} />
+        <AutoRefreshHost
+          user={user}
+          role="admin"
+          onRefresh={() => setRefreshKey((key) => key + 1)}
+        />
         <NotificationToastHost user={user} role="admin" onOpenNotifications={() => navigate('/notifications')} />
         <div className="min-h-0 flex-1 overflow-y-auto bg-background-light dark:bg-background-dark">
           <Suspense fallback={<Loading />}>
-            <Routes>
+            <Routes key={refreshKey}>
               <Route index element={<ClinicAdmin />} />
               <Route path="scheduling" element={<AdminScheduling />} />
               <Route path="bulk-schedule" element={<BulkSchedule />} />

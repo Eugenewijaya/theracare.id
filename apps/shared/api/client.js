@@ -2,6 +2,7 @@
  * TheraCare Shared API Client
  * Central HTTP client for all micro-apps to communicate with the backend.
  */
+import { emitTheraCareUpdate, shouldBroadcastApiMutation } from '../autoRefresh.js';
 
 function normalizeApiBase(value) {
   const raw = (value || 'http://localhost:3000/api').trim().replace(/\/+$/, '');
@@ -73,6 +74,9 @@ async function request(method, path, body = null) {
     const text = await res.text();
     let data;
     try { data = JSON.parse(text); } catch { data = { raw: text }; }
+    if (res.ok && shouldBroadcastApiMutation(method, path)) {
+      emitTheraCareUpdate({ source: 'api-client', method, path });
+    }
     
     return { ok: res.ok, status: res.status, data };
   } catch (err) {
@@ -213,6 +217,10 @@ export const reportsApi = {
 };
 
 // ── Reschedule API ───────────────────────────────────────────────
+export const syncApi = {
+  getVersion: () => api.get('/sync/version'),
+};
+
 export const rescheduleApi = {
   getAll: () => api.get('/reschedule'),
   getByParent: (id) => api.get(`/reschedule/parent/${id}`),

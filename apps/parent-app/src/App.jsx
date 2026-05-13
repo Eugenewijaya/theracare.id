@@ -13,6 +13,7 @@ import { setClinicPortalTitle, useClinicSettings } from '../../shared/clinicSett
 import LegalPage from '../../shared/ui/LegalPage';
 import ClinicLogoMark from '../../shared/ui/ClinicLogoMark';
 import NotificationToastHost from '../../shared/ui/NotificationToastHost';
+import AutoRefreshHost from '../../shared/ui/AutoRefreshHost';
 import FriendlyLoader from '../../shared/ui/FriendlyLoader';
 
 const ParentWebDashboard = lazy(() => import('../../parent-web-dashboard/src/App'));
@@ -79,6 +80,7 @@ function DashboardLayout() {
   const { logout, user } = useAuth();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
   const handlePortalLogout = useCallback(async () => {
     await logout();
     navigate('/login', { replace: true });
@@ -94,10 +96,15 @@ function DashboardLayout() {
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <MobileTopBar onMenuOpen={() => setSidebarOpen(true)} />
+        <AutoRefreshHost
+          user={user}
+          role="parent"
+          onRefresh={() => setRefreshKey((key) => key + 1)}
+        />
         <NotificationToastHost user={user} role="parent" onOpenNotifications={() => navigate('/announcements')} />
         <div className="min-h-0 flex-1 overflow-y-auto bg-background-light dark:bg-background-dark">
           <Suspense fallback={<Loading />}>
-            <Routes>
+            <Routes key={refreshKey}>
               <Route index element={<ParentWebDashboard onLogout={handlePortalLogout} />} />
               <Route path="reports" element={<ParentReportsArchive onLogout={handlePortalLogout} />} />
               <Route path="reschedule" element={<ParentReschedule onLogout={handlePortalLogout} />} />
