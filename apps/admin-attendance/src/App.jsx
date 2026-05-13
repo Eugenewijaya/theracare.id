@@ -3,6 +3,19 @@ import { sessionsApi } from '../../shared/api/client';
 import Header from './components/Header';
 import AttendanceCard from './components/AttendanceCard';
 
+function getChildName(session) {
+    return session?.child?.name || session?.childName || session?.childId || 'Unknown Child';
+}
+
+function getTherapistName(session) {
+    const therapist = session?.therapist;
+    return therapist?.name
+        || therapist?.user?.name
+        || session?.therapistName
+        || therapist?.nit
+        || session?.therapistId
+        || 'Terapis belum terdata';
+}
 
 function App() {
     const [attendanceData, setAttendanceData] = useState([]);
@@ -58,8 +71,8 @@ function App() {
 
             return {
                 id: s.id,
-                name: s.child?.name || 'Unknown Child',
-                role: `${s.focus || 'Therapy'} w/ ${s.therapist?.name || 'Therapist'}`,
+                name: getChildName(s),
+                role: `${s.focus || 'Therapy'} w/ ${getTherapistName(s)}`,
                 avatar: "url('https://lh3.googleusercontent.com/aida-public/AB6AXuDQeL2J2P2O5uH8P506H6yP924t0M1qH1R6_4tSXY37m8vA5239uA3d8gV9902iSxwI4wA0V1d0V90N7O8V32z1_82_1dD3AXY8o50F8L_sX51O5N4V8w6y3tEcxkY72P8K4pQvJ7WbQ0O22WwYn3C7N90X5Z12K8R9_E2gG4_V988L0sD8H930R7W19A208B8V45p0z45Z_d1tU')",
                 checkedIn: '--:--',
                 scheduled: s.startTime,
@@ -98,8 +111,10 @@ function App() {
             return isWithinTimeRange(s.date, historyFilter);
         })
         .filter(item => {
-            const cName = item.child?.name?.toLowerCase() || '';
-            return cName.includes(searchTerm.toLowerCase());
+            const query = searchTerm.toLowerCase();
+            const childName = getChildName(item).toLowerCase();
+            const therapistName = getTherapistName(item).toLowerCase();
+            return childName.includes(query) || therapistName.includes(query);
         })
         .sort((a, b) => new Date(b.date) - new Date(a.date));
 
@@ -232,8 +247,8 @@ function App() {
                                     {logsData.map(log => (
                                         <tr key={log.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                                             <td className="px-6 py-4 text-sm text-slate-700 dark:text-slate-300 font-medium">{log.date}</td>
-                                            <td className="px-6 py-4 text-sm text-slate-900 dark:text-white font-bold">{log.child?.name || 'Unknown'}</td>
-                                            <td className="px-6 py-4 text-sm text-slate-700 dark:text-slate-300">{log.therapist?.name || 'Unknown'}</td>
+                                            <td className="px-6 py-4 text-sm text-slate-900 dark:text-white font-bold">{getChildName(log)}</td>
+                                            <td className="px-6 py-4 text-sm text-slate-700 dark:text-slate-300">{getTherapistName(log)}</td>
                                             <td className="px-6 py-4 text-sm font-medium">
                                                 <span className="px-2 py-1 bg-primary/10 text-primary rounded-md text-xs">{log.focus || 'Terapi'}</span>
                                             </td>

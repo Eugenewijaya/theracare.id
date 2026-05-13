@@ -24,11 +24,25 @@ function pickSessionValues(data: any): Partial<TherapySessionInsert> {
   };
 }
 
-async function enrichSessionChildren<T extends { child?: any }>(sessions: T[]) {
+function attachTherapistDisplay(therapist: any) {
+  if (!therapist) return therapist;
+  const name = therapist.user?.name || therapist.name || therapist.nit || therapist.id || "";
+  return {
+    ...therapist,
+    name,
+    email: therapist.user?.email || therapist.email || "",
+    phone: therapist.user?.phone || therapist.phone || "",
+    status: therapist.user?.status || therapist.status || "active",
+    avatar: therapist.avatar || therapist.user?.image || "",
+  };
+}
+
+async function enrichSessionDetails<T extends { child?: any; therapist?: any }>(sessions: T[]) {
   const photoMap = await getChildPhotoUrlMap();
   return sessions.map((session) => ({
     ...session,
     child: attachChildPhotoUrl(session.child, photoMap),
+    therapist: attachTherapistDisplay(session.therapist),
   }));
 }
 
@@ -56,7 +70,7 @@ export const sessionService = {
       with: { therapist: { with: { user: true } }, child: { with: { parent: true, therapyPeriods: { with: { program: true, therapyProgram: true, sessions: true } } } }, room: true, therapyPeriod: { with: { program: true } } },
       orderBy: (s, { desc }) => [desc(s.date), desc(s.startTime)],
     });
-    return enrichSessionChildren(sessions);
+    return enrichSessionDetails(sessions);
   },
 
   async getById(id: string) {
@@ -65,7 +79,7 @@ export const sessionService = {
       with: { therapist: { with: { user: true } }, child: { with: { parent: true, therapyPeriods: { with: { program: true, therapyProgram: true, sessions: true } } } }, room: true, therapyPeriod: { with: { program: true } } },
     });
     if (!session) return null;
-    const [enriched] = await enrichSessionChildren([session]);
+    const [enriched] = await enrichSessionDetails([session]);
     return enriched;
   },
 
@@ -78,12 +92,12 @@ export const sessionService = {
       with: { child: { with: { parent: true, therapyPeriods: { with: { program: true, therapyProgram: true, sessions: true } } } }, room: true, therapyPeriod: { with: { program: true } } },
       orderBy: (s, { asc }) => [asc(s.date), asc(s.startTime)],
     });
-    return enrichSessionChildren(sessions);
+    return enrichSessionDetails(sessions);
   },
 
   async getUpcomingForChild(childId: string) {
     const today = new Date().toISOString().split("T")[0];
-    return db.query.therapySessions.findMany({
+    const sessions = await db.query.therapySessions.findMany({
       where: and(
         eq(therapySessions.childId, childId),
         gte(therapySessions.date, today),
@@ -92,14 +106,16 @@ export const sessionService = {
       with: { therapist: { with: { user: true } }, therapyPeriod: { with: { program: true } } },
       orderBy: (s, { asc }) => [asc(s.date), asc(s.startTime)],
     });
+    return enrichSessionDetails(sessions);
   },
 
   async getCompletedForChild(childId: string) {
-    return db.query.therapySessions.findMany({
+    const sessions = await db.query.therapySessions.findMany({
       where: and(eq(therapySessions.childId, childId), eq(therapySessions.status, "done")),
       with: { therapist: { with: { user: true } }, therapyPeriod: { with: { program: true } } },
       orderBy: (s, { desc }) => [desc(s.date), desc(s.startTime)],
     });
+    return enrichSessionDetails(sessions);
   },
 
   async create(data: {
