@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { sessionsApi } from '../../../shared/api/client';
+import { reportsApi, sessionsApi } from '../../../shared/api/client';
 import ChildProfileModal from './ChildProfileModal';
 import { readTherapistUser } from '../../../shared/sessionIdentity';
+import { findOldestMissingDailyReportSession, hasPriorMissingDailyReport } from '../../../shared/reportRules';
 
 function todayKey() {
     const now = new Date();
@@ -38,6 +39,8 @@ const TimelineList = () => {
     const [noteSaved, setNoteSaved] = useState(false);
     const [timeLeft, setTimeLeft] = useState(45 * 60); // 45 minutes
     const [profileModalSession, setProfileModalSession] = useState(null);
+    const [allSessions, setAllSessions] = useState([]);
+    const [reports, setReports] = useState([]);
 
     const fetchSessions = async () => {
         const user = getStoredTherapist();
@@ -47,9 +50,15 @@ const TimelineList = () => {
         }
         
         try {
-            const res = await sessionsApi.getForTherapist(user.id, todayKey());
+            const [res, allRes, reportRes] = await Promise.all([
+                sessionsApi.getForTherapist(user.id, todayKey()),
+                sessionsApi.getForTherapist(user.id),
+                reportsApi.getForTherapist(user.id, 'harian'),
+            ]);
             const todaySessions = res.data?.data || [];
             setSessions(todaySessions);
+            setAllSessions(allRes.data?.data || todaySessions);
+            setReports(reportRes.ok ? reportRes.data?.data || [] : []);
         } catch (e) {
             console.error(e);
         }
@@ -255,8 +264,15 @@ const TimelineList = () => {
                                 <div className="flex flex-wrap gap-3 mt-2 relative z-10">
                                     {isDone && (
                                         <>
-                                            <button onClick={() => navigate(`/reports/new?sessionId=${session.id}&childId=${session.childId || ''}`)} className="text-teal-600 dark:text-teal-400 text-sm font-bold hover:text-teal-700 flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-colors border border-teal-100 dark:border-teal-900/50">
-                                                <span className="material-symbols-outlined text-[18px]">description</span> Fill Daily Report
+                                            <button
+                                                onClick={() => {
+                                                    const pending = hasPriorMissingDailyReport(allSessions, reports, session) || findOldestMissingDailyReportSession(allSessions, reports, session.childId);
+                                                    const target = pending || session;
+                                                    navigate(`/reports/new?sessionId=${target.id}&childId=${target.childId || ''}`);
+                                                }}
+                                                className="text-teal-600 dark:text-teal-400 text-sm font-bold hover:text-teal-700 flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-colors border border-teal-100 dark:border-teal-900/50"
+                                            >
+                                                <span className="material-symbols-outlined text-[18px]">description</span> Isi Laporan Harian
                                             </button>
                                             <button onClick={() => { setNoteOpenId(session.id); setNoteText(session.notes || ''); }} className="text-slate-500 text-sm font-bold hover:text-slate-700 dark:hover:text-slate-300 flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
                                                 <span className="material-symbols-outlined text-[18px]">edit_note</span> Edit Notes

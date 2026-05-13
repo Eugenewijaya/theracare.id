@@ -4,6 +4,13 @@ import { sessionsApi, reportsApi, adminApi } from '../../shared/api/client';
 import { useClinicSettings } from '../../shared/clinicSettings';
 import { openReportPdf } from '../../shared/reportPdf';
 import { readTherapistUser } from '../../shared/sessionIdentity';
+import {
+    buildDailyReportQueue,
+    getReportEditWindow,
+    hasPriorMissingDailyReport,
+    normalizeDateValue,
+    sessionSortKey,
+} from '../../shared/reportRules';
 
 // ── Shared data store helpers ──────────
 
@@ -60,7 +67,7 @@ const findLinkedSession = (sessions, childId, preferredSessionId = '') => {
 
     const childSessions = sessions
         .filter(session => session.childId === childId)
-        .sort((a, b) => `${b.date} ${b.startTime}`.localeCompare(`${a.date} ${a.startTime}`));
+        .sort((a, b) => sessionSortKey(b).localeCompare(sessionSortKey(a)));
 
     if (preferredSessionId) {
         const preferred = childSessions.find(session => session.id === preferredSessionId);
@@ -69,6 +76,19 @@ const findLinkedSession = (sessions, childId, preferredSessionId = '') => {
 
     return childSessions.find(session => session.status === 'done') || childSessions[0] || null;
 };
+
+const formatSessionDate = (session) => {
+    const date = normalizeDateValue(session?.date);
+    if (!date) return '-';
+    return new Date(`${date}T00:00:00`).toLocaleDateString('id-ID', {
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+    });
+};
+
+const reportErrorMessage = (res, fallback) => res?.data?.error || res?.data?.message || fallback;
 
 // ── Constants ────────────────────────────────────────────────────────
 const EVAL_ASPECTS = [
@@ -160,7 +180,7 @@ function ReportLanding({ children, onSelectType }) {
 
             {/* Report History */}
             <div>
-                <h2 className="text-lg font-bold mb-4">Riwayat Laporan</h2>
+                <h2 className="text-lg font-bold mb-4">Riwayat Sesi & Laporan</h2>
                 {children}
             </div>
         </div>
@@ -168,7 +188,7 @@ function ReportLanding({ children, onSelectType }) {
 }
 
 // ── Daily Report Gate ────────────────────────────────────────────────
-function DailyReportGate({ onConfirm, onBack, childrenData, initialChildId = '' }) {
+function DailyReportGate({ onConfirm, onBack, childrenData, sessions = [], reports = [], initialChildId = '' }) {
     const children = childrenData;
     const [selectedChild, setSelectedChild] = useState(initialChildId);
 
@@ -177,6 +197,9 @@ function DailyReportGate({ onConfirm, onBack, childrenData, initialChildId = '' 
     }, [initialChildId]);
 
     const child = children.find(c => c.id === selectedChild);
+    const childQueue = buildDailyReportQueue(sessions, reports, selectedChild);
+    const missingSession = childQueue.find(row => row.missing)?.session || null;
+    const recentRows = [...childQueue].reverse().slice(0, 5);
 
     return (
         <div className="max-w-2xl mx-auto px-4 sm:px-8 py-8 space-y-6">
@@ -220,13 +243,56 @@ function DailyReportGate({ onConfirm, onBack, childrenData, initialChildId = '' 
                     </div>
                 )}
 
+                {child && missingSession && (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-200">
+                        <div className="flex items-start gap-3">
+                            <span className="material-symbols-outlined text-[20px]">priority_high</span>
+                            <div>
+                                <p className="font-black">Ada laporan sesi sebelumnya yang belum selesai.</p>
+                                <p className="mt-1 text-xs font-semibold opacity-80">
+                                    Mulai dari sesi {formatSessionDate(missingSession)} pukul {missingSession.startTime || missingSession.time || '-'} agar urutan laporan tetap rapi.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {child && (
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900/50">
+                        <p className="px-1 pb-2 text-xs font-black uppercase tracking-wider text-slate-500">Riwayat sesi selesai</p>
+                        {recentRows.length ? (
+                            <div className="space-y-2">
+                                {recentRows.map(({ session, report, missing }) => (
+                                    <button
+                                        key={session.id}
+                                        type="button"
+                                        onClick={() => missing && onConfirm(selectedChild, session.id)}
+                                        className={`flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-xs font-semibold transition-colors ${
+                                            missing
+                                                ? 'border-amber-200 bg-white text-amber-800 hover:bg-amber-50 dark:border-amber-900/50 dark:bg-slate-900 dark:text-amber-300'
+                                                : 'border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                                        }`}
+                                    >
+                                        <span className="min-w-0 truncate">{formatSessionDate(session)} - {session.startTime || session.time || '-'} - {session.focus || child.program || 'Sesi terapi'}</span>
+                                        <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-black ${missing ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'}`}>
+                                            {missing ? 'Belum dilaporkan' : (report?.status === 'needs_revision' ? 'Perlu revisi' : 'Sudah ada laporan')}
+                                        </span>
+                                    </button>
+                                ))}
+                            </div>
+                        ) : (
+                            <p className="px-1 py-4 text-center text-sm font-semibold text-slate-400">Belum ada sesi selesai untuk anak ini.</p>
+                        )}
+                    </div>
+                )}
+
                 <button
-                    onClick={() => selectedChild && onConfirm(selectedChild)}
+                    onClick={() => selectedChild && onConfirm(selectedChild, missingSession?.id || '')}
                     disabled={!selectedChild}
                     className="w-full px-6 py-3 rounded-xl font-bold bg-teal-500 text-white hover:bg-teal-600 transition-colors shadow-md disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                     <span className="material-symbols-outlined text-[18px]">edit_document</span>
-                    Lanjut ke Formulir Laporan
+                    {missingSession ? 'Lengkapi Laporan Tertunda' : 'Lanjut ke Formulir Laporan'}
                 </button>
             </div>
         </div>
@@ -316,24 +382,26 @@ function PeriodicReportGate({ onConfirm, onBack, childrenData }) {
 }
 
 // ── Daily Form ───────────────
-function DailyReportForm({ childId, sessionId, onBack, onSaved, currentUser, childrenData, sessions, onReportSaved }) {
+function DailyReportForm({ childId, sessionId, onBack, currentUser, childrenData, sessions, reports, initialReport, onReportSaved }) {
     const children = childrenData;
     const child = children.find(c => c.id === childId);
-    const linkedSession = findLinkedSession(sessions, childId, sessionId);
+    const linkedSession = findLinkedSession(sessions, childId, sessionId || initialReport?.sessionId || '');
+    const priorMissingSession = hasPriorMissingDailyReport(sessions, reports, linkedSession);
 
-    const [aspects, setAspects] = useState({});
-    const [rating, setRating] = useState(4);
-    const [sessionType, setSessionType] = useState('Sesi harian');
-    const [description, setDescription] = useState('');
-    const [toysText, setToysText] = useState('');
-    const [toolsText, setToolsText] = useState('');
+    const [aspects, setAspects] = useState(() => Object.fromEntries((initialReport?.aspects || []).map(item => [item, true])));
+    const [rating, setRating] = useState(initialReport?.sessionScore || 4);
+    const [sessionType, setSessionType] = useState(initialReport?.sessionType || 'Sesi harian');
+    const [description, setDescription] = useState(initialReport?.description || '');
+    const [toysText, setToysText] = useState((initialReport?.toysUsed || []).join(', '));
+    const [toolsText, setToolsText] = useState((initialReport?.toolsUsed || []).join(', '));
     const [rooms, setRooms] = useState([]);
-    const [roomsUsed, setRoomsUsed] = useState([]);
-    const [childResponse, setChildResponse] = useState('');
-    const [obstacles, setObstacles] = useState('');
-    const [recommendations, setRecommendations] = useState('');
-    const [internalNotes, setInternalNotes] = useState('');
+    const [roomsUsed, setRoomsUsed] = useState(initialReport?.roomsUsed || []);
+    const [childResponse, setChildResponse] = useState(initialReport?.childResponse || '');
+    const [obstacles, setObstacles] = useState(initialReport?.obstacles || '');
+    const [recommendations, setRecommendations] = useState(initialReport?.recommendations || '');
+    const [internalNotes, setInternalNotes] = useState(initialReport?.internalNotes || '');
     const [submitted, setSubmitted] = useState(false);
+    const [formError, setFormError] = useState('');
     const toggleAspect = (key) => setAspects(prev => ({ ...prev, [key]: !prev[key] }));
     const activeRooms = rooms.filter(room => room.status === 'active');
     const toggleRoom = (roomName) => setRoomsUsed(prev => (
@@ -356,7 +424,12 @@ function DailyReportForm({ childId, sessionId, onBack, onSaved, currentUser, chi
     }, []);
 
     const handleSubmit = async () => {
+        if (priorMissingSession) {
+            setFormError(`Selesaikan laporan sesi sebelumnya dulu: ${formatSessionDate(priorMissingSession)} pukul ${priorMissingSession.startTime || priorMissingSession.time || '-'}.`);
+            return;
+        }
         const report = {
+            ...(initialReport?.id ? { id: initialReport.id } : {}),
             type: 'harian',
             childId,
             childName: child?.name || '',
@@ -379,11 +452,16 @@ function DailyReportForm({ childId, sessionId, onBack, onSaved, currentUser, chi
             internalNotes
         };
         try {
-            await reportsApi.save(report);
+            const res = await reportsApi.save(report);
+            if (!res.ok) {
+                setFormError(reportErrorMessage(res, 'Laporan belum bisa disimpan.'));
+                return;
+            }
             onReportSaved && onReportSaved();
             setSubmitted(true);
         } catch (e) {
             console.error(e);
+            setFormError('Laporan belum bisa disimpan. Coba ulang beberapa saat lagi.');
         }
     };
 
@@ -416,6 +494,15 @@ function DailyReportForm({ childId, sessionId, onBack, onSaved, currentUser, chi
                     </p>
                 </div>
             </div>
+
+            {(priorMissingSession || formError) && (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-800 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-200">
+                    <div className="flex items-start gap-3">
+                        <span className="material-symbols-outlined text-[20px]">warning</span>
+                        <p>{formError || `Sesi sebelumnya pada ${formatSessionDate(priorMissingSession)} pukul ${priorMissingSession.startTime || priorMissingSession.time || '-'} belum memiliki laporan. Isi laporan itu terlebih dahulu sebelum lanjut ke sesi ini.`}</p>
+                    </div>
+                </div>
+            )}
 
             {/* Therapy Aspects */}
             <section className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
@@ -570,18 +657,19 @@ function DailyReportForm({ childId, sessionId, onBack, onSaved, currentUser, chi
 }
 
 // ── Periodic Report Form ─────────────────────────────────────────────
-function PeriodicReportForm({ childId, onBack, currentUser, childrenData, onReportSaved }) {
+function PeriodicReportForm({ childId, onBack, currentUser, childrenData, initialReport, onReportSaved }) {
     const children = childrenData;
     const child = children.find(c => c.id === childId);
 
-    const [dateFrom, setDateFrom] = useState('');
-    const [dateTo, setDateTo]   = useState('');
-    const [evaluations, setEvaluations] = useState({});
-    const [progressPoints, setProgressPoints] = useState(['', '', '']);
-    const [improvementPoints, setImprovementPoints] = useState(['', '', '']);
-    const [summary, setSummary] = useState('');
-    const [parentNotes, setParentNotes] = useState('');
+    const [dateFrom, setDateFrom] = useState(initialReport?.dateFrom || '');
+    const [dateTo, setDateTo]   = useState(initialReport?.dateTo || '');
+    const [evaluations, setEvaluations] = useState(initialReport?.evaluations || {});
+    const [progressPoints, setProgressPoints] = useState(initialReport?.progressPoints?.length ? initialReport.progressPoints : ['', '', '']);
+    const [improvementPoints, setImprovementPoints] = useState(initialReport?.improvementPoints?.length ? initialReport.improvementPoints : ['', '', '']);
+    const [summary, setSummary] = useState(initialReport?.summary || '');
+    const [parentNotes, setParentNotes] = useState(initialReport?.parentNotes || '');
     const [submitted, setSubmitted] = useState(false);
+    const [formError, setFormError] = useState('');
 
     const handleEvalChange = (id, val) => setEvaluations(prev => ({...prev, [id]: val}));
     const updateList = (setter, idx, val) => setter(prev => prev.map((v, i) => i === idx ? val : v));
@@ -590,6 +678,7 @@ function PeriodicReportForm({ childId, onBack, currentUser, childrenData, onRepo
 
     const handleSubmit = async () => {
         const report = {
+            ...(initialReport?.id ? { id: initialReport.id } : {}),
             type: 'periodik',
             childId,
             childName: child?.name || '',
@@ -605,11 +694,16 @@ function PeriodicReportForm({ childId, onBack, currentUser, childrenData, onRepo
             parentNotes
         };
         try {
-            await reportsApi.save(report);
+            const res = await reportsApi.save(report);
+            if (!res.ok) {
+                setFormError(reportErrorMessage(res, 'Laporan periodik belum bisa disimpan.'));
+                return;
+            }
             onReportSaved && onReportSaved();
             setSubmitted(true);
         } catch (e) {
             console.error(e);
+            setFormError('Laporan periodik belum bisa disimpan. Coba ulang beberapa saat lagi.');
         }
     };
 
@@ -635,6 +729,12 @@ function PeriodicReportForm({ childId, onBack, currentUser, childrenData, onRepo
                     <p className="text-sm text-slate-500 mt-0.5">Pasien: <span className="font-bold text-amber-600">{child?.name || '—'}</span></p>
                 </div>
             </div>
+
+            {formError && (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-800 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-200">
+                    {formError}
+                </div>
+            )}
 
             {/* Date Range */}
             <section className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
@@ -765,6 +865,59 @@ function PeriodicReportForm({ childId, onBack, currentUser, childrenData, onRepo
 }
 
 // ── History Panel (inside landing) ──────────────────────────────────
+function DailySessionHistory({ rows, onCreateReport }) {
+    const recentRows = [...rows].reverse().slice(0, 8);
+    const missingCount = rows.filter(row => row.missing).length;
+
+    return (
+        <section className="mb-5 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
+            <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <h3 className="text-sm font-black text-slate-900 dark:text-white">Riwayat sesi selesai</h3>
+                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Laporan harian dibuat berurutan dari sesi paling lama yang belum dilaporkan.</p>
+                </div>
+                {missingCount > 0 && (
+                    <span className="w-fit rounded-full bg-amber-100 px-3 py-1 text-xs font-black text-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
+                        {missingCount} perlu diisi
+                    </span>
+                )}
+            </div>
+            {recentRows.length ? (
+                <div className="grid grid-cols-1 gap-2">
+                    {recentRows.map(({ session, report, missing }) => (
+                        <div key={session.id} className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900/50 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="min-w-0">
+                                <p className="truncate text-sm font-black text-slate-800 dark:text-slate-100">{session.child?.name || session.childName || session.childId || 'Anak'}</p>
+                                <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                                    {formatSessionDate(session)} - {session.startTime || session.time || '-'} - {session.focus || 'Sesi terapi'}
+                                </p>
+                            </div>
+                            <div className="flex shrink-0 items-center gap-2">
+                                <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${missing ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-200' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200'}`}>
+                                    {missing ? 'Belum dilaporkan' : (report?.status === 'needs_revision' ? 'Perlu revisi' : 'Sudah dilaporkan')}
+                                </span>
+                                {missing && (
+                                    <button
+                                        type="button"
+                                        onClick={() => onCreateReport(session)}
+                                        className="rounded-lg bg-teal-500 px-3 py-1.5 text-xs font-black text-white hover:bg-teal-600"
+                                    >
+                                        Isi
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            ) : (
+                <p className="rounded-xl border border-dashed border-slate-200 py-6 text-center text-sm font-semibold text-slate-400 dark:border-slate-700">
+                    Belum ada sesi selesai.
+                </p>
+            )}
+        </section>
+    );
+}
+
 function ReportHistory({ onSelectReport, reports }) {
     const statusLabel = (status) => {
         if (status === 'approved' || status === 'published' || status === 'ready_for_parent') return 'Siap Dibaca';
@@ -781,7 +934,9 @@ function ReportHistory({ onSelectReport, reports }) {
 
     return (
         <div className="flex flex-col gap-3">
-            {reports.slice(0, 5).map(r => (
+            {reports.slice(0, 5).map(r => {
+                const editWindow = getReportEditWindow(r);
+                return (
                 <div
                     key={r.id}
                     className="flex items-center justify-between p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-primary/40 transition-colors cursor-pointer"
@@ -797,17 +952,18 @@ function ReportHistory({ onSelectReport, reports }) {
                         </div>
                     </div>
                     <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400">
-                        {statusLabel(r.status)}
+                        {editWindow.editLocked ? 'Edit terkunci' : statusLabel(r.status)}
                     </span>
                 </div>
-            ))}
+                );
+            })}
         </div>
     );
 }
 
 // ── Main App ─────────────────────────────────────────────────────────
 
-function ReportDetail({ report, onBack }) {
+function ReportDetail({ report, onBack, onEdit }) {
     const centerSettings = useClinicSettings();
     const statusLabel = (status) => {
         if (status === 'approved' || status === 'published' || status === 'ready_for_parent') return 'Siap Dibaca';
@@ -815,6 +971,7 @@ function ReportDetail({ report, onBack }) {
         return 'Menunggu Review';
     };
     const isReady = ['approved', 'published', 'ready_for_parent'].includes(report.status);
+    const editWindow = getReportEditWindow(report);
     const handleDownload = () => {
         openReportPdf(report, centerSettings.settings || centerSettings);
     };
@@ -839,14 +996,30 @@ function ReportDetail({ report, onBack }) {
                 <button onClick={onBack} className="text-sm text-primary hover:underline font-bold flex items-center gap-1">
                     <span className="material-symbols-outlined text-[18px]">arrow_back</span> Kembali
                 </button>
-                <button
-                    onClick={handleDownload}
-                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-white text-xs font-bold shadow-md hover:bg-primary/90 transition-colors"
-                >
-                    <span className="material-symbols-outlined text-[16px]">picture_as_pdf</span>
-                    Cetak / PDF
-                </button>
+                <div className="flex flex-wrap justify-end gap-2">
+                    {editWindow.canEdit && (
+                        <button
+                            onClick={() => onEdit(report)}
+                            className="flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 shadow-sm transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                        >
+                            <span className="material-symbols-outlined text-[16px]">edit</span>
+                            Ubah Laporan
+                        </button>
+                    )}
+                    <button
+                        onClick={handleDownload}
+                        className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-white text-xs font-bold shadow-md hover:bg-primary/90 transition-colors"
+                    >
+                        <span className="material-symbols-outlined text-[16px]">picture_as_pdf</span>
+                        Cetak / PDF
+                    </button>
+                </div>
             </div>
+            {editWindow.editLocked && (
+                <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-semibold text-slate-500 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-400">
+                    Akses ubah laporan sudah ditutup karena laporan ini sudah dipublikasikan lebih dari {editWindow.editWindowHours || 48} jam.
+                </div>
+            )}
             <h2 className="text-2xl font-bold mb-4">Detail {report.type === 'periodik' ? 'Laporan Periodik' : 'Laporan Harian'}</h2>
             <div className="space-y-3">
                 <p><strong>Nama Anak:</strong> {report.childName || report.childId}</p>
@@ -893,6 +1066,7 @@ function App() {
     const [selectedChildId, setSelectedChildId] = useState(initialDailyContext.childId);
     const [selectedSessionId, setSelectedSessionId] = useState(initialDailyContext.sessionId);
     const [selectedReport, setSelectedReport] = useState(null);
+    const [editingReport, setEditingReport] = useState(null);
 
     const [sessions, setSessions] = useState([]);
     const [reports, setReports] = useState([]);
@@ -923,6 +1097,7 @@ function App() {
         setSelectedChildId('');
         setSelectedSessionId('');
         setSelectedReport(null);
+        setEditingReport(null);
     };
 
     const handleSelectReport = (report) => {
@@ -930,7 +1105,27 @@ function App() {
         setScreen('report-detail');
     };
 
+    const handleEditReport = (report) => {
+        const editWindow = getReportEditWindow(report);
+        if (!editWindow.canEdit) return;
+        setEditingReport(report);
+        setSelectedReport(null);
+        setSelectedChildId(report.childId || '');
+        setSelectedSessionId(report.sessionId || '');
+        setScreen(report.type === 'periodik' ? 'periodic-form' : 'daily-form');
+    };
+
+    const handleCreateDailyFromSession = (session) => {
+        const blockedSession = hasPriorMissingDailyReport(sessions, reports, session);
+        const target = blockedSession || session;
+        setEditingReport(null);
+        setSelectedChildId(target.childId || '');
+        setSelectedSessionId(target.id || '');
+        setScreen('daily-form');
+    };
+
     const childrenData = getChildrenFromSessions(sessions);
+    const dailyReportQueue = buildDailyReportQueue(sessions, reports);
 
     return (
         <div className="relative flex min-h-full w-full flex-col bg-slate-50 dark:bg-background-dark font-sans text-slate-900 dark:text-slate-100">
@@ -943,6 +1138,7 @@ function App() {
                         <>
                             {screen === 'landing' && (
                                 <ReportLanding onSelectType={(type) => setScreen(type === 'harian' ? 'daily-gate' : 'periodic-gate')}>
+                                    <DailySessionHistory rows={dailyReportQueue} onCreateReport={handleCreateDailyFromSession} />
                                     <ReportHistory onSelectReport={handleSelectReport} reports={reports} />
                                 </ReportLanding>
                             )}
@@ -950,25 +1146,27 @@ function App() {
                                 <DailyReportGate
                                     onBack={goBack}
                                     childrenData={childrenData}
+                                    sessions={sessions}
+                                    reports={reports}
                                     initialChildId={selectedChildId}
-                                    onConfirm={(id) => { setSelectedChildId(id); setScreen('daily-form'); }}
+                                    onConfirm={(id, nextSessionId = '') => { setEditingReport(null); setSelectedChildId(id); setSelectedSessionId(nextSessionId); setScreen('daily-form'); }}
                                 />
                             )}
                             {screen === 'daily-form' && (
-                                <DailyReportForm childId={selectedChildId} sessionId={selectedSessionId} onBack={goBack} onSaved={goBack} currentUser={currentUser} childrenData={childrenData} sessions={sessions} onReportSaved={loadData} />
+                                <DailyReportForm childId={selectedChildId} sessionId={selectedSessionId} onBack={goBack} currentUser={currentUser} childrenData={childrenData} sessions={sessions} reports={reports} initialReport={editingReport} onReportSaved={loadData} />
                             )}
                             {screen === 'periodic-gate' && (
                                 <PeriodicReportGate
                                     onBack={goBack}
                                     childrenData={childrenData}
-                                    onConfirm={(id) => { setSelectedChildId(id); setSelectedSessionId(''); setScreen('periodic-form'); }}
+                                    onConfirm={(id) => { setEditingReport(null); setSelectedChildId(id); setSelectedSessionId(''); setScreen('periodic-form'); }}
                                 />
                             )}
                             {screen === 'periodic-form' && (
-                                <PeriodicReportForm childId={selectedChildId} onBack={goBack} currentUser={currentUser} childrenData={childrenData} onReportSaved={loadData} />
+                                <PeriodicReportForm childId={selectedChildId} onBack={goBack} currentUser={currentUser} childrenData={childrenData} initialReport={editingReport} onReportSaved={loadData} />
                             )}
                             {screen === 'report-detail' && selectedReport && (
-                                <ReportDetail report={selectedReport} onBack={goBack} />
+                                <ReportDetail report={selectedReport} onBack={goBack} onEdit={handleEditReport} />
                             )}
                         </>
                     )}

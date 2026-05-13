@@ -1,14 +1,97 @@
 import { db } from "../db/index.js";
 import { children, parents, reports, rooms as clinicRooms, therapySessions } from "../db/schema.js";
-import { eq, and, inArray, sql } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { generateSeqId } from "../utils/id-generators.js";
 import { notificationService } from "./notification.service.js";
+import { httpError } from "../utils/http-error.js";
 
 type ReportInsert = typeof reports.$inferInsert;
 type ReportQueryOptions = { visibleToParentOnly?: boolean; therapistId?: string };
 type ReportUpdateOptions = { allowStatus?: boolean };
 
 const PARENT_VISIBLE_REPORT_STATUSES = ["approved", "published", "ready_for_parent"];
+const COMPLETED_SESSION_STATUSES = ["done", "completed", "selesai"];
+const PUBLISHED_EDIT_WINDOW_HOURS = 48;
+const PUBLISHED_EDIT_WINDOW_MS = PUBLISHED_EDIT_WINDOW_HOURS * 60 * 60 * 1000;
+
+function isParentVisibleReport(status?: string | null) {
+  return !!status && PARENT_VISIBLE_REPORT_STATUSES.includes(status);
+}
+
+function normalizeDateValue(value: unknown) {
+  if (!value) return "";
+  if (value instanceof Date) return value.toISOString().split("T")[0];
+  return String(value).split("T")[0];
+}
+
+function sessionSortKey(session: { date?: unknown; startTime?: string | null }) {
+  return `${normalizeDateValue(session.date)} ${session.startTime || "00:00"}`;
+}
+
+function toIso(value: unknown) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(String(value));
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function getPublishedAt(report: any) {
+  const reviewLog = Array.isArray(report?.reviewLog) ? report.reviewLog : [];
+  for (let index = reviewLog.length - 1; index >= 0; index -= 1) {
+    const entry = reviewLog[index];
+    if (isParentVisibleReport(entry?.status)) {
+      const createdAt = toIso(entry.createdAt);
+      if (createdAt) return createdAt;
+    }
+  }
+  return isParentVisibleReport(report?.status)
+    ? toIso(report?.updatedAt) || toIso(report?.createdAt)
+    : null;
+}
+
+function getReportEditWindow(report: any, now = new Date()) {
+  const publishedAt = getPublishedAt(report);
+  if (!isParentVisibleReport(report?.status)) {
+    return {
+      isParentVisible: false,
+      canEdit: true,
+      editLocked: false,
+      publishedAt,
+      editDeadline: null,
+      editWindowHours: PUBLISHED_EDIT_WINDOW_HOURS,
+    };
+  }
+  if (!publishedAt) {
+    return {
+      isParentVisible: true,
+      canEdit: false,
+      editLocked: true,
+      publishedAt: null,
+      editDeadline: null,
+      editWindowHours: PUBLISHED_EDIT_WINDOW_HOURS,
+    };
+  }
+  const deadline = new Date(new Date(publishedAt).getTime() + PUBLISHED_EDIT_WINDOW_MS);
+  const canEdit = now.getTime() <= deadline.getTime();
+  return {
+    isParentVisible: true,
+    canEdit,
+    editLocked: !canEdit,
+    publishedAt,
+    editDeadline: deadline.toISOString(),
+    editWindowHours: PUBLISHED_EDIT_WINDOW_HOURS,
+  };
+}
+
+function assertReportEditable(report: any) {
+  const editWindow = getReportEditWindow(report);
+  if (!editWindow.canEdit) {
+    throw httpError(
+      423,
+      `Masa edit laporan yang sudah dipublikasikan sudah lewat ${PUBLISHED_EDIT_WINDOW_HOURS} jam.`,
+      editWindow,
+    );
+  }
+}
 
 function cleanStringList(value: unknown) {
   if (!Array.isArray(value)) return undefined;
@@ -40,10 +123,12 @@ async function filterActiveRoomNames(input: unknown) {
 
 function formatReport(report: any) {
   if (!report) return null;
+  const editWindow = getReportEditWindow(report);
   return {
     ...report,
     childName: report.child?.name || report.childName || "",
     therapistName: report.therapist?.user?.name || report.therapistName || "",
+    ...editWindow,
   };
 }
 
@@ -143,20 +228,92 @@ export const reportService = {
     return formatReport(report);
   },
 
+  async getMissingPriorDailyReports(sessionId: string) {
+    const targetSession = await db.query.therapySessions.findFirst({
+      where: eq(therapySessions.id, sessionId),
+      with: { child: true, therapist: { with: { user: true } } },
+    });
+    if (!targetSession) return [];
+
+    const completedSessions = await db.query.therapySessions.findMany({
+      where: and(
+        eq(therapySessions.therapistId, targetSession.therapistId),
+        eq(therapySessions.childId, targetSession.childId),
+        inArray(therapySessions.status, COMPLETED_SESSION_STATUSES),
+      ),
+      with: { child: true, therapist: { with: { user: true } } },
+      orderBy: (s, { asc }) => [asc(s.date), asc(s.startTime)],
+    });
+
+    const targetKey = sessionSortKey(targetSession);
+    const priorSessions = completedSessions.filter((session) => (
+      session.id !== sessionId && sessionSortKey(session) < targetKey
+    ));
+    if (priorSessions.length === 0) return [];
+
+    const existingReports = await db.query.reports.findMany({
+      where: and(
+        eq(reports.type, "harian"),
+        inArray(reports.sessionId, priorSessions.map((session) => session.id)),
+      ),
+    });
+    const reportedSessionIds = new Set(existingReports.map((report) => report.sessionId).filter(Boolean));
+    return priorSessions
+      .filter((session) => !reportedSessionIds.has(session.id))
+      .map((session) => ({
+        id: session.id,
+        childId: session.childId,
+        childName: session.child?.name || "",
+        therapistId: session.therapistId,
+        therapistName: session.therapist?.user?.name || "",
+        date: normalizeDateValue(session.date),
+        startTime: session.startTime,
+        focus: session.focus,
+      }));
+  },
+
+  async assertNoPriorMissingDailyReports(data: any) {
+    if (data?.type !== "harian" || !data?.sessionId) return;
+    const missing = await this.getMissingPriorDailyReports(data.sessionId);
+    if (missing.length === 0) return;
+    const first = missing[0];
+    throw httpError(
+      409,
+      `Selesaikan laporan sesi sebelumnya terlebih dahulu: ${first.childName || "anak"} pada ${first.date} ${first.startTime || ""}.`,
+      { missingReports: missing },
+    );
+  },
+
   async save(data: any) {
     const now = new Date();
     if (Array.isArray(data.roomsUsed)) {
       data.roomsUsed = await filterActiveRoomNames(data.roomsUsed);
     }
     let therapyPeriodId = typeof data.therapyPeriodId === "string" ? data.therapyPeriodId : "";
-    if (!therapyPeriodId && data.sessionId) {
-      const session = await db.query.therapySessions.findFirst({ where: eq(therapySessions.id, data.sessionId) });
-      therapyPeriodId = session?.therapyPeriodId || "";
+    const linkedSession = data.sessionId
+      ? await db.query.therapySessions.findFirst({ where: eq(therapySessions.id, data.sessionId) })
+      : null;
+    if (!therapyPeriodId && linkedSession) {
+      therapyPeriodId = linkedSession.therapyPeriodId || "";
     }
+    if (data.type === "harian" && data.sessionId && !linkedSession) {
+      throw httpError(404, "Sesi terapi tidak ditemukan.");
+    }
+    if (data.type === "harian" && linkedSession) {
+      if (linkedSession.therapistId !== data.therapistId || linkedSession.childId !== data.childId) {
+        throw httpError(403, "Laporan harian hanya bisa dibuat untuk sesi terapis dan anak yang sesuai.");
+      }
+    }
+    await this.assertNoPriorMissingDailyReports(data);
 
     // Check if updating existing report
     if (data.id) {
       const existing = await db.query.reports.findFirst({ where: eq(reports.id, data.id) });
+      if (!existing) return null;
+      if (existing.therapistId !== data.therapistId) {
+        throw httpError(403, "Akses ubah laporan ditolak.");
+      }
+      assertReportEditable(existing);
       const logUpdate = existing?.status === "needs_revision"
         ? { reviewLog: appendReviewLog(existing.reviewLog, { status: "resubmitted", note: "Terapis mengirim revisi laporan.", actorRole: "therapist" }) }
         : {};
@@ -173,6 +330,10 @@ export const reportService = {
         where: and(eq(reports.type, "harian"), eq(reports.sessionId, data.sessionId)),
       });
       if (existing) {
+        if (existing.therapistId !== data.therapistId) {
+          throw httpError(403, "Akses ubah laporan ditolak.");
+        }
+        assertReportEditable(existing);
         const logUpdate = existing.status === "needs_revision"
           ? { reviewLog: appendReviewLog(existing.reviewLog, { status: "resubmitted", note: "Terapis mengirim revisi laporan.", actorRole: "therapist" }) }
           : {};
@@ -218,7 +379,10 @@ export const reportService = {
 
     const note = String(reviewNote || "").trim();
     if (["approved", "published", "ready_for_parent"].includes(existing.status) && status === "needs_revision" && note.length < 8) {
-      throw new Error("Alasan revisi wajib diisi sebelum laporan yang sudah disetujui dikembalikan ke terapis.");
+      throw httpError(400, "Alasan revisi wajib diisi sebelum laporan yang sudah disetujui dikembalikan ke terapis.");
+    }
+    if (isParentVisibleReport(existing.status) && status === "needs_revision") {
+      assertReportEditable(existing);
     }
 
     const [updated] = await db.update(reports)
@@ -255,10 +419,13 @@ export const reportService = {
         relatedId: id,
       });
     }
-    return updated;
+    return formatReport(updated);
   },
 
   async update(id: string, updates: any, options: ReportUpdateOptions = {}) {
+    const existing = await db.query.reports.findFirst({ where: eq(reports.id, id) });
+    if (!existing) return null;
+    assertReportEditable(existing);
     if (Array.isArray(updates.roomsUsed)) {
       updates.roomsUsed = await filterActiveRoomNames(updates.roomsUsed);
     }

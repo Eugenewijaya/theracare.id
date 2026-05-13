@@ -4,6 +4,7 @@ import { useClinicSettings } from '../../shared/clinicSettings';
 import { openReportPdf } from '../../shared/reportPdf';
 import { adminApi, childrenApi, reportsApi, sessionsApi, therapistsApi } from '../../shared/api/client';
 import { confirmAction } from '../../shared/ui/confirmDialog';
+import { getReportEditWindow, isParentVisibleReport } from '../../shared/reportRules';
 
 const toDateValue = (date) => date.toISOString().split('T')[0];
 
@@ -229,6 +230,11 @@ function App() {
 
     const handleReviewReport = async (report, status) => {
         const note = (reviewNotes[report.id] || '').trim();
+        const editWindow = getReportEditWindow(report);
+        if (status === 'needs_revision' && isParentVisibleReport(report.status) && !editWindow.canEdit) {
+            showToast('Masa ubah/revisi laporan yang sudah dipublikasikan sudah lewat 48 jam.', 'info');
+            return;
+        }
         if (status === 'needs_revision' && ['approved', 'published', 'ready_for_parent'].includes(report.status) && note.length < 8) {
             showToast('Isi alasan revisi sebelum laporan yang sudah disetujui dikembalikan ke terapis.', 'info');
             return;
@@ -383,7 +389,10 @@ function App() {
                 </div>
                 {data.pendingReports.length > 0 ? (
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                        {data.pendingReports.slice(0, 6).map((report) => (
+                        {data.pendingReports.slice(0, 6).map((report) => {
+                            const editWindow = getReportEditWindow(report);
+                            const revisionLocked = isParentVisibleReport(report.status) && !editWindow.canEdit;
+                            return (
                             <article key={report.id} className="rounded-xl border border-slate-200 dark:border-slate-700 p-4 flex flex-col gap-3">
                                 <div className="flex items-start justify-between gap-3">
                                     <div>
@@ -413,6 +422,11 @@ function App() {
                                         ))}
                                     </div>
                                 )}
+                                {revisionLocked && (
+                                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-semibold text-slate-500 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-400">
+                                        Masa ubah laporan sudah lewat 48 jam sejak dipublikasikan ke orang tua.
+                                    </div>
+                                )}
                                 <textarea
                                     value={reviewNotes[report.id] || ''}
                                     onChange={e => setReviewNotes(prev => ({ ...prev, [report.id]: e.target.value }))}
@@ -439,13 +453,15 @@ function App() {
                                     <button
                                         type="button"
                                         onClick={() => handleReviewReport(report, 'needs_revision')}
-                                        className="flex-1 rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700"
+                                        disabled={revisionLocked}
+                                        className="flex-1 rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-45 dark:hover:bg-slate-700"
                                     >
                                         Minta Revisi
                                     </button>
                                 </div>
                             </article>
-                        ))}
+                            );
+                        })}
                     </div>
                 ) : (
                     <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-700 p-8 text-center text-sm font-semibold text-slate-400">

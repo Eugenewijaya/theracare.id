@@ -85,7 +85,11 @@ router.get("/:id", requireAuth, async (req, res, next) => {
 });
 
 router.post("/", requireAuth, requireRole("therapist"), async (req, res, next) => {
-  try { created(res, await reportService.save(req.body), "Laporan berhasil disimpan"); } catch (e) { next(e); }
+  try {
+    const therapistId = await getOwnTherapistId(req);
+    if (!therapistId) return res.status(403).json({ error: "Akses simpan laporan ditolak" });
+    created(res, await reportService.save({ ...req.body, therapistId }), "Laporan berhasil disimpan");
+  } catch (e) { next(e); }
 });
 
 router.patch("/:id/status", requireAuth, requireRole("admin"), async (req, res, next) => {
@@ -103,6 +107,14 @@ router.patch("/:id/status", requireAuth, requireRole("admin"), async (req, res, 
 
 router.patch("/:id", requireAuth, requireRole("therapist", "admin"), async (req, res, next) => {
   try {
+    if (req.user?.role === "therapist") {
+      const report = await reportService.getById(req.params.id as string);
+      if (!report) return notFound(res);
+      const therapistId = await getOwnTherapistId(req);
+      if (!therapistId || therapistId !== report.therapistId) {
+        return res.status(403).json({ error: "Akses ubah laporan ditolak" });
+      }
+    }
     const result = await reportService.update(req.params.id as string, req.body, {
       allowStatus: req.user?.role === "admin",
     });

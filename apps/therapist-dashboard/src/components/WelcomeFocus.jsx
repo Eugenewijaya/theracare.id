@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { reportsApi, sessionsApi } from '../../../shared/api/client';
 import { readTherapistUser } from '../../../shared/sessionIdentity';
+import { findOldestMissingDailyReportSession, isCompletedSession } from '../../../shared/reportRules';
 
 function todayKey() {
     const now = new Date();
@@ -21,6 +22,7 @@ const WelcomeFocus = () => {
     const [ending, setEnding] = useState(false);
     const [therapistName, setTherapistName] = useState('Therapist');
     const [pendingReports, setPendingReports] = useState(0);
+    const [pendingReportSession, setPendingReportSession] = useState(null);
     const [activeSession, setActiveSession] = useState(null);
 
     const loadSummary = useCallback(async () => {
@@ -28,27 +30,32 @@ const WelcomeFocus = () => {
         if (user?.name) setTherapistName(user.name);
         if (!user?.id) {
             setPendingReports(0);
+            setPendingReportSession(null);
             setActiveSession(null);
             return;
         }
 
         try {
-            const res = await sessionsApi.getForTherapist(user.id);
+            const [res, reportRes] = await Promise.all([
+                sessionsApi.getForTherapist(user.id),
+                reportsApi.getForTherapist(user.id, 'harian'),
+            ]);
             const sessions = res.data?.data || [];
+            const reports = reportRes.ok ? reportRes.data?.data || [] : [];
             const today = todayKey();
             setActiveSession(sessions.find(s => s.status === 'active' && s.date === today) || null);
 
-            const completed = sessions.filter(s => s.status === 'done');
+            const completed = sessions.filter(isCompletedSession);
             if (completed.length === 0) {
                 setPendingReports(0);
+                setPendingReportSession(null);
                 return;
             }
 
-            const reportChecks = await Promise.all(
-                completed.map(session => reportsApi.getSessionReport(session.id).catch(() => null))
-            );
-            const pending = reportChecks.filter(result => !result?.ok || !result?.data?.data).length;
-            setPendingReports(pending);
+            const reportedSessionIds = new Set(reports.map(report => report.sessionId).filter(Boolean));
+            const pending = completed.filter(session => !reportedSessionIds.has(session.id));
+            setPendingReports(pending.length);
+            setPendingReportSession(findOldestMissingDailyReportSession(sessions, reports));
         } catch (e) {
             console.error('Failed to load therapist dashboard summary', e);
         }
@@ -107,11 +114,14 @@ const WelcomeFocus = () => {
                     {pendingReports > 0 && (
                         <button
                             type="button"
-                            onClick={() => navigate('/reports')}
+                            onClick={() => pendingReportSession
+                                ? navigate(`/reports/new?sessionId=${pendingReportSession.id}&childId=${pendingReportSession.childId || ''}`)
+                                : navigate('/reports')
+                            }
                             className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full w-fit bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50 hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-colors"
                         >
                             <span className="material-symbols-outlined text-[15px]">warning</span>
-                            <span className="text-xs font-bold">{pendingReports} laporan sesi belum dibuat</span>
+                            <span className="text-xs font-bold">{pendingReports} laporan sesi selesai belum dibuat</span>
                         </button>
                     )}
                 </div>
