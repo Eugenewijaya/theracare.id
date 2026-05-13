@@ -23,7 +23,7 @@ import FriendlyLoader from '../../shared/ui/FriendlyLoader';
 
 function Loading() {
   return (
-    <FriendlyLoader compact title="Sebentar ya" message="Dashboard terapis sedang disiapkan." />
+    <FriendlyLoader compact variant="racoon" title="Sebentar ya" message="Dashboard terapis sedang disiapkan." />
   );
 }
 
@@ -33,7 +33,7 @@ function ProtectedRoute({ children }) {
   if (loading) {
     return (
       <div className="flex h-[100dvh] items-center justify-center bg-slate-50 dark:bg-slate-900">
-        <FriendlyLoader title="Kami cek aksesmu dulu" message="Sebentar, jadwal terapi akan segera tampil." />
+        <FriendlyLoader variant="racoon" title="Kami cek aksesmu dulu" message="Sebentar, jadwal terapi akan segera tampil." />
       </div>
     );
   }

@@ -32,7 +32,7 @@ const TherapistLeaveRequests = lazy(() => import('./pages/TherapistLeaveRequests
 
 function Loading() {
   return (
-    <FriendlyLoader compact title="Sebentar ya" message="Dashboard admin sedang disiapkan." />
+    <FriendlyLoader compact variant="cat" title="Sebentar ya" message="Dashboard admin sedang disiapkan." />
   );
 }
 
@@ -41,7 +41,7 @@ function ProtectedRoute({ children }) {
   if (loading) {
     return (
       <div className="flex h-[100dvh] items-center justify-center bg-slate-50">
-        <FriendlyLoader title="Kami cek aksesmu dulu" message="Sebentar, ruang admin akan terbuka setelah sesi aman." />
+        <FriendlyLoader variant="cat" title="Kami cek aksesmu dulu" message="Sebentar, ruang admin akan terbuka setelah sesi aman." />
       </div>
     );
   }

@@ -21,7 +21,23 @@ type CenterClosure = {
   isActive?: boolean;
 };
 
-type TherapistSchedule = Record<string, { start?: string; end?: string } | null | undefined>;
+type TherapistScheduleValue = string | Array<unknown> | {
+  start?: string;
+  end?: string;
+  startTime?: string;
+  endTime?: string;
+  from?: string;
+  to?: string;
+  open?: string;
+  close?: string;
+  clockIn?: string;
+  clockOut?: string;
+  active?: boolean;
+  enabled?: boolean;
+  isActive?: boolean;
+} | null | undefined;
+
+type TherapistSchedule = Record<string, TherapistScheduleValue>;
 
 type TherapistLeaveRequest = {
   therapistId?: string;
@@ -32,13 +48,13 @@ type TherapistLeaveRequest = {
 };
 
 const DAY_SCHEDULE_KEYS: Record<number, string[]> = {
-  0: ["Minggu", "minggu", "Sunday", "sunday"],
-  1: ["Senin", "senin", "Monday", "monday"],
-  2: ["Selasa", "selasa", "Tuesday", "tuesday"],
-  3: ["Rabu", "rabu", "Wednesday", "wednesday"],
-  4: ["Kamis", "kamis", "Thursday", "thursday"],
-  5: ["Jumat", "jumat", "Friday", "friday"],
-  6: ["Sabtu", "sabtu", "Saturday", "saturday"],
+  0: ["Minggu", "Min", "Sunday", "Sun"],
+  1: ["Senin", "Sen", "Monday", "Mon"],
+  2: ["Selasa", "Sel", "Tuesday", "Tue", "Tues"],
+  3: ["Rabu", "Rab", "Wednesday", "Wed"],
+  4: ["Kamis", "Kam", "Thursday", "Thu", "Thur", "Thurs"],
+  5: ["Jumat", "Jum", "Friday", "Fri"],
+  6: ["Sabtu", "Sab", "Saturday", "Sat"],
 };
 
 function parseJsonArray(value?: string | null) {
@@ -141,17 +157,53 @@ function therapistLeaveConflict(settings: Record<string, string | null>, therapi
   return `Terapis sedang ${getLeaveTypeLabel(activeLeave.type)} pada tanggal tersebut.`;
 }
 
+function normalizeScheduleKey(value: string) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/hari/g, "")
+    .replace(/[^a-z]/g, "");
+}
+
+function parseWorkWindow(value: TherapistScheduleValue): { start?: string; end?: string } | null {
+  if (!value) return null;
+  if (Array.isArray(value)) return parseWorkWindow(value.find(Boolean) as TherapistScheduleValue);
+  if (typeof value === "string") {
+    if (/off|libur|tutup|inactive/i.test(value)) return null;
+    const match = value.match(/(\d{1,2}:\d{2}).*?(\d{1,2}:\d{2})/);
+    return match ? { start: match[1], end: match[2] } : null;
+  }
+  if (typeof value === "object") {
+    if (value.active === false || value.enabled === false || value.isActive === false) return null;
+    return {
+      start: value.start || value.startTime || value.from || value.open || value.clockIn,
+      end: value.end || value.endTime || value.to || value.close || value.clockOut,
+    };
+  }
+  return null;
+}
+
+function hasRecognizedSchedule(schedule: TherapistSchedule | null | undefined) {
+  if (!schedule || typeof schedule !== "object" || Array.isArray(schedule)) return false;
+  const recognizedKeys = new Set(Object.values(DAY_SCHEDULE_KEYS).flat().map(normalizeScheduleKey));
+  return Object.entries(schedule).some(([key, value]) => (
+    recognizedKeys.has(normalizeScheduleKey(key)) && Boolean(parseWorkWindow(value))
+  ));
+}
+
 function getTherapistScheduleForDate(schedule: TherapistSchedule | null | undefined, date: string) {
-  if (!schedule || typeof schedule !== "object") return null;
-  const hasSchedule = Object.values(schedule).some(Boolean);
-  if (!hasSchedule) return null;
+  if (!hasRecognizedSchedule(schedule)) return null;
   const day = new Date(`${date}T00:00:00`).getDay();
-  const keys = DAY_SCHEDULE_KEYS[day] || [];
-  return keys.map((key) => schedule[key]).find(Boolean) || undefined;
+  const keys = (DAY_SCHEDULE_KEYS[day] || []).map(normalizeScheduleKey);
+  const direct = (DAY_SCHEDULE_KEYS[day] || []).map((key) => schedule?.[key]).find(Boolean);
+  if (direct) return parseWorkWindow(direct);
+  const entry = Object.entries(schedule || {}).find(([key, value]) => (
+    keys.includes(normalizeScheduleKey(key)) && Boolean(parseWorkWindow(value))
+  ));
+  return entry ? parseWorkWindow(entry[1]) : undefined;
 }
 
 function therapistScheduleConflict(schedule: TherapistSchedule | null | undefined, slot: { date: string; time: string; duration?: string }) {
-  if (!schedule || typeof schedule !== "object" || !Object.values(schedule).some(Boolean)) return "";
+  if (!hasRecognizedSchedule(schedule)) return "";
 
   const daySchedule = getTherapistScheduleForDate(schedule, slot.date);
   if (!daySchedule) return "Terapis sedang off pada hari tersebut.";

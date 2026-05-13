@@ -1,24 +1,58 @@
 import React from 'react';
 
+const LOADER_ASSETS = {
+  cat: ['/loading_cat.gif', '/loading_cat.webp', '/loading_cat.png'],
+  racoon: [
+    '/loading_racoon.gif',
+    '/loading_racoon.webp',
+    '/loading_racoon.png',
+    '/loading_raccoon.gif',
+    '/loading_raccoon.webp',
+    '/loading_raccoon.png',
+  ],
+};
+
 export default function FriendlyLoader({
   title = 'Sebentar ya',
   message = 'Kami sedang menyiapkan ruang kerjamu.',
   compact = false,
+  variant = 'default',
+  assetSrc = '',
 }) {
+  const sources = assetSrc
+    ? [assetSrc]
+    : LOADER_ASSETS[variant] || [];
+  const [sourceIndex, setSourceIndex] = React.useState(0);
+  const currentSource = sources[sourceIndex];
+
+  React.useEffect(() => {
+    setSourceIndex(0);
+  }, [assetSrc, variant]);
+
   return (
     <div className={`flex ${compact ? 'py-8' : 'min-h-full'} items-center justify-center bg-slate-50 dark:bg-slate-950`}>
       <div className="flex max-w-sm flex-col items-center gap-4 px-6 text-center">
-        <div className="relative h-20 w-20">
-          <div className="absolute inset-0 rounded-[1.65rem] bg-sky-100 shadow-inner dark:bg-sky-900/40" />
-          <div className="absolute left-1/2 top-1/2 h-11 w-11 -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-white shadow-lg ring-1 ring-sky-100 dark:bg-slate-900 dark:ring-slate-700">
-            <span className="material-symbols-outlined absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-[25px] text-sky-600 dark:text-sky-300">
-              favorite
-            </span>
+        {currentSource ? (
+          <img
+            src={currentSource}
+            alt=""
+            aria-hidden="true"
+            className="h-20 w-20 rounded-2xl object-contain drop-shadow-sm"
+            onError={() => setSourceIndex(index => index + 1)}
+          />
+        ) : (
+          <div className="relative h-20 w-20">
+            <div className="absolute inset-0 rounded-[1.65rem] bg-sky-100 shadow-inner dark:bg-sky-900/40" />
+            <div className="absolute left-1/2 top-1/2 h-11 w-11 -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-white shadow-lg ring-1 ring-sky-100 dark:bg-slate-900 dark:ring-slate-700">
+              <span className="material-symbols-outlined absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-[25px] text-sky-600 dark:text-sky-300">
+                favorite
+              </span>
+            </div>
+            <span className="theracare-loader-dot absolute left-1 top-7 h-3 w-3 rounded-full bg-emerald-400" />
+            <span className="theracare-loader-dot absolute right-2 top-4 h-3 w-3 rounded-full bg-amber-400 [animation-delay:120ms]" />
+            <span className="theracare-loader-dot absolute bottom-3 left-1/2 h-3 w-3 -translate-x-1/2 rounded-full bg-sky-500 [animation-delay:240ms]" />
           </div>
-          <span className="theracare-loader-dot absolute left-1 top-7 h-3 w-3 rounded-full bg-emerald-400" />
-          <span className="theracare-loader-dot absolute right-2 top-4 h-3 w-3 rounded-full bg-amber-400 [animation-delay:120ms]" />
-          <span className="theracare-loader-dot absolute bottom-3 left-1/2 h-3 w-3 -translate-x-1/2 rounded-full bg-sky-500 [animation-delay:240ms]" />
-        </div>
+        )}
         <div>
           <p className="text-base font-black text-slate-900 dark:text-white">{title}</p>
           <p className="mt-1 text-sm font-medium leading-relaxed text-slate-500 dark:text-slate-400">{message}</p>

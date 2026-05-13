@@ -21,7 +21,7 @@ const ParentReschedule = lazy(() => import('../../parent-reschedule/src/App'));
 
 function Loading() {
   return (
-    <FriendlyLoader compact title="Sebentar ya" message="Portal orang tua sedang disiapkan." />
+    <FriendlyLoader compact variant="racoon" title="Sebentar ya" message="Portal orang tua sedang disiapkan." />
   );
 }
 
@@ -31,7 +31,7 @@ function ProtectedRoute({ children }) {
   if (loading) {
     return (
       <div className="flex h-[100dvh] items-center justify-center bg-slate-50 dark:bg-slate-900">
-        <FriendlyLoader title="Kami cek aksesmu dulu" message="Sebentar, portal keluarga akan segera terbuka." />
+        <FriendlyLoader variant="racoon" title="Kami cek aksesmu dulu" message="Sebentar, portal keluarga akan segera terbuka." />
       </div>
     );
   }

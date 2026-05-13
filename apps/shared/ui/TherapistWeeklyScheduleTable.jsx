@@ -1,12 +1,12 @@
 import React from 'react';
 
 const DAY_COLUMNS = [
-  { key: 'Senin', english: 'Monday', short: 'SENIN', offset: 0 },
-  { key: 'Selasa', english: 'Tuesday', short: 'SELASA', offset: 1 },
-  { key: 'Rabu', english: 'Wednesday', short: 'RABU', offset: 2 },
-  { key: 'Kamis', english: 'Thursday', short: 'KAMIS', offset: 3 },
-  { key: 'Jumat', english: 'Friday', short: 'JUMAT', offset: 4 },
-  { key: 'Sabtu', english: 'Saturday', short: 'SABTU', offset: 5 },
+  { key: 'Senin', english: 'Monday', short: 'SEN', offset: 0, aliases: ['senin', 'sen', 'monday', 'mon'] },
+  { key: 'Selasa', english: 'Tuesday', short: 'SEL', offset: 1, aliases: ['selasa', 'sel', 'tuesday', 'tue', 'tues'] },
+  { key: 'Rabu', english: 'Wednesday', short: 'RAB', offset: 2, aliases: ['rabu', 'rab', 'wednesday', 'wed'] },
+  { key: 'Kamis', english: 'Thursday', short: 'KAM', offset: 3, aliases: ['kamis', 'kam', 'thursday', 'thu', 'thur', 'thurs'] },
+  { key: 'Jumat', english: 'Friday', short: 'JUM', offset: 4, aliases: ['jumat', 'jum', 'friday', 'fri'] },
+  { key: 'Sabtu', english: 'Saturday', short: 'SAB', offset: 5, aliases: ['sabtu', 'sab', 'saturday', 'sat'] },
 ];
 
 const DEFAULT_SLOTS = [
@@ -125,6 +125,45 @@ function getSlotKey(start, duration) {
   return `${start}|${duration}`;
 }
 
+function normalizeScheduleKey(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/hari/g, '')
+    .replace(/[^a-z]/g, '');
+}
+
+function parseWorkWindow(value) {
+  if (!value) return null;
+  if (Array.isArray(value)) return parseWorkWindow(value.find(Boolean));
+  if (typeof value === 'string') {
+    if (/off|libur|tutup|inactive/i.test(value)) return null;
+    const match = value.match(/(\d{1,2}:\d{2}).*?(\d{1,2}:\d{2})/);
+    return match ? { start: match[1], end: match[2] } : null;
+  }
+  if (typeof value === 'object') {
+    if (value.active === false || value.enabled === false || value.isActive === false) return null;
+    return {
+      start: value.start || value.startTime || value.from || value.open || value.clockIn,
+      end: value.end || value.endTime || value.to || value.close || value.clockOut,
+    };
+  }
+  return null;
+}
+
+function getRecognizedScheduleEntries(schedule) {
+  if (!schedule || typeof schedule !== 'object' || Array.isArray(schedule)) return [];
+  const recognizedKeys = new Set(DAY_COLUMNS.flatMap((day) => [
+    day.key,
+    day.english,
+    day.short,
+    ...(day.aliases || []),
+  ].map(normalizeScheduleKey)));
+
+  return Object.entries(schedule).filter(([key, value]) => (
+    recognizedKeys.has(normalizeScheduleKey(key)) && Boolean(parseWorkWindow(value))
+  ));
+}
+
 function getWeekDates(monday) {
   return DAY_COLUMNS.map((day) => ({
     ...day,
@@ -162,24 +201,29 @@ function sessionOverlapsSlot(session, slot) {
 
 function getScheduleForDay(schedule, day) {
   if (!schedule || typeof schedule !== 'object') return null;
-  const keys = [
+  const directKeys = [
     day.key,
-    day.key.toLowerCase(),
     day.english,
-    day.english.toLowerCase(),
     day.short,
-    day.short.toLowerCase(),
+    ...(day.aliases || []),
   ];
-  return keys.map((key) => schedule[key]).find(Boolean) || null;
+  const wanted = new Set(directKeys.map(normalizeScheduleKey));
+  const direct = directKeys.map((key) => schedule[key]).find(Boolean);
+  if (direct) return parseWorkWindow(direct);
+
+  const entry = Object.entries(schedule).find(([key, value]) => (
+    wanted.has(normalizeScheduleKey(key)) && Boolean(parseWorkWindow(value))
+  ));
+  return entry ? parseWorkWindow(entry[1]) : null;
 }
 
-function hasAnySchedule(schedule) {
-  return Boolean(schedule && typeof schedule === 'object' && Object.values(schedule).some(Boolean));
+function hasRecognizedSchedule(schedule) {
+  return getRecognizedScheduleEntries(schedule).length > 0;
 }
 
 function isInsideWorkWindow(therapist, day, slot) {
   const schedule = therapist?.schedule;
-  if (!hasAnySchedule(schedule)) return { available: true };
+  if (!hasRecognizedSchedule(schedule)) return { available: true };
   const daySchedule = getScheduleForDay(schedule, day);
   if (!daySchedule) return { available: false, label: 'OFF' };
 
@@ -258,15 +302,15 @@ function TherapistWeeklyScheduleTable({
   const goToday = () => setWeekStart(getMonday(new Date()));
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      <div className="flex flex-col gap-4 border-b border-slate-200 bg-slate-50/70 px-4 py-4 dark:border-slate-800 dark:bg-slate-900/70 lg:flex-row lg:items-center lg:justify-between">
+    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50/70 px-3 py-3 dark:border-slate-800 dark:bg-slate-900/70 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
-          <p className="text-xs font-black uppercase tracking-[0.18em] text-primary">Jadwal tabel</p>
-          <h2 className="mt-1 break-words text-xl font-black leading-tight text-slate-950 dark:text-white sm:text-2xl">
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-primary">Jadwal tabel</p>
+          <h2 className="mt-0.5 break-words text-base font-black leading-tight text-slate-950 dark:text-white sm:text-lg">
             {title}
           </h2>
           {subtitle && (
-            <p className="mt-1 max-w-3xl text-sm font-medium leading-relaxed text-slate-500 dark:text-slate-400">
+            <p className="mt-1 max-w-3xl text-xs font-medium leading-relaxed text-slate-500 dark:text-slate-400">
               {subtitle}
             </p>
           )}
@@ -276,26 +320,26 @@ function TherapistWeeklyScheduleTable({
           <button
             type="button"
             onClick={() => shiftWeek(-1)}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800"
             aria-label="Minggu sebelumnya"
           >
-            <span className="material-symbols-outlined text-[20px]">chevron_left</span>
+            <span className="material-symbols-outlined text-[18px]">chevron_left</span>
           </button>
-          <div className="min-w-[160px] rounded-xl border border-slate-200 bg-white px-4 py-2 text-center text-sm font-black text-slate-800 shadow-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
+          <div className="min-w-[130px] rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-center text-xs font-black text-slate-800 shadow-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
             {weekTitle}
           </div>
           <button
             type="button"
             onClick={() => shiftWeek(1)}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800"
             aria-label="Minggu berikutnya"
           >
-            <span className="material-symbols-outlined text-[20px]">chevron_right</span>
+            <span className="material-symbols-outlined text-[18px]">chevron_right</span>
           </button>
           <button
             type="button"
             onClick={goToday}
-            className="inline-flex h-10 items-center justify-center rounded-xl bg-primary px-4 text-sm font-black text-white shadow-sm transition hover:bg-primary/90"
+            className="inline-flex h-8 items-center justify-center rounded-lg bg-primary px-3 text-xs font-black text-white shadow-sm transition hover:bg-primary/90"
           >
             Hari ini
           </button>
@@ -303,16 +347,22 @@ function TherapistWeeklyScheduleTable({
       </div>
 
       <div className="overflow-x-auto">
-        <table className={`w-full min-w-[980px] border-collapse text-sm ${compact ? 'text-xs' : ''}`}>
+        <table className={`w-full min-w-[720px] table-fixed border-collapse text-[11px] leading-tight sm:min-w-0 ${compact ? 'text-[10px] sm:text-[11px]' : ''}`}>
+          <colgroup>
+            <col className="w-[34px]" />
+            <col className="w-[96px] sm:w-[112px]" />
+            <col className="w-[82px] sm:w-[92px]" />
+            {weekDates.map((day) => <col key={day.dateKey} />)}
+          </colgroup>
           <thead>
             <tr className="bg-slate-200 text-slate-950 dark:bg-slate-800 dark:text-white">
-              <th className="border border-slate-300 px-3 py-3 text-center font-black dark:border-slate-700">NO</th>
-              <th className="border border-slate-300 px-3 py-3 text-left font-black dark:border-slate-700">NAMA TERAPIS</th>
-              <th className="border border-slate-300 px-3 py-3 text-center font-black dark:border-slate-700">JAM</th>
+              <th className="border border-slate-300 px-1 py-2 text-center font-black dark:border-slate-700">NO</th>
+              <th className="border border-slate-300 px-1.5 py-2 text-left font-black dark:border-slate-700">TERAPIS</th>
+              <th className="border border-slate-300 px-1.5 py-2 text-center font-black dark:border-slate-700">JAM</th>
               {weekDates.map((day) => (
-                <th key={day.dateKey} className="border border-slate-300 px-3 py-3 text-center font-black dark:border-slate-700">
+                <th key={day.dateKey} className="border border-slate-300 px-1 py-2 text-center font-black dark:border-slate-700">
                   <div>{day.short}</div>
-                  <div className="mt-1 text-[11px] font-bold text-slate-500 dark:text-slate-400">{formatDateShort(day.date)}</div>
+                  <div className="mt-0.5 text-[9px] font-bold text-slate-500 dark:text-slate-400">{formatDateShort(day.date)}</div>
                 </th>
               ))}
             </tr>
@@ -333,18 +383,18 @@ function TherapistWeeklyScheduleTable({
                 <tr key={`${therapistId || therapistIndex}-${slot.start}-${slot.duration}`} className="align-middle">
                   {slotIndex === 0 && (
                     <>
-                      <td rowSpan={slots.length} className="border border-slate-300 bg-white px-3 py-4 text-center text-lg font-black text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-white">
+                      <td rowSpan={slots.length} className="border border-slate-300 bg-white px-1 py-2 text-center text-sm font-black text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-white">
                         {therapistIndex + 1}
                       </td>
-                      <td rowSpan={slots.length} className={`border border-slate-300 px-4 py-4 text-center text-base font-black uppercase tracking-wide dark:border-slate-700 ${palette.row}`}>
-                        <div>{getTherapistName(therapist)}</div>
+                      <td rowSpan={slots.length} className={`border border-slate-300 px-2 py-2 text-center text-xs font-black uppercase dark:border-slate-700 ${palette.row}`}>
+                        <div className="break-words">{getTherapistName(therapist)}</div>
                         {therapist?.specialty && (
-                          <div className="mt-1 text-[11px] font-bold normal-case tracking-normal opacity-70">{therapist.specialty}</div>
+                          <div className="mt-1 line-clamp-2 text-[9px] font-bold normal-case tracking-normal opacity-70">{therapist.specialty}</div>
                         )}
                       </td>
                     </>
                   )}
-                  <td className="border border-slate-300 bg-white px-3 py-3 text-center font-black text-slate-950 dark:border-slate-700 dark:bg-slate-950 dark:text-white">
+                  <td className="border border-slate-300 bg-white px-1 py-1.5 text-center font-black text-slate-950 dark:border-slate-700 dark:bg-slate-950 dark:text-white">
                     {formatRange(slot.start, slot.duration)}
                   </td>
                   {weekDates.map((day) => {
@@ -369,9 +419,9 @@ function TherapistWeeklyScheduleTable({
                         key={`${therapistId}-${day.dateKey}-${slot.start}`}
                         className={`border border-slate-300 px-2 py-2 text-center font-bold dark:border-slate-700 ${cellClass}`}
                       >
-                        <div className="flex min-h-[42px] flex-col items-center justify-center gap-1">
+                        <div className="flex min-h-[28px] flex-col items-center justify-center gap-0.5">
                           {offLabel && (
-                            <span className={`rounded-md px-2 py-1 text-[11px] font-black ${dateSessions.length > 0 ? OFF_CHIP_CLASS : 'text-white'}`}>
+                            <span className={`rounded px-1.5 py-0.5 text-[9px] font-black ${dateSessions.length > 0 ? OFF_CHIP_CLASS : 'text-white'}`}>
                               {offLabel}
                             </span>
                           )}
@@ -386,7 +436,7 @@ function TherapistWeeklyScheduleTable({
                                 type="button"
                                 key={session.id || `${day.dateKey}-${session.startTime}`}
                                 onClick={() => onSelectSession?.(session)}
-                                className={`max-w-[128px] rounded-lg border px-2 py-1 text-xs font-black uppercase leading-tight shadow-sm transition hover:scale-[1.01] ${chipClass}`}
+                                className={`max-w-full rounded border px-1.5 py-0.5 text-[10px] font-black uppercase leading-tight shadow-sm transition hover:scale-[1.01] ${chipClass}`}
                                 title={`${getChildName(session, childrenList)} - ${session.startTime || ''}`}
                               >
                                 <span className="line-clamp-2">{getChildName(session, childrenList)}</span>
@@ -404,12 +454,12 @@ function TherapistWeeklyScheduleTable({
         </table>
       </div>
 
-      <div className="flex flex-wrap gap-2 border-t border-slate-200 bg-white px-4 py-3 text-xs font-bold text-slate-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
-        <span className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-50 px-3 py-1 text-red-700">
+      <div className="flex flex-wrap gap-2 border-t border-slate-200 bg-white px-3 py-2 text-[11px] font-bold text-slate-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
+        <span className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-red-700">
           <span className="h-2 w-2 rounded-full bg-red-500"></span>
           Off / libur / cuti
         </span>
-        <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 dark:border-slate-700 dark:bg-slate-900">
+        <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 dark:border-slate-700 dark:bg-slate-900">
           Warna baris membedakan terapis
         </span>
       </div>
