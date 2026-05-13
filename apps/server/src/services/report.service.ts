@@ -10,6 +10,7 @@ type ReportQueryOptions = { visibleToParentOnly?: boolean; therapistId?: string 
 type ReportUpdateOptions = { allowStatus?: boolean };
 
 const PARENT_VISIBLE_REPORT_STATUSES = ["approved", "published", "ready_for_parent"];
+const REVIEWABLE_REPORT_STATUSES = ["approved", "published", "ready_for_parent", "needs_revision", "pending_review"];
 const COMPLETED_SESSION_STATUSES = ["done", "completed", "selesai"];
 const PUBLISHED_EDIT_WINDOW_HOURS = 48;
 const PUBLISHED_EDIT_WINDOW_MS = PUBLISHED_EDIT_WINDOW_HOURS * 60 * 60 * 1000;
@@ -371,6 +372,9 @@ export const reportService = {
   },
 
   async updateStatus(id: string, status: string, reviewNote?: string, actorRole?: string) {
+    if (!REVIEWABLE_REPORT_STATUSES.includes(status)) {
+      throw httpError(400, "Status laporan tidak valid.");
+    }
     const existing = await db.query.reports.findFirst({
       where: eq(reports.id, id),
       with: { therapist: { with: { user: true } }, child: true },
@@ -378,8 +382,8 @@ export const reportService = {
     if (!existing) return null;
 
     const note = String(reviewNote || "").trim();
-    if (["approved", "published", "ready_for_parent"].includes(existing.status) && status === "needs_revision" && note.length < 8) {
-      throw httpError(400, "Alasan revisi wajib diisi sebelum laporan yang sudah disetujui dikembalikan ke terapis.");
+    if (status === "needs_revision" && note.length < 8) {
+      throw httpError(400, "Alasan revisi wajib diisi sebelum laporan dikembalikan ke terapis.");
     }
     if (isParentVisibleReport(existing.status) && status === "needs_revision") {
       assertReportEditable(existing);

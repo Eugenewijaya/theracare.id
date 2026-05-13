@@ -56,6 +56,7 @@ function App() {
     const [customRange, setCustomRange] = useState({ from: '', to: '' });
     const [toast, setToast] = useState(null);
     const [reviewNotes, setReviewNotes] = useState({});
+    const [reviewAction, setReviewAction] = useState(null);
     const [data, setData] = useState({ children: [], sessions: [], therapists: [], programs: [], stats: {}, pendingReports: [] });
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -198,6 +199,22 @@ function App() {
     }, [data, timeframe, selectedRange]);
 
     const colors = ['bg-blue-500', 'bg-emerald-500', 'bg-purple-500', 'bg-amber-500', 'bg-pink-500'];
+    const getReportMeta = (report) => [
+        `Anak: ${report.childName || report.child?.name || '-'}`,
+        `Terapis: ${report.therapistName || report.therapist?.user?.name || '-'}`,
+        `Tanggal: ${report.date || report.dateFrom || '-'}`,
+    ].join(' | ');
+
+    const handlePreviewReport = (report) => {
+        const result = openReportPdf(report, centerSettings.settings || centerSettings);
+        showToast(
+            result.ok
+                ? 'Preview laporan dibuka. Gunakan tombol Cetak / Simpan PDF jika perlu unduhan.'
+                : 'Preview gagal dibuka karena pop-up browser diblokir. Izinkan pop-up lalu coba lagi.',
+            result.ok ? 'success' : 'info'
+        );
+    };
+
     const handleExportPdf = () => {
         const today = new Date().toISOString().split('T')[0];
         const result = openReportPdf({
@@ -229,14 +246,11 @@ function App() {
     };
 
     const handleReviewReport = async (report, status) => {
-        const note = (reviewNotes[report.id] || '').trim();
+        if (!['approved', 'needs_revision'].includes(status) || reviewAction) return;
+        const currentNote = (reviewNotes[report.id] || '').trim();
         const editWindow = getReportEditWindow(report);
         if (status === 'needs_revision' && isParentVisibleReport(report.status) && !editWindow.canEdit) {
             showToast('Masa ubah/revisi laporan yang sudah dipublikasikan sudah lewat 48 jam.', 'info');
-            return;
-        }
-        if (status === 'needs_revision' && ['approved', 'published', 'ready_for_parent'].includes(report.status) && note.length < 8) {
-            showToast('Isi alasan revisi sebelum laporan yang sudah disetujui dikembalikan ke terapis.', 'info');
             return;
         }
         if (status === 'approved' && report.status === 'needs_revision') {
@@ -249,20 +263,52 @@ function App() {
             title: status === 'approved' ? 'Setujui laporan?' : 'Kirim permintaan revisi?',
             message: status === 'approved'
                 ? 'Laporan akan tersedia di portal orang tua.'
-                : 'Terapis utama akan menerima notifikasi revisi dan log review tersimpan.',
+                : 'Terapis utama akan menerima notifikasi revisi dan log review tersimpan. Alasan revisi wajib jelas.',
+            details: getReportMeta(report),
             confirmText: status === 'approved' ? 'Setujui' : 'Kirim Revisi',
             cancelText: 'Batal',
+            inputLabel: status === 'approved' ? 'Catatan admin (opsional)' : 'Alasan revisi',
+            inputPlaceholder: status === 'approved'
+                ? 'Contoh: sudah sesuai dan siap dibaca orang tua.'
+                : 'Jelaskan bagian yang harus diperbaiki oleh terapis...',
+            requireText: status === 'needs_revision',
+            initialInput: currentNote,
+            templates: status === 'needs_revision'
+                ? [
+                    'Mohon lengkapi respons anak dan rekomendasi untuk orang tua.',
+                    'Mohon perjelas goals/aktivitas hari ini dan hasil pengamatan.',
+                    'Mohon cek kembali aspek terapi, ruangan, dan alat peraga yang digunakan.',
+                ]
+                : [],
         });
         if (!confirmed) return;
 
-        const res = await reportsApi.updateStatus(report.id, status, note);
-        if (!res.ok) {
-            showToast(res.data?.error || 'Status laporan gagal diperbarui.', 'info');
-            return;
+        const note = (confirmed.input || currentNote).trim();
+        setReviewAction({ id: report.id, status });
+        try {
+            const res = await reportsApi.updateStatus(report.id, status, note);
+            if (!res.ok) {
+                showToast(res.data?.error || 'Status laporan gagal diperbarui.', 'info');
+                return;
+            }
+            const updatedPayload = res.data?.data || {};
+            const updatedReport = {
+                ...report,
+                ...updatedPayload,
+                childName: updatedPayload.childName || report.childName,
+                therapistName: updatedPayload.therapistName || report.therapistName,
+            };
+            setData(prev => ({
+                ...prev,
+                pendingReports: prev.pendingReports.map(item => item.id === report.id ? updatedReport : item),
+            }));
+            setReviewNotes(prev => ({ ...prev, [report.id]: '' }));
+            window.dispatchEvent(new CustomEvent('reportUpdated', { detail: { id: report.id, status } }));
+            showToast(status === 'approved' ? 'Laporan disetujui dan tersedia di portal orang tua.' : 'Laporan dikirim kembali untuk revisi.', 'success');
+            loadReportData();
+        } finally {
+            setReviewAction(null);
         }
-        setReviewNotes(prev => ({ ...prev, [report.id]: '' }));
-        showToast(status === 'approved' ? 'Laporan disetujui dan tersedia di portal orang tua.' : 'Laporan dikirim kembali untuk revisi.', 'success');
-        loadReportData();
     };
 
     return (
@@ -392,6 +438,10 @@ function App() {
                         {data.pendingReports.slice(0, 6).map((report) => {
                             const editWindow = getReportEditWindow(report);
                             const revisionLocked = isParentVisibleReport(report.status) && !editWindow.canEdit;
+                            const isApproved = ['approved', 'published', 'ready_for_parent'].includes(report.status);
+                            const isBusy = reviewAction?.id === report.id;
+                            const approveBusy = isBusy && reviewAction?.status === 'approved';
+                            const revisionBusy = isBusy && reviewAction?.status === 'needs_revision';
                             return (
                             <article key={report.id} className="rounded-xl border border-slate-200 dark:border-slate-700 p-4 flex flex-col gap-3">
                                 <div className="flex items-start justify-between gap-3">
@@ -437,26 +487,27 @@ function App() {
                                 <div className="flex flex-col sm:flex-row gap-2">
                                     <button
                                         type="button"
-                                        onClick={() => openReportPdf(report, centerSettings.settings || centerSettings)}
-                                        className="flex-1 rounded-lg bg-slate-900 dark:bg-white px-3 py-2 text-xs font-bold text-white dark:text-slate-900 hover:opacity-90"
+                                        onClick={() => handlePreviewReport(report)}
+                                        disabled={isBusy}
+                                        className="flex-1 rounded-lg bg-slate-900 dark:bg-white px-3 py-2 text-xs font-bold text-white dark:text-slate-900 hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-55"
                                     >
                                         Preview
                                     </button>
                                     <button
                                         type="button"
                                         onClick={() => handleReviewReport(report, 'approved')}
-                                        disabled={['approved', 'published', 'ready_for_parent'].includes(report.status)}
-                                        className="flex-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700"
+                                        disabled={isApproved || isBusy}
+                                        className="flex-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-100 disabled:text-emerald-700"
                                     >
-                                        Setujui
+                                        {approveBusy ? 'Menyetujui...' : isApproved ? 'Sudah Disetujui' : 'Setujui'}
                                     </button>
                                     <button
                                         type="button"
                                         onClick={() => handleReviewReport(report, 'needs_revision')}
-                                        disabled={revisionLocked}
+                                        disabled={revisionLocked || isBusy}
                                         className="flex-1 rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-45 dark:hover:bg-slate-700"
                                     >
-                                        Minta Revisi
+                                        {revisionBusy ? 'Mengirim...' : 'Minta Revisi'}
                                     </button>
                                 </div>
                             </article>

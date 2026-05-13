@@ -35,12 +35,13 @@ function Dialog({
   requireText = false,
   inputLabel,
   inputPlaceholder,
+  initialInput = '',
   templates = [],
   confirmOnly = false,
   onResolve,
 }) {
   const config = toneMap[tone] || toneMap.warning;
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState(initialInput);
   const canConfirm = !requireText || input.trim().length >= 8;
   const selectedIcon = icon || config.icon;
   const normalizedTemplates = useMemo(() => templates.filter(Boolean), [templates]);
