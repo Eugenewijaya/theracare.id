@@ -237,10 +237,10 @@ export const therapistService = {
     return { id, status };
   },
 
-  async resetPassword(id: string) {
+  async resetPassword(id: string, passwordOverride?: string) {
     const therapist = await db.query.therapists.findFirst({ where: eq(therapists.id, id) });
     if (!therapist) return null;
-    const tempPassword = generatePortalResetPassword();
+    const tempPassword = passwordOverride?.trim() || generatePortalResetPassword();
     await setCredentialPassword(therapist.userId, tempPassword);
     return { id, tempPassword };
   },

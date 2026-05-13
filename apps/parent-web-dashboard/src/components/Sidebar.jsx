@@ -4,7 +4,7 @@ import { adminApi } from '../../../shared/api/client';
 const Sidebar = () => {
     const handleContactSupport = async () => {
         try {
-            const res = await adminApi.getSettings();
+            const res = await adminApi.getPublicSettings();
             const settings = res.data?.data || {};
             const phone = settings.adminWhatsApp || '6281234567890';
             window.open(`https://wa.me/${phone}`, '_blank');

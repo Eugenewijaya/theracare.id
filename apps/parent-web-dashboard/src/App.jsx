@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from './components/Header';
 import { sessionsApi, childrenApi, adminApi } from '../../shared/api/client';
@@ -54,8 +54,7 @@ function App({ onLogout }) {
     const [completedSessions, setCompletedSessions] = useState([]);
     const [clinicSettings, setClinicSettings] = useState({});
 
-    useEffect(() => {
-        const fetchData = async () => {
+    const fetchData = useCallback(async () => {
             const user = readParentUser();
             if (!user) return;
             setParentUser(user);
@@ -82,13 +81,16 @@ function App({ onLogout }) {
             }
 
             try {
-                const setRes = await adminApi.getSettings();
+                const setRes = await adminApi.getPublicSettings();
                 setClinicSettings(setRes.data?.data || {});
             } catch(e) { console.error(e); }
-        };
-
-        fetchData();
     }, []);
+
+    useEffect(() => {
+        fetchData();
+        window.addEventListener('parentChildSelectionChanged', fetchData);
+        return () => window.removeEventListener('parentChildSelectionChanged', fetchData);
+    }, [fetchData]);
 
     const nextSession    = upcomingSessions[0] || null;
     const parentName     = parentUser?.name     || 'Parent';

@@ -3,7 +3,9 @@ import { requireAuth, requireRole } from "../middleware/auth.middleware.js";
 import { eq } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { therapists } from "../db/schema.js";
+import { childService } from "../services/child.service.js";
 import { parentService } from "../services/parent.service.js";
+import { therapistService } from "../services/therapist.service.js";
 import { therapyPeriodService } from "../services/therapy-period.service.js";
 import { auditLogService } from "../services/audit-log.service.js";
 import { notificationService } from "../services/notification.service.js";
@@ -12,10 +14,25 @@ import { created, notFound, ok, badRequest } from "../utils/response.js";
 const router = Router();
 
 async function canReadChildPeriods(req: any, childId: string) {
-  if (req.user?.role === "admin" || req.user?.role === "therapist") return true;
-  if (req.user?.role !== "parent") return false;
-  const parent = await parentService.getByUserId(req.user.id);
-  return !!parent?.children?.some((child: any) => child.id === childId || child.nita === childId);
+  if (req.user?.role === "admin") return true;
+  if (req.user?.role === "parent") {
+    const parent = await parentService.getByUserId(req.user.id);
+    return !!parent?.children?.some((child: any) => child.id === childId || child.nita === childId);
+  }
+  if (req.user?.role === "therapist") {
+    const [therapist, child] = await Promise.all([
+      therapistService.getByUserId(req.user.id),
+      childService.getById(childId),
+    ]);
+    if (!therapist?.id || !child) return false;
+    const hasSession = Array.isArray(child.sessions)
+      && child.sessions.some((session: any) => session?.therapistId === therapist.id);
+    const hasPeriodRule = Array.isArray(child.periods)
+      && child.periods.some((period: any) => Array.isArray(period.scheduleRules)
+        && period.scheduleRules.some((rule: any) => rule?.therapistId === therapist.id));
+    return hasSession || hasPeriodRule;
+  }
+  return false;
 }
 
 router.get("/", requireAuth, requireRole("admin"), async (req, res, next) => {

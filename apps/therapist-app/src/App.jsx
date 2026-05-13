@@ -7,7 +7,6 @@ import LoginPage from './pages/LoginPage';
 const TherapistDashboard = lazy(() => import('../../therapist-dashboard/src/App'));
 const TherapistSchedule = lazy(() => import('../../therapist-schedule/src/App'));
 const TherapistAvailability = lazy(() => import('../../therapist-availability-calendar/src/App'));
-const TherapistReport = lazy(() => import('../../therapist-report/src/App')); // Deprecated
 const TherapistWebReport = lazy(() => import('../../therapist-web-report/src/App')); // Unified Report Dashboard
 const TherapistPerformance = lazy(() => import('../../therapist-performance/src/App'));
 const ParentsMeeting = lazy(() => import('../../parents-meeting/src/App'));

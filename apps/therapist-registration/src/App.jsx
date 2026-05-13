@@ -72,7 +72,13 @@ function Step1({ data, onChange }) {
     const [showPass, setShowPass] = useState(false);
     const generatePassword = () => {
         const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789@#!';
-        let pass = 'Tc@' + Array.from({ length: 7 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+        const values = new Uint32Array(7);
+        if (globalThis.crypto?.getRandomValues) {
+            globalThis.crypto.getRandomValues(values);
+        } else {
+            values.forEach((_, index) => { values[index] = Date.now() + index; });
+        }
+        let pass = 'Tc@' + Array.from(values, value => chars[value % chars.length]).join('');
         onChange('tempPassword', pass);
     };
     return (
@@ -116,7 +122,7 @@ function Step1({ data, onChange }) {
                 </h3>
                 <div className="flex flex-col md:flex-row gap-4 items-end">
                     <div className="flex-1">
-                        <Field label="Password Sementara" required hint="Sampaikan password ini secara langsung kepada terapis untuk login pertama kali.">
+                        <Field label="Password" required hint="Sampaikan password ini secara langsung kepada terapis untuk login pertama kali.">
                             <div className="relative">
                                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 material-symbols-outlined text-[20px]">key</span>
                                 <input type={showPass ? 'text' : 'password'} value={data.tempPassword} onChange={e => onChange('tempPassword', e.target.value)} required className={inputCls + " pl-10 pr-10"} placeholder="e.g. TheraCare2024!" />
@@ -355,7 +361,7 @@ function Step4({ data }) {
                 <ReviewRow label="Email" value={data.email} />
                 <ReviewRow label="Telepon" value={data.phone} />
                 <ReviewRow label="Spesialisasi" value={<span className="px-2.5 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-full text-xs font-bold">{fullSpec || '—'}</span>} />
-                <ReviewRow label="Password Sementara" value={<code className="bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded text-xs font-mono">{'●'.repeat(data.tempPassword?.length || 8)}</code>} />
+                <ReviewRow label="Password" value={<code className="bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded text-xs font-mono">{'●'.repeat(data.tempPassword?.length || 8)}</code>} />
             </ReviewSection>
 
             {/* Qualifications */}
@@ -525,7 +531,7 @@ function App() {
             setPopup({
                 type: 'success',
                 title: 'Terapis Berhasil Didaftarkan!',
-                message: `${fullName} telah berhasil didaftarkan dengan NIT: ${therapist.nit}. Password sementara: ${therapist.tempPassword || formData.tempPassword}`,
+                message: `${fullName} telah berhasil didaftarkan dengan NIT: ${therapist.nit}. Password: ${therapist.tempPassword || formData.tempPassword}`,
                 onClose: () => navigate('/therapists'),
             });
         } catch (err) {

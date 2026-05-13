@@ -69,6 +69,7 @@ const Header = ({ title = "Dashboard", onLogout }) => {
 
     const handleChildChange = (e) => {
         const childId = e.target.value;
+        setActiveChildId(childId);
         const user = readParentUser();
         if (user) {
             const selected = children.find(c => c.nita === childId);
@@ -76,7 +77,7 @@ const Header = ({ title = "Dashboard", onLogout }) => {
                 user.childId   = selected.nita;
                 user.childName = selected.name;
                 storeParentUser(user, !!localStorage.getItem('parent_user'));
-                window.location.reload(); // simple way to refetch dashboard
+                window.dispatchEvent(new CustomEvent('parentChildSelectionChanged'));
             }
         }
     };

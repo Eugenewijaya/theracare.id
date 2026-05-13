@@ -42,6 +42,9 @@ export function getRefreshEventsForPath(path = '') {
     events.add('sessionUpdated');
     events.add('scheduleUpdated');
   }
+  if (source.includes('/center-closures')) {
+    events.add('centerClosuresUpdated');
+  }
   if (source.includes('/reschedule')) {
     events.add('rescheduleUpdated');
   }

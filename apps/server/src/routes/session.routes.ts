@@ -1,5 +1,7 @@
 import { Router } from "express";
 import { requireAuth, requireRole } from "../middleware/auth.middleware.js";
+import { childService } from "../services/child.service.js";
+import { parentService } from "../services/parent.service.js";
 import { sessionService } from "../services/session.service.js";
 import { therapistService } from "../services/therapist.service.js";
 import { auditLogService } from "../services/audit-log.service.js";
@@ -26,6 +28,32 @@ async function canMutateSession(req: any, sessionId: string) {
   return { allowed: ownProfile?.id === session.therapistId, session };
 }
 
+async function canAccessChildSchedule(req: any, childId: string) {
+  if (req.user?.role === "admin") return true;
+  const child = await childService.getById(childId);
+  if (!child) return false;
+  if (req.user?.role === "parent") return child.parent?.userId === req.user.id;
+  if (req.user?.role === "therapist") {
+    const ownProfile = await therapistService.getByUserId(req.user.id);
+    return Boolean(
+      ownProfile?.id
+        && Array.isArray(child.sessions)
+        && child.sessions.some((session: any) => session?.therapistId === ownProfile.id),
+    );
+  }
+  return false;
+}
+
+async function canAccessSession(req: any, session: any) {
+  if (req.user?.role === "admin") return true;
+  if (req.user?.role === "parent") return session?.child?.parent?.userId === req.user.id;
+  if (req.user?.role === "therapist") {
+    const ownProfile = await therapistService.getByUserId(req.user.id);
+    return ownProfile?.id === session?.therapistId;
+  }
+  return false;
+}
+
 router.get("/", requireAuth, requireRole("admin"), async (req, res, next) => {
   try { ok(res, await sessionService.getAllWithDetails()); } catch (e) { next(e); }
 });
@@ -40,17 +68,30 @@ router.get("/therapist/:id", requireAuth, async (req, res, next) => {
 });
 
 router.get("/child/:id/upcoming", requireAuth, async (req, res, next) => {
-  try { ok(res, await sessionService.getUpcomingForChild(req.params.id as string)); } catch (e) { next(e); }
+  try {
+    if (!(await canAccessChildSchedule(req, req.params.id as string))) {
+      return res.status(403).json({ success: false, error: "Akses ditolak" });
+    }
+    ok(res, await sessionService.getUpcomingForChild(req.params.id as string));
+  } catch (e) { next(e); }
 });
 
 router.get("/child/:id/completed", requireAuth, async (req, res, next) => {
-  try { ok(res, await sessionService.getCompletedForChild(req.params.id as string)); } catch (e) { next(e); }
+  try {
+    if (!(await canAccessChildSchedule(req, req.params.id as string))) {
+      return res.status(403).json({ success: false, error: "Akses ditolak" });
+    }
+    ok(res, await sessionService.getCompletedForChild(req.params.id as string));
+  } catch (e) { next(e); }
 });
 
 router.get("/:id", requireAuth, async (req, res, next) => {
   try {
     const session = await sessionService.getById(req.params.id as string);
     if (!session) return notFound(res);
+    if (!(await canAccessSession(req, session))) {
+      return res.status(403).json({ success: false, error: "Akses ditolak" });
+    }
     ok(res, session);
   } catch (e) { next(e); }
 });
@@ -120,11 +161,22 @@ router.patch("/:id/notes", requireAuth, async (req, res, next) => {
 router.patch("/:id", requireAuth, requireRole("admin"), async (req, res, next) => {
   try {
     const before = await sessionService.getById(req.params.id as string);
+    if (!before) return notFound(res);
+    const sensitiveFields = ["therapistId", "childId", "roomId", "date", "startTime", "duration", "focus"];
+    const changedFields = sensitiveFields.filter((field) => (
+      Object.prototype.hasOwnProperty.call(req.body || {}, field)
+      && String(req.body?.[field] ?? "") !== String((before as any)?.[field] ?? "")
+    ));
+    if (changedFields.length > 0) {
+      return res.status(400).json({
+        success: false,
+        error: "Perubahan jadwal/program sensitif harus melalui alur konfirmasi terapis utama terlebih dahulu.",
+        data: { changedFields },
+      });
+    }
     const result = await sessionService.update(req.params.id as string, req.body);
     if (!result) return notFound(res);
     const after = await sessionService.getById(req.params.id as string);
-    const sensitiveFields = ["therapistId", "childId", "roomId", "date", "startTime", "duration", "focus"];
-    const changedFields = sensitiveFields.filter((field) => Object.prototype.hasOwnProperty.call(req.body || {}, field));
     await auditLogService.create({
       actor: req.user,
       action: "session.update",
@@ -167,7 +219,14 @@ router.delete("/:id", requireAuth, requireRole("admin"), async (req, res, next) 
 
 // ── Ratings ──
 router.get("/:id/rating", requireAuth, async (req, res, next) => {
-  try { ok(res, await sessionService.getRating(req.params.id as string)); } catch (e) { next(e); }
+  try {
+    const session = await sessionService.getById(req.params.id as string);
+    if (!session) return notFound(res);
+    if (!(await canAccessSession(req, session))) {
+      return res.status(403).json({ success: false, error: "Akses ditolak" });
+    }
+    ok(res, await sessionService.getRating(req.params.id as string));
+  } catch (e) { next(e); }
 });
 
 router.post("/:id/rating", requireAuth, requireRole("parent"), async (req, res, next) => {
@@ -176,7 +235,31 @@ router.post("/:id/rating", requireAuth, requireRole("parent"), async (req, res, 
     if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
       return badRequest(res, "Rating harus bernilai 1 sampai 5");
     }
-    created(res, await sessionService.addRating({ sessionId: req.params.id as string, ...req.body }));
+    const session = await sessionService.getById(req.params.id as string);
+    if (!session) return notFound(res);
+    if (!(await canAccessSession(req, session))) {
+      return res.status(403).json({ success: false, error: "Akses ditolak" });
+    }
+
+    const parentProfile = await parentService.getByUserId(req.user!.id);
+    if (!parentProfile) return res.status(403).json({ success: false, error: "Akun orang tua tidak ditemukan" });
+
+    const savedRating = await sessionService.addRating({
+      sessionId: req.params.id as string,
+      childId: session.childId,
+      parentId: parentProfile.id,
+      rating,
+      comment: typeof req.body?.comment === "string" ? req.body.comment : null,
+    });
+    await auditLogService.create({
+      actor: req.user,
+      action: "session.rating.upsert",
+      entityType: "session_rating",
+      entityId: savedRating.id,
+      summary: `Rating sesi ${req.params.id} disimpan oleh orang tua`,
+      metadata: { sessionId: req.params.id as string, childId: session.childId, rating },
+    });
+    created(res, savedRating);
   } catch (e) { next(e); }
 });
 

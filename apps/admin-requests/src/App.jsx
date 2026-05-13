@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Header from './components/Header';
 import RequestCard from './components/RequestCard';
 import { meetingsApi, rescheduleApi } from '../../shared/api/client';
-import { confirmAction } from '../../shared/ui/confirmDialog';
+import { confirmAction as confirmDialog } from '../../shared/ui/confirmDialog';
 
 // ── Notification Popup Component ──────────────────────────────────
 function NotificationPopup({ isOpen, message, type, onClose, onConfirm, showConfirmButtons }) {
@@ -384,7 +384,7 @@ function App() {
     };
 
     const handleDelete = async (req) => {
-        const confirmed = await confirmAction({
+        const confirmed = await confirmDialog({
             tone: 'danger',
             title: 'Hapus riwayat request?',
             message: `Riwayat request ${req.name} akan dihapus dari daftar admin.`,

@@ -6,7 +6,7 @@ const SupportWidget = () => {
 
     const handleReachOut = async () => {
         try {
-            const res = await adminApi.getSettings();
+            const res = await adminApi.getPublicSettings();
             const phone = res.data?.data?.adminWhatsApp || '6281234567890';
             window.open(`https://wa.me/${phone}`, '_blank');
         } catch (e) {

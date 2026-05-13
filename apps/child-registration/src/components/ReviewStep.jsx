@@ -57,7 +57,7 @@ const ReviewStep = ({ parentData, childrenList, onAddAnother, isExistingParent }
             Add Another Child for This Parent
         </button>
         <p className="text-center text-xs text-slate-400 dark:text-slate-500">
-            Click "Submit Registration" to save. A temporary login password will be generated for the parent account.
+            Click "Submit Registration" to save. A login password will be generated for the parent account.
         </p>
     </div>
 );

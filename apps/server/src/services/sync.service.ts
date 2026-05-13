@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { randomBytes } from "node:crypto";
 import { db } from "../db/index.js";
 import { clinicSettings } from "../db/schema.js";
 
@@ -42,7 +43,7 @@ export const syncService = {
   async bump(reason = "data_mutation") {
     const now = new Date();
     const payload = {
-      version: `${now.getTime()}-${Math.random().toString(36).slice(2, 8)}`,
+      version: `${now.getTime()}-${randomBytes(4).toString("hex")}`,
       updatedAt: now.toISOString(),
       reason,
     };

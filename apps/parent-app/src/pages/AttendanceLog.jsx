@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { childrenApi, adminApi, sessionsApi, therapistsApi } from '../../../shared/api/client';
+import { childrenApi, adminApi, sessionsApi } from '../../../shared/api/client';
 import { readParentUser } from '../../../shared/sessionIdentity';
 
 // Calculate end time from startTime + duration string (e.g. "09:00" + "60 mins")
@@ -47,16 +47,15 @@ export default function AttendanceLog() {
 
                     const sessionsRes = await sessionsApi.getCompletedForChild(targetChildId);
                     const childSessions = sessionsRes.data?.data || [];
-                    
-                    const therapistsRes = await therapistsApi.getAll();
-                    const therapistsList = therapistsRes.data?.data || [];
 
                     const logs = childSessions.map(s => {
                         let status = 'rescheduled';
                         if (s.status === 'done') status = 'present';
                         else if (s.status === 'cancelled') status = 'absent';
-                        
-                        const therapist = therapistsList.find(t => t.id === s.therapistId);
+                        const therapistName = s.therapist?.name
+                            || s.therapistName
+                            || s.therapist?.user?.name
+                            || 'Terapis';
 
                         return {
                             id: s.id,
@@ -66,7 +65,7 @@ export default function AttendanceLog() {
                             checkIn: s.status === 'done' ? s.startTime : null,
                             checkOut: s.status === 'done' ? calculateEndTime(s.startTime, s.duration) : null,
                             note: s.notes || (status === 'rescheduled' ? 'Sesi dipindahkan' : ''),
-                            therapist: therapist ? therapist.name : 'Terapis'
+                            therapist: therapistName
                         };
                     }).sort((a,b) => new Date(b.date) - new Date(a.date));
                     setAttendanceLog(logs);

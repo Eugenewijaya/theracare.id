@@ -52,7 +52,7 @@ const CONTENT = {
         title: 'Akses akun',
         items: [
           'Akun parent dan therapist dibuat oleh admin melalui prosedur registrasi.',
-          'Pengguna wajib menjaga kerahasiaan password sementara dan password aktif.',
+          'Pengguna wajib menjaga kerahasiaan password akun.',
           'Admin dapat menangguhkan akun bila terdapat risiko keamanan atau penyalahgunaan.',
         ],
       },

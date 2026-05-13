@@ -23,9 +23,6 @@ const RequestCard = ({ name, parentName, session, date, reason, slots, submitted
                         </div>
                         <span className="text-slate-500 dark:text-slate-400 text-xs font-medium">{submittedAgo}</span>
                     </div>
-                    <button className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
-                        <span className="material-symbols-outlined">more_vert</span>
-                    </button>
                 </div>
 
                 {/* Requester */}

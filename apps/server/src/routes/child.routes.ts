@@ -1,24 +1,59 @@
 import { Router } from "express";
 import { requireAuth, requireRole } from "../middleware/auth.middleware.js";
 import { childService } from "../services/child.service.js";
+import { parentService } from "../services/parent.service.js";
+import { therapistService } from "../services/therapist.service.js";
 import { auditLogService } from "../services/audit-log.service.js";
 import { notificationService } from "../services/notification.service.js";
 import { ok, created, notFound, badRequest, conflict } from "../utils/response.js";
 
 const router = Router();
 
+async function canAccessParentChildren(req: any, parentId: string) {
+  if (req.user?.role === "admin") return true;
+  if (req.user?.role !== "parent") return false;
+  const parent = await parentService.getByUserId(req.user.id);
+  return parent?.id === parentId || parent?.parentId === parentId;
+}
+
+async function canAccessChild(req: any, child: any) {
+  if (req.user?.role === "admin") return true;
+  if (req.user?.role === "parent") {
+    return child?.parent?.userId === req.user.id;
+  }
+  if (req.user?.role === "therapist") {
+    const therapist = await therapistService.getByUserId(req.user.id);
+    if (!therapist?.id) return false;
+    const hasSession = Array.isArray(child?.sessions)
+      && child.sessions.some((session: any) => session?.therapistId === therapist.id);
+    const hasPeriodRule = Array.isArray(child?.periods)
+      && child.periods.some((period: any) => Array.isArray(period?.scheduleRules)
+        && period.scheduleRules.some((rule: any) => rule?.therapistId === therapist.id));
+    return hasSession || hasPeriodRule;
+  }
+  return false;
+}
+
 router.get("/", requireAuth, requireRole("admin"), async (req, res, next) => {
   try { ok(res, await childService.getAll()); } catch (e) { next(e); }
 });
 
 router.get("/by-parent/:parentId", requireAuth, async (req, res, next) => {
-  try { ok(res, await childService.getByParent(req.params.parentId as string)); } catch (e) { next(e); }
+  try {
+    if (!(await canAccessParentChildren(req, req.params.parentId as string))) {
+      return res.status(403).json({ success: false, error: "Akses data anak ditolak" });
+    }
+    ok(res, await childService.getByParent(req.params.parentId as string));
+  } catch (e) { next(e); }
 });
 
 router.get("/:id", requireAuth, async (req, res, next) => {
   try {
     const child = await childService.getById(req.params.id as string);
     if (!child) return notFound(res);
+    if (!(await canAccessChild(req, child))) {
+      return res.status(403).json({ success: false, error: "Akses data anak ditolak" });
+    }
     ok(res, child);
   } catch (e) { next(e); }
 });
@@ -70,8 +105,8 @@ router.patch("/:id/photo", requireAuth, async (req, res, next) => {
     if (!photoUrl || typeof photoUrl !== "string") return badRequest(res, "photoUrl wajib diisi");
     const existing = await childService.getById(req.params.id as string);
     if (!existing) return notFound(res);
-    if (req.user?.role === "parent" && existing.parent?.userId !== req.user.id) {
-      return res.status(403).json({ success: false, error: "Akses ditolak - anak tidak terhubung ke akun orang tua ini" });
+    if (!(await canAccessChild(req, existing))) {
+      return res.status(403).json({ success: false, error: "Akses update foto anak ditolak" });
     }
     const updated = await childService.updatePhoto(req.params.id as string, photoUrl);
     if (!updated) return notFound(res);

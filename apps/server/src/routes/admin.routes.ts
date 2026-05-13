@@ -15,16 +15,56 @@ router.get("/announcements", requireAuth, requireRole("admin"), async (req, res,
   try { ok(res, await announcementService.getAll()); } catch (e) { next(e); }
 });
 router.get("/announcements/role/:role", requireAuth, async (req, res, next) => {
-  try { ok(res, await announcementService.getForRole(req.params.role as string)); } catch (e) { next(e); }
+  try {
+    const requestedRole = req.params.role as string;
+    if (req.user?.role !== "admin" && requestedRole !== "all" && requestedRole !== req.user?.role) {
+      return res.status(403).json({ success: false, error: "Akses pengumuman ditolak" });
+    }
+    ok(res, await announcementService.getForRole(requestedRole));
+  } catch (e) { next(e); }
 });
 router.post("/announcements", requireAuth, requireRole("admin"), async (req, res, next) => {
-  try { created(res, await announcementService.create({ ...req.body, createdBy: req.user!.id })); } catch (e) { next(e); }
+  try {
+    const announcement = await announcementService.create({ ...req.body, createdBy: req.user!.id });
+    await auditLogService.create({
+      actor: req.user,
+      action: "announcement.create",
+      entityType: "announcement",
+      entityId: announcement.id,
+      summary: `Pengumuman ${announcement.title || announcement.id} dibuat`,
+      metadata: { targetRoles: announcement.targetRoles || req.body?.targetRoles || req.body?.targetRole || ["all"] },
+    });
+    created(res, announcement);
+  } catch (e) { next(e); }
 });
 router.patch("/announcements/:id", requireAuth, requireRole("admin"), async (req, res, next) => {
-  try { ok(res, await announcementService.update(req.params.id as string, req.body)); } catch (e) { next(e); }
+  try {
+    const result = await announcementService.update(req.params.id as string, req.body);
+    if (!result) return notFound(res);
+    await auditLogService.create({
+      actor: req.user,
+      action: "announcement.update",
+      entityType: "announcement",
+      entityId: req.params.id as string,
+      summary: `Pengumuman ${req.params.id} diperbarui`,
+      metadata: { changedFields: Object.keys(req.body || {}) },
+    });
+    ok(res, result);
+  } catch (e) { next(e); }
 });
 router.delete("/announcements/:id", requireAuth, requireRole("admin"), async (req, res, next) => {
-  try { await announcementService.delete(req.params.id as string); ok(res, { deleted: true }); } catch (e) { next(e); }
+  try {
+    await announcementService.delete(req.params.id as string);
+    await auditLogService.create({
+      actor: req.user,
+      action: "announcement.delete",
+      entityType: "announcement",
+      entityId: req.params.id as string,
+      summary: `Pengumuman ${req.params.id} dihapus`,
+      metadata: {},
+    });
+    ok(res, { deleted: true });
+  } catch (e) { next(e); }
 });
 
 // ── Rooms ──
@@ -34,13 +74,30 @@ router.get("/rooms", requireAuth, requireRole("admin", "therapist"), async (req,
 router.post("/rooms", requireAuth, requireRole("admin"), async (req, res, next) => {
   try {
     if (!req.body?.name) return badRequest(res, "Nama ruangan wajib diisi");
-    created(res, await adminService.createRoom(req.body));
+    const room = await adminService.createRoom(req.body);
+    await auditLogService.create({
+      actor: req.user,
+      action: "room.create",
+      entityType: "room",
+      entityId: room.id,
+      summary: `Ruangan ${room.name} dibuat`,
+      metadata: req.body,
+    });
+    created(res, room);
   } catch (e) { next(e); }
 });
 router.patch("/rooms/:id", requireAuth, requireRole("admin"), async (req, res, next) => {
   try {
     const result = await adminService.updateRoom(req.params.id as string, req.body);
     if (!result) return notFound(res);
+    await auditLogService.create({
+      actor: req.user,
+      action: "room.update",
+      entityType: "room",
+      entityId: req.params.id as string,
+      summary: `Ruangan ${result.name || req.params.id} diperbarui`,
+      metadata: { changedFields: Object.keys(req.body || {}) },
+    });
     ok(res, result);
   } catch (e) { next(e); }
 });
@@ -49,6 +106,14 @@ router.delete("/rooms/:id", requireAuth, requireRole("admin"), async (req, res, 
     const result = await adminService.deleteRoom(req.params.id as string);
     if (!result) return notFound(res);
     if ("blocked" in result && result.blocked) return conflict(res, result.reason, result);
+    await auditLogService.create({
+      actor: req.user,
+      action: "room.delete",
+      entityType: "room",
+      entityId: req.params.id as string,
+      summary: `Ruangan ${req.params.id} dihapus`,
+      metadata: {},
+    });
     ok(res, result);
   } catch (e) { next(e); }
 });
@@ -128,7 +193,17 @@ router.get("/settings", requireAuth, requireRole("admin"), async (req, res, next
   try { ok(res, await adminService.getSettings()); } catch (e) { next(e); }
 });
 router.patch("/settings", requireAuth, requireRole("admin"), async (req, res, next) => {
-  try { await adminService.updateSettings(req.body); ok(res, { updated: true }); } catch (e) { next(e); }
+  try {
+    await adminService.updateSettings(req.body);
+    await auditLogService.create({
+      actor: req.user,
+      action: "settings.update",
+      entityType: "clinic_settings",
+      summary: "Pengaturan branding/center diperbarui",
+      metadata: { changedFields: Object.keys(req.body || {}) },
+    });
+    ok(res, { updated: true });
+  } catch (e) { next(e); }
 });
 router.post("/uploads/branding", requireAuth, requireRole("admin"), async (req, res, next) => {
   try {
@@ -136,7 +211,16 @@ router.post("/uploads/branding", requireAuth, requireRole("admin"), async (req, 
     if (!kind || !fileName || !contentType || !dataBase64) {
       return badRequest(res, "kind, fileName, contentType, dan dataBase64 wajib diisi");
     }
-    created(res, await storageService.uploadBrandingAsset({ kind, fileName, contentType, dataBase64 }));
+    const uploaded = await storageService.uploadBrandingAsset({ kind, fileName, contentType, dataBase64 });
+    await auditLogService.create({
+      actor: req.user,
+      action: "branding.upload",
+      entityType: "branding_asset",
+      entityId: kind,
+      summary: `Asset branding ${kind} diunggah`,
+      metadata: { fileName, contentType, url: uploaded.url },
+    });
+    created(res, uploaded);
   } catch (e) {
     return badRequest(res, e instanceof Error ? e.message : "Upload branding gagal");
   }
@@ -159,14 +243,31 @@ router.get("/center-closures/indonesia-holidays", requireAuth, requireRole("admi
 });
 router.post("/center-closures/apply-holidays", requireAuth, requireRole("admin"), async (req, res, next) => {
   try {
-    created(res, await centerClosureService.applyHolidays(req.body || {}, req.user!.id));
+    const result = await centerClosureService.applyHolidays(req.body || {}, req.user!.id);
+    await auditLogService.create({
+      actor: req.user,
+      action: "center_closure.apply_holidays",
+      entityType: "center_closure",
+      summary: "Tanggal merah Indonesia diterapkan ke jadwal off center",
+      metadata: { added: result.added, request: req.body || {} },
+    });
+    created(res, result);
   } catch (e) {
     badRequest(res, e instanceof Error ? e.message : "Gagal menerapkan tanggal merah");
   }
 });
 router.post("/center-closures", requireAuth, requireRole("admin"), async (req, res, next) => {
   try {
-    created(res, await centerClosureService.create(req.body, req.user!.id));
+    const closure = await centerClosureService.create(req.body, req.user!.id);
+    await auditLogService.create({
+      actor: req.user,
+      action: "center_closure.create",
+      entityType: "center_closure",
+      entityId: closure.id,
+      summary: `Jadwal off center ${closure.title || closure.id} dibuat`,
+      metadata: { startDate: closure.startDate, endDate: closure.endDate, type: closure.type },
+    });
+    created(res, closure);
   } catch (e) {
     badRequest(res, e instanceof Error ? e.message : "Gagal menyimpan jadwal off center");
   }
@@ -175,6 +276,14 @@ router.patch("/center-closures/:id", requireAuth, requireRole("admin"), async (r
   try {
     const result = await centerClosureService.update(req.params.id as string, req.body || {});
     if (!result) return notFound(res);
+    await auditLogService.create({
+      actor: req.user,
+      action: "center_closure.update",
+      entityType: "center_closure",
+      entityId: req.params.id as string,
+      summary: `Jadwal off center ${req.params.id} diperbarui`,
+      metadata: { changedFields: Object.keys(req.body || {}) },
+    });
     ok(res, result);
   } catch (e) {
     badRequest(res, e instanceof Error ? e.message : "Gagal memperbarui jadwal off center");
@@ -184,6 +293,14 @@ router.delete("/center-closures/:id", requireAuth, requireRole("admin"), async (
   try {
     const result = await centerClosureService.delete(req.params.id as string);
     if (!result) return notFound(res);
+    await auditLogService.create({
+      actor: req.user,
+      action: "center_closure.delete",
+      entityType: "center_closure",
+      entityId: req.params.id as string,
+      summary: `Jadwal off center ${req.params.id} dihapus`,
+      metadata: {},
+    });
     ok(res, result);
   } catch (e) {
     next(e);

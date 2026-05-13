@@ -45,7 +45,7 @@ export default function LoginPage() {
       subtitle="Akses jadwal, laporan, dan progres terapi."
       description="Portal klinis untuk melihat sesi hari ini, membuat laporan, memantau perkembangan anak, dan menerima pengumuman."
       formTitle="Masuk sebagai terapis"
-      formDescription="Gunakan NIT dan password sementara yang dibuat oleh admin."
+      formDescription="Gunakan NIT dan password yang dibuat oleh admin."
       submitLabel="Masuk ke Therapist Portal"
       remember={remember}
       onRememberChange={setRemember}

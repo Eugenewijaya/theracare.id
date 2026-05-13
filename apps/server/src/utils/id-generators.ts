@@ -29,15 +29,17 @@ export function generateNIT(name: string, sequence: number): string {
 }
 
 /**
- * Generate temporary password
+ * Generate initial portal password
  */
 export function generateTempPassword(): string {
-  const num = Math.floor(1000 + Math.random() * 9000);
+  const num = randomInt(1000, 10000);
   return `Klinik@${num}`;
 }
 
+import { randomBytes, randomInt } from "node:crypto";
+
 /**
- * Fixed temporary password for admin reset during MVP testing.
+ * Fixed portal password for admin reset during MVP testing.
  */
 export function generatePortalResetPassword(): string {
   return process.env.PORTAL_RESET_PASSWORD?.trim() || "Klinik@2211";
@@ -47,7 +49,7 @@ export function generatePortalResetPassword(): string {
  * Generate unique ID with prefix
  */
 export function generateId(prefix: string): string {
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+  return `${prefix}-${Date.now()}-${randomBytes(4).toString("hex")}`;
 }
 
 /**

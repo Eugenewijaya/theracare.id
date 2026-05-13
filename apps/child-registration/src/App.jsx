@@ -242,7 +242,7 @@ function App() {
                     <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl p-5 w-full max-w-sm text-left">
                         <p className="text-sm font-bold text-amber-800 dark:text-amber-300 flex items-center gap-2">
                             <span className="material-symbols-outlined text-[18px]">key</span>
-                            Temporary Login Credentials
+                            Login Credentials
                         </p>
                         <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">Share with the parent. They can change this password after first login.</p>
                         <div className="mt-3 bg-white dark:bg-background-dark rounded-lg p-3 border border-amber-200 dark:border-amber-700 font-mono text-base font-bold text-slate-900 dark:text-slate-100 tracking-wider">

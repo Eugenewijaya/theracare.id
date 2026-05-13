@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { requireAuth, requireRole } from "../middleware/auth.middleware.js";
+import { auditLogService } from "../services/audit-log.service.js";
 import { leaveRequestService } from "../services/leave-request.service.js";
 import { therapistService } from "../services/therapist.service.js";
 import { ok, created, badRequest, notFound } from "../utils/response.js";
@@ -34,7 +35,16 @@ router.post("/", requireAuth, requireRole("therapist"), async (req, res, next) =
     const therapist = await therapistService.getByUserId(req.user!.id);
     if (!therapist) return notFound(res, "Profil terapis tidak ditemukan");
 
-    created(res, await leaveRequestService.create(therapist, { type, startDate, endDate, reason }), "Pengajuan berhasil dikirim");
+    const request = await leaveRequestService.create(therapist, { type, startDate, endDate, reason });
+    await auditLogService.create({
+      actor: req.user,
+      action: "leave_request.create",
+      entityType: "leave_request",
+      entityId: request.id,
+      summary: `${therapist.name || therapist.id} mengajukan ${type}`,
+      metadata: { therapistId: therapist.id, type, startDate, endDate },
+    });
+    created(res, request, "Pengajuan berhasil dikirim");
   } catch (e) {
     return badRequest(res, e instanceof Error ? e.message : "Pengajuan gagal dikirim");
   }
@@ -46,6 +56,14 @@ router.patch("/:id", requireAuth, requireRole("admin"), async (req, res, next) =
     if (!status) return badRequest(res, "Status wajib diisi");
     const result = await leaveRequestService.updateStatus(req.params.id as string, status, reviewNote);
     if (!result) return notFound(res, "Pengajuan tidak ditemukan");
+    await auditLogService.create({
+      actor: req.user,
+      action: "leave_request.status.update",
+      entityType: "leave_request",
+      entityId: req.params.id as string,
+      summary: `Status pengajuan cuti diubah menjadi ${status}`,
+      metadata: { status, reviewNote: reviewNote || "", changeCount: result.postApprovalChangeCount || 0 },
+    });
     ok(res, result);
   } catch (e) {
     return badRequest(res, e instanceof Error ? e.message : "Gagal memperbarui pengajuan");
