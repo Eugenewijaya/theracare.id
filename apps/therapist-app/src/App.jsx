@@ -20,6 +20,7 @@ import ClinicLogoMark from '../../shared/ui/ClinicLogoMark';
 import NotificationToastHost from '../../shared/ui/NotificationToastHost';
 import AutoRefreshHost from '../../shared/ui/AutoRefreshHost';
 import FriendlyLoader from '../../shared/ui/FriendlyLoader';
+import { getNotificationDestination } from '../../shared/notifications';
 
 function Loading() {
   return (
@@ -105,11 +106,7 @@ function DashboardLayout() {
         <NotificationToastHost
           user={user}
           role="therapist"
-          onOpenNotifications={(notification) => {
-            if (notification?.type === 'report_revision_requested') navigate('/reports');
-            else if (String(notification?.type || '').includes('schedule') || String(notification?.type || '').includes('reschedule') || String(notification?.type || '').includes('substitute')) navigate('/schedule-updates');
-            else navigate('/announcements');
-          }}
+          onOpenNotifications={(notification) => navigate(getNotificationDestination(notification, 'therapist'))}
         />
         <div className="min-h-0 flex-1 overflow-y-auto bg-background-light dark:bg-background-dark">
           <Suspense fallback={<Loading />}>

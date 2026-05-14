@@ -235,6 +235,9 @@ export default function Announcements() {
                                                                 <span className="material-symbols-outlined text-[13px]">schedule</span>
                                                                 {formatDate(ann.createdAt)}
                                                             </span>
+                                                            <span className="rounded-full bg-teal-50 px-2 py-0.5 text-[11px] font-black uppercase tracking-wide text-teal-700 dark:bg-teal-900/20 dark:text-teal-300">
+                                                                {ann.category || 'general'}
+                                                            </span>
                                                         </div>
                                                     </div>
                                                 </div>

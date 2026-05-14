@@ -1,6 +1,8 @@
 export const PARENT_VISIBLE_REPORT_STATUSES = ['approved', 'published', 'ready_for_parent'];
 export const COMPLETED_SESSION_STATUSES = ['done', 'completed', 'selesai'];
 export const REPORT_EDIT_WINDOW_HOURS = 48;
+export const REPORT_DRAFT_STATUS = 'draft';
+export const REPORT_INCOMPLETE_STATUSES = ['draft', 'needs_revision'];
 
 export function isParentVisibleReport(status) {
   return PARENT_VISIBLE_REPORT_STATUSES.includes(String(status || ''));
@@ -8,6 +10,18 @@ export function isParentVisibleReport(status) {
 
 export function isCompletedSession(session) {
   return COMPLETED_SESSION_STATUSES.includes(String(session?.status || '').toLowerCase());
+}
+
+export function isDraftReport(report) {
+  return String(report?.status || '').toLowerCase() === REPORT_DRAFT_STATUS;
+}
+
+export function isIncompleteDailyReport(report) {
+  return !report || REPORT_INCOMPLETE_STATUSES.includes(String(report?.status || '').toLowerCase());
+}
+
+export function isDailyReportComplete(report) {
+  return !isIncompleteDailyReport(report);
 }
 
 export function normalizeDateValue(value) {
@@ -94,7 +108,7 @@ export function buildDailyReportQueue(sessions, reports, childId = '') {
     .map((session) => ({
       session,
       report: reportBySessionId.get(session.id) || null,
-      missing: !reportBySessionId.has(session.id),
+      missing: !isDailyReportComplete(reportBySessionId.get(session.id)),
     }));
 }
 

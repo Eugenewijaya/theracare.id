@@ -10,6 +10,7 @@ import NotificationToastHost from '../../shared/ui/NotificationToastHost';
 import AutoRefreshHost from '../../shared/ui/AutoRefreshHost';
 import FriendlyLoader from '../../shared/ui/FriendlyLoader';
 import { setClinicPortalTitle } from '../../shared/clinicSettings';
+import { getNotificationDestination } from '../../shared/notifications';
 
 const ClinicAdmin = lazy(() => import('../../clinic-admin/src/App'));
 const AdminScheduling = lazy(() => import('../../admin-scheduling/src/App'));
@@ -102,11 +103,7 @@ function DashboardLayout() {
         <NotificationToastHost
           user={user}
           role="admin"
-          onOpenNotifications={(notification) => {
-            if (String(notification?.type || '').startsWith('report_')) navigate('/reports');
-            else if (String(notification?.type || '').includes('schedule') || String(notification?.type || '').includes('reschedule') || String(notification?.type || '').includes('substitute')) navigate('/scheduling');
-            else navigate('/notifications');
-          }}
+          onOpenNotifications={(notification) => navigate(getNotificationDestination(notification, 'admin'))}
         />
         <div className="min-h-0 flex-1 overflow-y-auto bg-background-light dark:bg-background-dark">
           <Suspense fallback={<Loading />}>

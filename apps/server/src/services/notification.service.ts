@@ -27,8 +27,17 @@ export const notificationService = {
     return notifs.filter((n) => !n.isRead).length;
   },
 
-  async markRead(notifId: string, userId: string) {
+  async markRead(notifId: string, role: string, userId: string) {
+    const notif = await db.query.notifications.findFirst({
+      where: and(
+        eq(notifications.id, notifId),
+        or(eq(notifications.targetRole, role), eq(notifications.targetRole, "all")),
+        or(isNull(notifications.targetUserId), eq(notifications.targetUserId, userId)),
+      ),
+    });
+    if (!notif) return null;
     await db.insert(notificationReads).values({ notificationId: notifId, userId }).onConflictDoNothing();
+    return { success: true, id: notifId };
   },
 
   async markAllRead(role: string, userId: string) {
@@ -53,8 +62,10 @@ export const notificationService = {
   async delete(id: string) {
     const notif = await db.query.notifications.findFirst({ where: eq(notifications.id, id) });
     if (!notif) return null;
-    await db.delete(notificationReads).where(eq(notificationReads.notificationId, id));
-    await db.delete(notifications).where(eq(notifications.id, id));
+    await db.transaction(async (tx) => {
+      await tx.delete(notificationReads).where(eq(notificationReads.notificationId, id));
+      await tx.delete(notifications).where(eq(notifications.id, id));
+    });
     return { deleted: true, id };
   },
 };

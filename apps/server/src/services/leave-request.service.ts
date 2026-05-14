@@ -39,6 +39,17 @@ function parseRequests(value?: string | null): TherapistLeaveRequest[] {
   }
 }
 
+function normalizeDateKey(value?: string | null) {
+  const raw = String(value || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return "";
+  const date = new Date(`${raw}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? "" : raw;
+}
+
+function rangesOverlap(aStart: string, aEnd: string, bStart: string, bEnd: string) {
+  return aStart <= bEnd && bStart <= aEnd;
+}
+
 async function readRequests() {
   const row = await db.query.clinicSettings.findFirst({
     where: eq(clinicSettings.key, LEAVE_REQUESTS_KEY),
@@ -76,6 +87,24 @@ export const leaveRequestService = {
     if (!VALID_TYPES.has(data.type)) {
       throw new Error("Jenis pengajuan tidak valid");
     }
+    const startDate = normalizeDateKey(data.startDate);
+    const endDate = normalizeDateKey(data.endDate);
+    if (!startDate || !endDate) {
+      throw new Error("Format tanggal pengajuan tidak valid");
+    }
+    if (endDate < startDate) {
+      throw new Error("Tanggal selesai tidak boleh sebelum tanggal mulai");
+    }
+
+    const requests = await readRequests();
+    const overlapping = requests.find((request) => (
+      request.therapistId === therapist.id
+      && ["pending", "approved"].includes(request.status)
+      && rangesOverlap(startDate, endDate, request.startDate, request.endDate)
+    ));
+    if (overlapping) {
+      throw new Error(`Sudah ada pengajuan ${overlapping.status} pada rentang tanggal yang bentrok.`);
+    }
 
     const request: TherapistLeaveRequest = {
       id: generateId("TLR"),
@@ -84,8 +113,8 @@ export const leaveRequestService = {
       therapistName: therapist.name || "Terapis",
       therapistNit: therapist.nit,
       type: data.type,
-      startDate: data.startDate,
-      endDate: data.endDate,
+      startDate,
+      endDate,
       reason: (data.reason || "").trim(),
       status: "pending",
       wasApproved: false,
@@ -94,7 +123,6 @@ export const leaveRequestService = {
       createdAt: new Date().toISOString(),
     };
 
-    const requests = await readRequests();
     await writeRequests([request, ...requests]);
 
     await notificationService.create({
@@ -120,6 +148,17 @@ export const leaveRequestService = {
 
     const current = requests[index];
     const hasStatusChange = current.status !== status;
+    if (status === "approved") {
+      const conflictingApproved = requests.find((request) => (
+        request.id !== id
+        && request.therapistId === current.therapistId
+        && request.status === "approved"
+        && rangesOverlap(current.startDate, current.endDate, request.startDate, request.endDate)
+      ));
+      if (conflictingApproved) {
+        throw new Error("Ada cuti lain yang sudah disetujui pada rentang tanggal yang bentrok.");
+      }
+    }
     const wasAlreadyApproved = current.wasApproved || current.status === "approved";
     const wasApproved = wasAlreadyApproved || status === "approved";
     const nextChangeCount = wasAlreadyApproved && hasStatusChange

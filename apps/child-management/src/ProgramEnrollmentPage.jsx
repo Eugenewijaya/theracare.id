@@ -4,6 +4,15 @@ import { childrenApi, therapyPeriodsApi } from '../../shared/api/client';
 import ProgramForm from '../../child-registration/src/components/ProgramForm';
 
 const todayString = () => new Date().toISOString().split('T')[0];
+const DAY_LABELS = {
+  Monday: 'Senin',
+  Tuesday: 'Selasa',
+  Wednesday: 'Rabu',
+  Thursday: 'Kamis',
+  Friday: 'Jumat',
+  Saturday: 'Sabtu',
+  Sunday: 'Minggu',
+};
 
 const initialForm = (child = null) => ({
   program: '',
@@ -35,6 +44,22 @@ const formatCurrency = (value) => {
   return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(amount);
 };
 
+const calculateFormTotal = (form) => {
+  const totalSessions = Number(form.totalSessions || 0);
+  const pricePerSession = Number(form.programPricePerSession || 0);
+  const pricePerMonth = Number(form.programPricePerMonth || 0);
+  const packagePrice = Number(form.totalPrice || 0);
+  if (form.billingMode === 'package') return packagePrice;
+  if (form.billingMode === 'per_month') return pricePerMonth;
+  return pricePerSession * totalSessions;
+};
+
+const buildDateLabel = (startDate, endDate) => {
+  if (!startDate && !endDate) return 'Tanggal belum lengkap';
+  if (!endDate) return `${startDate || '-'} - sampai target sesi selesai`;
+  return `${startDate || '-'} - ${endDate}`;
+};
+
 export default function ProgramEnrollmentPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -52,6 +77,7 @@ export default function ProgramEnrollmentPage() {
       setLoading(true);
       try {
         const res = await childrenApi.getAll();
+        if (!res.ok) throw new Error(res.data?.error || 'Gagal memuat data anak.');
         const rows = res.data?.data || [];
         setChildren(rows);
         const requested = searchParams.get('childId');
@@ -84,17 +110,23 @@ export default function ProgramEnrollmentPage() {
       if (byName) return byName;
       return null;
     }
-    return sortedPeriods[0];
+    return null;
   }, [sortedPeriods, form.programId, form.program]);
+
+  const canRenew = Boolean(latestMatchingPeriod);
 
   useEffect(() => {
     if (!selectedChild) return;
     setForm(initialForm(selectedChild));
+    setMode('new');
+    setErrors({});
     setMessage(null);
-    const next = new URLSearchParams(searchParams);
-    next.set('childId', selectedChild.id);
-    setSearchParams(next, { replace: true });
-  }, [selectedChildId]);
+    setSearchParams({ childId: selectedChild.id }, { replace: true });
+  }, [selectedChild?.id, setSearchParams]);
+
+  useEffect(() => {
+    if (mode === 'renew' && !canRenew) setMode('new');
+  }, [mode, canRenew]);
 
   const validate = () => {
     const next = {};
@@ -103,7 +135,13 @@ export default function ProgramEnrollmentPage() {
     if (!form.therapistId) next.therapistId = 'Pilih terapis utama.';
     if (!form.periodStartDate) next.periodStartDate = 'Tanggal mulai periode wajib diisi.';
     if (!Number(form.totalSessions || 0)) next.totalSessions = 'Jumlah sesi wajib diisi.';
-    if (mode === 'renew' && !latestMatchingPeriod) next.mode = 'Belum ada periode sebelumnya untuk dilanjutkan.';
+    if (form.periodStartDate && form.periodEndDate && form.periodEndDate < form.periodStartDate) {
+      next.periodEndDate = 'Tanggal selesai tidak boleh lebih awal dari tanggal mulai.';
+    }
+    if (Array.isArray(form.therapyDays) && form.therapyDays.length > 0 && !form.sessionStartTime) {
+      next.sessionStartTime = 'Jam mulai wajib diisi jika hari terapi dipilih.';
+    }
+    if (mode === 'renew' && !latestMatchingPeriod) next.mode = 'Pilih program yang punya periode sebelumnya untuk dilanjutkan.';
     setErrors(next);
     return Object.keys(next).length === 0;
   };
@@ -129,12 +167,27 @@ export default function ProgramEnrollmentPage() {
       totalSessions: Number(form.totalSessions || 12),
       pricePerSession: Number(form.programPricePerSession || 0),
       pricePerMonth: Number(form.programPricePerMonth || 0),
-      totalPrice: Number(form.totalPrice || 0),
+      totalPrice: calculateFormTotal(form),
       billingMode: form.billingMode || 'per_session',
       scheduleRules,
       generateSessions: scheduleRules.length > 0,
     };
   };
+
+  const enrollmentSummary = useMemo(() => {
+    const days = Array.isArray(form.therapyDays) ? form.therapyDays : [];
+    return {
+      totalPrice: calculateFormTotal(form),
+      scheduleLabel: days.length
+        ? `${days.map(day => DAY_LABELS[day] || day).join(', ')} pukul ${form.sessionStartTime || '09:00'}`
+        : 'Jadwal belum dibuat otomatis',
+      durationLabel: `${form.sessionDuration || 60} menit per sesi`,
+      periodLabel: buildDateLabel(form.periodStartDate, form.periodEndDate),
+      renewLabel: latestMatchingPeriod
+        ? `${latestMatchingPeriod.name} - ${latestMatchingPeriod.programName || latestMatchingPeriod.type || 'Program Terapi'}`
+        : 'Belum ada periode yang cocok',
+    };
+  }, [form, latestMatchingPeriod]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -160,8 +213,10 @@ export default function ProgramEnrollmentPage() {
       window.dispatchEvent(new Event('childUpdated'));
       window.dispatchEvent(new Event('sessionUpdated'));
       window.dispatchEvent(new Event('notificationsUpdated'));
+      window.dispatchEvent(new Event('programsUpdated'));
 
       const refreshed = await childrenApi.getAll();
+      if (!refreshed.ok) throw new Error(refreshed.data?.error || 'Program tersimpan, tetapi gagal memuat ulang data anak.');
       setChildren(refreshed.data?.data || []);
     } catch (e) {
       setMessage({ type: 'error', text: e.message || 'Gagal mendaftarkan program anak.' });
@@ -248,15 +303,38 @@ export default function ProgramEnrollmentPage() {
                 <span className="text-sm font-black text-slate-900 dark:text-white">Program / periode baru</span>
                 <span className="mt-1 block text-xs text-slate-500">Untuk program berbeda atau periode pertama anak.</span>
               </label>
-              <label className={`rounded-xl border p-4 transition-colors ${mode === 'renew' ? 'border-primary bg-primary/5' : 'border-slate-200 dark:border-slate-700'} ${!latestMatchingPeriod ? 'opacity-60' : ''}`}>
-                <input type="radio" className="sr-only" checked={mode === 'renew'} disabled={!latestMatchingPeriod} onChange={() => setMode('renew')} />
+              <label className={`rounded-xl border p-4 transition-colors ${mode === 'renew' ? 'border-primary bg-primary/5' : 'border-slate-200 dark:border-slate-700'} ${!canRenew ? 'opacity-60' : ''}`}>
+                <input type="radio" className="sr-only" checked={mode === 'renew'} disabled={!canRenew} onChange={() => setMode('renew')} />
                 <span className="text-sm font-black text-slate-900 dark:text-white">Lanjutkan periode</span>
-                <span className="mt-1 block text-xs text-slate-500">Membuat season/periode berikutnya dari periode terakhir.</span>
+                <span className="mt-1 block text-xs text-slate-500">
+                  {canRenew ? `Lanjut dari ${enrollmentSummary.renewLabel}.` : 'Pilih program yang sudah punya periode sebelumnya.'}
+                </span>
               </label>
               {errors.mode && <p className="text-xs font-bold text-red-600 sm:col-span-2">{errors.mode}</p>}
             </div>
 
             <ProgramForm data={form} onChange={setForm} errors={errors} />
+            {errors.periodEndDate && <p className="mt-2 text-xs font-bold text-red-600">{errors.periodEndDate}</p>}
+            {errors.sessionStartTime && <p className="mt-2 text-xs font-bold text-red-600">{errors.sessionStartTime}</p>}
+
+            <div className="mt-4 grid grid-cols-1 gap-3 rounded-xl border border-primary/20 bg-primary/5 p-4 text-sm dark:border-primary/30 sm:grid-cols-2 lg:grid-cols-4">
+              <div>
+                <p className="text-xs font-black uppercase tracking-wide text-slate-500">Periode</p>
+                <p className="mt-1 font-bold text-slate-900 dark:text-white">{enrollmentSummary.periodLabel}</p>
+              </div>
+              <div>
+                <p className="text-xs font-black uppercase tracking-wide text-slate-500">Jadwal Awal</p>
+                <p className="mt-1 font-bold text-slate-900 dark:text-white">{enrollmentSummary.scheduleLabel}</p>
+              </div>
+              <div>
+                <p className="text-xs font-black uppercase tracking-wide text-slate-500">Durasi</p>
+                <p className="mt-1 font-bold text-slate-900 dark:text-white">{enrollmentSummary.durationLabel}</p>
+              </div>
+              <div>
+                <p className="text-xs font-black uppercase tracking-wide text-slate-500">Estimasi Biaya</p>
+                <p className="mt-1 font-bold text-slate-900 dark:text-white">{formatCurrency(enrollmentSummary.totalPrice)}</p>
+              </div>
+            </div>
 
             <div className="mt-4 grid grid-cols-1 gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
               <div>

@@ -29,6 +29,27 @@ const parseJsonSetting = (value, fallback) => {
     }
 };
 
+const getApiError = (res, fallback) =>
+    res?.data?.error || res?.data?.message || fallback;
+
+const parseTimeToMinutes = (value = '') => {
+    const [h = '0', m = '0'] = String(value).split(':');
+    return Number(h) * 60 + Number(m);
+};
+
+const parseDurationMinutes = (duration = '') => {
+    const match = String(duration).match(/\d+/);
+    return match ? Number(match[0]) : 60;
+};
+
+const sessionsOverlap = (a, b) => {
+    const aStart = parseTimeToMinutes(a?.startTime || '00:00');
+    const bStart = parseTimeToMinutes(b?.startTime || '00:00');
+    const aEnd = aStart + parseDurationMinutes(a?.duration);
+    const bEnd = bStart + parseDurationMinutes(b?.duration);
+    return aStart < bEnd && aEnd > bStart;
+};
+
 // ── Toast Notification ──────────────────────────────────────────────────────
 function Toast({ message, type = 'success', onClose }) {
     React.useEffect(() => {
@@ -224,8 +245,8 @@ function SubstituteTherapistModal({ session, childrenList, therapistsList, allSe
         item.id !== session.id
         && item.therapistId === therapistId
         && item.date === session.date
-        && item.startTime === session.startTime
-        && !['cancelled', 'done'].includes(item.status)
+        && sessionsOverlap(item, session)
+        && !['cancelled', 'canceled', 'done', 'completed'].includes(String(item.status || '').toLowerCase())
     ));
     const substituteOptions = therapistsList
         .filter(t => t.id !== session.therapistId && (t.status || 'active') === 'active')
@@ -299,7 +320,7 @@ function SubstituteTherapistModal({ session, childrenList, therapistsList, allSe
                                 ))}
                             </select>
                             {selectedSubstitute?.hasConflict && (
-                                <p className="text-xs font-semibold text-red-600">Terapis ini sedang punya sesi pada jam yang sama.</p>
+                                <p className="text-xs font-semibold text-red-600">Terapis ini sedang punya sesi yang bentrok di rentang waktu tersebut.</p>
                             )}
                         </div>
                     </div>
@@ -569,7 +590,11 @@ function App() {
         };
 
         try {
-            await sessionsApi.create(sessionObj);
+            const res = await sessionsApi.create(sessionObj);
+            if (!res.ok) {
+                showToast(getApiError(res, 'Gagal menambahkan sesi'), 'error');
+                return;
+            }
             setIsAddModalOpen(false);
             showToast('Sesi berhasil ditambahkan ke jadwal!');
             await loadDb();
@@ -619,6 +644,7 @@ function App() {
                 setEditSession(null);
                 showToast('Konfirmasi pergantian sudah dikirim ke terapis utama.', 'success');
                 window.dispatchEvent(new Event('notificationsUpdated'));
+                window.dispatchEvent(new Event('substituteRequestsUpdated'));
                 return;
             } catch (e) {
                 showToast('Gagal mengirim konfirmasi ke terapis utama.', 'error');
@@ -643,6 +669,7 @@ function App() {
                 setEditSession(null);
                 showToast('Konfirmasi perubahan jadwal/program dikirim ke terapis utama.', 'success');
                 window.dispatchEvent(new Event('notificationsUpdated'));
+                window.dispatchEvent(new Event('substituteRequestsUpdated'));
                 return;
             } catch (e) {
                 showToast('Gagal mengirim konfirmasi perubahan jadwal/program.', 'error');
@@ -650,12 +677,16 @@ function App() {
             }
         }
         try {
-            await sessionsApi.update(sessionId, {
+            const res = await sessionsApi.update(sessionId, {
                 therapistId: form.therapistId,
                 focus:       form.program,
                 startTime:   form.startTime,
                 duration:    `${form.duration} mins`,
             });
+            if (!res.ok) {
+                showToast(getApiError(res, 'Gagal memperbarui sesi'), 'error');
+                return;
+            }
             showToast('Sesi berhasil diperbarui!');
             setEditSession(null);
             await loadDb();
@@ -676,7 +707,11 @@ function App() {
         });
         if (!confirmed) return;
         try {
-            await sessionsApi.delete(sessionId);
+            const res = await sessionsApi.delete(sessionId);
+            if (!res.ok) {
+                showToast(getApiError(res, 'Gagal menghapus sesi'), 'error');
+                return;
+            }
             setEditSession(null);
             showToast('Sesi berhasil dihapus.', 'info');
             await loadDb();
@@ -696,7 +731,11 @@ function App() {
         });
         if (!confirmed) return;
         try {
-            await sessionsApi.updateStatus(sessionId, 'cancelled', 'Terapis cuti - sarankan reschedule atau jadwalkan dengan terapis pendamping.');
+            const res = await sessionsApi.updateStatus(sessionId, 'cancelled', 'Terapis cuti - sarankan reschedule atau jadwalkan dengan terapis pendamping.');
+            if (!res.ok) {
+                showToast(getApiError(res, 'Gagal menandai cuti terapis'), 'error');
+                return;
+            }
             setEditSession(null);
             showToast('Sesi ditandai sebagai cuti terapis.', 'info');
             await loadDb();
@@ -733,6 +772,7 @@ function App() {
             setEditSession(null);
             showToast('Konfirmasi sudah dikirim ke terapis utama. Sesi akan berpindah setelah disetujui.', 'success');
             window.dispatchEvent(new Event('notificationsUpdated'));
+            window.dispatchEvent(new Event('substituteRequestsUpdated'));
         } catch (e) {
             console.error(e);
             showToast(e.message || 'Gagal mengirim konfirmasi terapis pengganti.', 'error');
@@ -767,6 +807,7 @@ function App() {
                             onEventClick={handleEventClick}
                             selectedMonth={currentMonth}
                             selectedYear={currentYear}
+                            selectedDate={selectedDate}
                             sessions={filteredSessions}
                             childrenList={childrenList}
                         />

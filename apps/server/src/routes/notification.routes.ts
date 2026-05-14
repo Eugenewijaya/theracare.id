@@ -2,7 +2,7 @@ import { Router } from "express";
 import { requireAuth, requireRole } from "../middleware/auth.middleware.js";
 import { auditLogService } from "../services/audit-log.service.js";
 import { notificationService } from "../services/notification.service.js";
-import { ok, created, notFound } from "../utils/response.js";
+import { ok, created, notFound, badRequest } from "../utils/response.js";
 
 const router = Router();
 
@@ -16,6 +16,11 @@ router.get("/unread-count", requireAuth, async (req, res, next) => {
 
 router.post("/", requireAuth, requireRole("admin"), async (req, res, next) => {
   try {
+    if (!req.body?.title?.trim()) return badRequest(res, "Judul notifikasi wajib diisi");
+    if (!req.body?.message?.trim()) return badRequest(res, "Isi notifikasi wajib diisi");
+    if (!["admin", "parent", "therapist", "all"].includes(String(req.body?.targetRole || ""))) {
+      return badRequest(res, "Target role notifikasi tidak valid");
+    }
     const notification = await notificationService.create(req.body);
     await auditLogService.create({
       actor: req.user,
@@ -30,7 +35,11 @@ router.post("/", requireAuth, requireRole("admin"), async (req, res, next) => {
 });
 
 router.patch("/:id/read", requireAuth, async (req, res, next) => {
-  try { await notificationService.markRead(req.params.id as string, req.user!.id); ok(res, { success: true }); } catch (e) { next(e); }
+  try {
+    const result = await notificationService.markRead(req.params.id as string, req.user!.role, req.user!.id);
+    if (!result) return notFound(res, "Notifikasi tidak ditemukan");
+    ok(res, result);
+  } catch (e) { next(e); }
 });
 
 router.post("/read-all", requireAuth, async (req, res, next) => {

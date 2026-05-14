@@ -7,6 +7,7 @@ import { therapistService } from "../services/therapist.service.js";
 import { auditLogService } from "../services/audit-log.service.js";
 import { notificationService } from "../services/notification.service.js";
 import { ok, created, notFound, badRequest, conflict } from "../utils/response.js";
+import { isAttendanceConfirmedSessionStatus } from "../domain/workflow-status.js";
 
 const router = Router();
 
@@ -133,15 +134,32 @@ router.patch("/:id/status", requireAuth, async (req, res, next) => {
     const access = await canMutateSession(req, req.params.id as string);
     if (!access.allowed) return res.status(403).json({ success: false, error: "Akses ditolak" });
     if (access.session === null && req.user!.role !== "admin") return notFound(res);
-    const result = await sessionService.updateStatus(req.params.id as string, req.body.status, req.body.cancelReason);
+    const nextStatus = String(req.body?.status || "").trim();
+    if (!nextStatus) return badRequest(res, "Status sesi wajib diisi");
+    if (req.user?.role === "therapist" && nextStatus === "active") {
+      const currentStatus = access.session?.status;
+      if (currentStatus !== "active" && !isAttendanceConfirmedSessionStatus(currentStatus)) {
+        return conflict(res, "Sesi belum bisa dimulai karena kehadiran anak belum dikonfirmasi admin.", {
+          currentStatus,
+          requiredStatus: "confirmed",
+        });
+      }
+    }
+    if (req.user?.role === "therapist" && nextStatus === "done" && access.session?.status !== "active") {
+      return conflict(res, "Sesi hanya bisa diakhiri setelah statusnya berjalan.", {
+        currentStatus: access.session?.status,
+        requiredStatus: "active",
+      });
+    }
+    const result = await sessionService.updateStatus(req.params.id as string, nextStatus, req.body.cancelReason);
     if (!result) return notFound(res);
     await auditLogService.create({
       actor: req.user,
       action: "session.status.update",
       entityType: "session",
       entityId: req.params.id as string,
-      summary: `Status sesi diubah menjadi ${req.body.status}`,
-      metadata: { status: req.body.status, cancelReason: req.body.cancelReason },
+      summary: `Status sesi diubah menjadi ${nextStatus}`,
+      metadata: { status: nextStatus, cancelReason: req.body.cancelReason },
     });
     ok(res, result);
   } catch (e) { next(e); }

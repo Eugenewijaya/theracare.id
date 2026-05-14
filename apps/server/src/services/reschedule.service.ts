@@ -4,17 +4,73 @@ import { eq } from "drizzle-orm";
 import { generateId } from "../utils/id-generators.js";
 import { notificationService } from "./notification.service.js";
 import { auditLogService } from "./audit-log.service.js";
-import { annotateSlotsForTherapist, evaluateTherapistSlot, evaluateOperationalSlot } from "./scheduling-availability.service.js";
+import { evaluateOperationalSlot, evaluateSessionSlot } from "./scheduling-availability.service.js";
 import { httpError } from "../utils/http-error.js";
 import { isOpenRescheduleStatus } from "../domain/workflow-status.js";
 
 type ProposedSlot = { date: string; time: string; status?: string; reason?: string; kind?: string };
 type AuditActor = { id?: string; role?: string } | null | undefined;
 
+const sessionTrackingDetails = {
+  therapist: { with: { user: true } },
+  room: true,
+  therapyPeriod: { with: { program: true } },
+} as const;
+
+function normalizeDateKey(value?: string | null) {
+  const raw = String(value || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return "";
+  const date = new Date(`${raw}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? "" : raw;
+}
+
+function normalizeTimeKey(value?: string | null) {
+  const raw = String(value || "").trim();
+  const match = raw.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return "";
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+    return "";
+  }
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
 function normalizeProposedSlots(slots?: Array<{ date: string; time: string }> | null) {
+  const seen = new Set<string>();
   return (Array.isArray(slots) ? slots : [])
-    .filter((slot) => slot?.date && slot?.time)
-    .map((slot) => ({ date: slot.date, time: slot.time }));
+    .map((slot) => ({ date: normalizeDateKey(slot?.date), time: normalizeTimeKey(slot?.time) }))
+    .filter((slot) => slot.date && slot.time)
+    .filter((slot) => {
+      const key = `${slot.date} ${slot.time}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function isClosedSessionStatus(status?: string | null) {
+  return ["done", "completed", "selesai", "cancelled", "canceled"].includes(String(status || "").toLowerCase());
+}
+
+function assertFutureSession(session: { date?: string | Date | null; status?: string | null }) {
+  if (isClosedSessionStatus(session.status)) {
+    throw httpError(409, "Sesi ini sudah selesai atau dibatalkan sehingga tidak bisa diajukan reschedule.");
+  }
+  const today = new Date().toISOString().slice(0, 10);
+  const sessionDate = normalizeDateKey(session.date instanceof Date ? session.date.toISOString().slice(0, 10) : String(session.date || ""));
+  if (sessionDate && sessionDate < today) {
+    throw httpError(409, "Sesi lampau tidak bisa diajukan reschedule.");
+  }
+}
+
+function removeCurrentSessionSlot(
+  slots: Array<{ date: string; time: string }>,
+  session: { date?: string | Date | null; startTime?: string | null },
+) {
+  const sessionDate = normalizeDateKey(session.date instanceof Date ? session.date.toISOString().slice(0, 10) : String(session.date || ""));
+  const sessionTime = normalizeTimeKey(session.startTime || "");
+  return slots.filter((slot) => !(slot.date === sessionDate && slot.time === sessionTime));
 }
 
 async function assertOperationalSlots(slots: Array<{ date: string; time: string }>) {
@@ -25,16 +81,26 @@ async function assertOperationalSlots(slots: Array<{ date: string; time: string 
   }
 }
 
+async function annotateSlotsForSession(
+  session: typeof therapySessions.$inferSelect,
+  slots: Array<{ date: string; time: string }>,
+) {
+  return Promise.all(slots.map((slot) => evaluateSessionSlot({
+    therapistId: session.therapistId,
+    childId: session.childId,
+    roomId: session.roomId,
+    date: slot.date,
+    startTime: slot.time,
+    duration: session.duration,
+  }, session.id)));
+}
+
 async function enrichRequestSlots<T extends { id?: string; session?: any; sessionId: string; proposedSlots?: ProposedSlot[] | null }>(request: T) {
   const session = request.session || await db.query.therapySessions.findFirst({
     where: eq(therapySessions.id, request.sessionId),
   });
   if (!session) return request;
-  const proposedSlots = await annotateSlotsForTherapist(
-    session.therapistId,
-    normalizeProposedSlots(request.proposedSlots),
-    session.id,
-  );
+  const proposedSlots = await annotateSlotsForSession(session, normalizeProposedSlots(request.proposedSlots));
   return { ...request, proposedSlots };
 }
 
@@ -45,7 +111,7 @@ async function enrichRequests<T extends { id?: string; session?: any; sessionId:
 export const rescheduleService = {
   async getAll() {
     const requests = await db.query.rescheduleRequests.findMany({
-      with: { parent: { with: { user: true } }, child: true, session: true },
+      with: { parent: { with: { user: true } }, child: true, session: { with: sessionTrackingDetails } },
       orderBy: (r, { desc }) => [desc(r.createdAt)],
     });
     return enrichRequests(requests);
@@ -54,7 +120,7 @@ export const rescheduleService = {
   async getByParent(parentId: string) {
     const requests = await db.query.rescheduleRequests.findMany({
       where: eq(rescheduleRequests.parentId, parentId),
-      with: { child: true, session: true },
+      with: { child: true, session: { with: sessionTrackingDetails } },
       orderBy: (r, { desc }) => [desc(r.createdAt)],
     });
     return enrichRequests(requests);
@@ -68,10 +134,27 @@ export const rescheduleService = {
     if (sessionIds.length === 0) return [];
 
     const allReqs = await db.query.rescheduleRequests.findMany({
-      with: { parent: { with: { user: true } }, child: true },
+      with: { parent: { with: { user: true } }, child: true, session: { with: sessionTrackingDetails } },
       orderBy: (r, { desc }) => [desc(r.createdAt)],
     });
     return enrichRequests(allReqs.filter((r) => sessionIds.includes(r.sessionId)));
+  },
+
+  async previewSlotsForSession(data: {
+    childId: string; sessionId: string; proposedSlots?: Array<{ date: string; time: string }>;
+  }) {
+    const proposedSlots = normalizeProposedSlots(data.proposedSlots);
+    const session = await db.query.therapySessions.findFirst({
+      where: eq(therapySessions.id, data.sessionId),
+    });
+    if (!session) throw httpError(404, "Sesi yang diajukan tidak ditemukan");
+    if (session.childId !== data.childId) {
+      throw httpError(403, "Sesi tidak sesuai dengan data anak");
+    }
+    assertFutureSession(session);
+    const candidateSlots = removeCurrentSessionSlot(proposedSlots, session);
+    if (candidateSlots.length === 0) return [];
+    return annotateSlotsForSession(session, candidateSlots);
   },
 
   async create(data: {
@@ -83,8 +166,6 @@ export const rescheduleService = {
       throw httpError(400, "Minimal satu preferensi jadwal wajib diisi");
     }
 
-    await assertOperationalSlots(proposedSlots);
-
     const session = await db.query.therapySessions.findFirst({
       where: eq(therapySessions.id, data.sessionId),
     });
@@ -92,8 +173,28 @@ export const rescheduleService = {
     if (session.childId !== data.childId) {
       throw httpError(403, "Sesi tidak sesuai dengan data anak");
     }
+    assertFutureSession(session);
 
-    const annotatedSlots = await annotateSlotsForTherapist(session.therapistId, proposedSlots, session.id);
+    const candidateSlots = removeCurrentSessionSlot(proposedSlots, session);
+    if (candidateSlots.length === 0) {
+      throw httpError(400, "Pilih minimal satu opsi jadwal yang berbeda dari jadwal saat ini");
+    }
+    await assertOperationalSlots(candidateSlots);
+    const annotatedSlots = await annotateSlotsForSession(session, candidateSlots);
+    if (!annotatedSlots.some((slot) => slot.status === "available")) {
+      throw httpError(409, "Semua opsi jadwal bentrok. Pilih minimal satu opsi yang tersedia.", { proposedSlots: annotatedSlots });
+    }
+    const openRequests = await db.query.rescheduleRequests.findMany({
+      where: eq(rescheduleRequests.parentId, data.parentId),
+    });
+    const duplicateOpenRequest = openRequests.find((request) => (
+      request.childId === data.childId
+      && request.sessionId === data.sessionId
+      && isOpenRescheduleStatus(request.status)
+    ));
+    if (duplicateOpenRequest) {
+      throw httpError(409, "Sesi ini sudah memiliki pengajuan reschedule yang sedang diproses.");
+    }
     const therapist = await db.query.therapists.findFirst({ where: eq(therapists.id, session.therapistId) });
     const req = await db.transaction(async (tx) => {
       const id = generateId("RR");
@@ -154,7 +255,14 @@ export const rescheduleService = {
       if (!session) throw httpError(404, "Sesi asli tidak ditemukan");
       if (!updates.newDate) throw httpError(400, "Pilih slot jadwal baru yang tersedia");
       const chosenSlot = { date: updates.newDate, time: updates.newStartTime || session.startTime };
-      const availability = await evaluateTherapistSlot(session.therapistId, chosenSlot, session.id);
+      const availability = await evaluateSessionSlot({
+        therapistId: session.therapistId,
+        childId: session.childId,
+        roomId: session.roomId,
+        date: chosenSlot.date,
+        startTime: chosenSlot.time,
+        duration: session.duration,
+      }, session.id);
       if (availability.status !== "available") {
         throw httpError(409, `Slot tidak bisa dipilih: ${availability.reason || "jadwal bentrok"}`, availability);
       }
@@ -295,7 +403,14 @@ export const rescheduleService = {
     let lastReason = "";
 
     for (const slot of candidates) {
-      const availability = await evaluateTherapistSlot(req.session.therapistId, slot, req.session.id);
+      const availability = await evaluateSessionSlot({
+        therapistId: req.session.therapistId,
+        childId: req.session.childId,
+        roomId: req.session.roomId,
+        date: slot.date,
+        startTime: slot.time,
+        duration: req.session.duration,
+      }, req.session.id);
       if (availability.status === "available") {
         chosen = slot;
         break;

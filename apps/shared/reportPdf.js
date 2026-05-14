@@ -84,6 +84,10 @@ function isPeriodicReport(report) {
   return report?.type === 'periodik' || !!report?.dateFrom || !!report?.progressPoints || !!report?.improvementPoints;
 }
 
+function isInitialObservationReport(report) {
+  return report?.type === 'observasi_awal';
+}
+
 function getStatusLabel(status) {
   if (status === 'approved' || status === 'ready_for_parent') return 'Siap Dibaca';
   if (status === 'published') return 'Dipublikasikan';
@@ -109,21 +113,26 @@ function normalizeCenterInfo(settings = {}) {
 }
 
 function normalizeReport(report = {}) {
-  const periodic = isPeriodicReport(report);
+  const observation = isInitialObservationReport(report);
+  const periodic = !observation && isPeriodicReport(report);
+  const reportTypeLabel = observation ? 'Observasi Awal' : periodic ? 'Laporan Periodik' : 'Laporan Harian';
   return {
     ...report,
     isPeriodic: periodic,
-    reportTypeLabel: periodic ? 'Laporan Periodik' : 'Laporan Harian',
-    title: report.title || report.sessionType || report.sessionFocus || (periodic ? 'Laporan Periodik Terapi' : 'Laporan Harian Terapi'),
+    isInitialObservation: observation,
+    reportTypeLabel,
+    title: report.title || report.sessionType || report.sessionFocus || (observation ? 'Observasi Kemampuan Awal' : periodic ? 'Laporan Periodik Terapi' : 'Laporan Harian Terapi'),
     childName: report.childName || report.child?.name || report.childId || 'Anak',
     therapistName: report.therapistName || report.therapist || report.therapist?.name || '-',
     therapyType: periodic ? (report.program || report.sessionFocus || '-') : (report.sessionType || report.therapyType || report.type || '-'),
-    dateLabel: periodic
+    dateLabel: periodic || observation
       ? compact([formatDate(report.dateFrom), formatDate(report.dateTo)]).join(' - ')
       : formatDate(report.date),
     statusLabel: getStatusLabel(report.status),
     aspects: asList(report.aspects),
     evaluations: report.evaluations || {},
+    observationItems: Array.isArray(report.evaluations?.observationItems) ? report.evaluations.observationItems : [],
+    observationSessions: report.evaluations?.observationSessions || '',
     progressPoints: asList(report.progressPoints),
     improvementPoints: asList(report.improvementPoints),
     toysUsed: asList(report.toysUsed),
@@ -166,7 +175,7 @@ function renderListSection(title, items, variant = 'default') {
 }
 
 function renderEvaluations(evaluations) {
-  const entries = Object.entries(evaluations || {}).filter(([, value]) => value);
+  const entries = Object.entries(evaluations || {}).filter(([, value]) => Number.isFinite(Number(value)));
   if (!entries.length) return '';
   return `
     <section class="section">
@@ -185,6 +194,25 @@ function renderEvaluations(evaluations) {
             </div>
           `;
         }).join('')}
+      </div>
+    </section>
+  `;
+}
+
+function renderObservationItems(items) {
+  const list = Array.isArray(items) ? items.filter((item) => item?.aspect || item?.note) : [];
+  if (!list.length) return '';
+  return `
+    <section class="section">
+      <h2>Aspek Observasi Awal</h2>
+      <div class="observation-list">
+        ${list.map((item) => `
+          <div class="observation-card">
+            <strong>${escapeHtml(item.aspect || '-')}</strong>
+            ${item.prompt ? `<span>${escapeHtml(item.prompt)}</span>` : ''}
+            ${item.note ? `<p>${escapeHtml(item.note).replace(/\n/g, '<br>')}</p>` : ''}
+          </div>
+        `).join('')}
       </div>
     </section>
   `;
@@ -296,6 +324,11 @@ function buildReportHtml(reportInput, settingsInput) {
     .point-list li:before { content: ""; position: absolute; left: 0; top: 8px; width: 8px; height: 8px; border-radius: 50%; background: ${center.primaryColor}; }
     .point-list.positive li:before { background: #10b981; }
     .point-list.focus li:before { background: #f59e0b; }
+    .observation-list { display: grid; gap: 10px; }
+    .observation-card { border: 1px solid #e2e8f0; border-radius: 12px; padding: 11px 12px; background: #ffffff; }
+    .observation-card strong { display: block; color: #0f172a; font-size: 12.5px; }
+    .observation-card span { display: block; margin-top: 3px; color: #64748b; font-size: 11px; }
+    .observation-card p { margin-top: 8px; color: #334155; font-size: 12.5px; }
     .note-box { margin-top: 20px; border: 1px solid #bbf7d0; border-radius: 14px; background: #f0fdf4; padding: 14px 16px; break-inside: avoid; }
     .note-box h2 { color: #166534; margin: 0 0 6px; font-size: 14px; }
     .note-box p { color: #166534; margin: 0; font-size: 12.5px; }
@@ -342,13 +375,14 @@ function buildReportHtml(reportInput, settingsInput) {
     <section class="meta-grid">
       ${renderMeta('Nama Anak', report.childName)}
       ${renderMeta('Terapis', report.therapistName)}
-      ${renderMeta(report.isPeriodic ? 'Periode' : 'Tanggal Sesi', report.dateLabel)}
-      ${renderMeta(report.isPeriodic ? 'Program / Periode' : 'Jenis Sesi', report.therapyType)}
+      ${renderMeta(report.isPeriodic || report.isInitialObservation ? 'Periode' : 'Tanggal Sesi', report.dateLabel)}
+      ${renderMeta(report.isPeriodic ? 'Program / Periode' : report.isInitialObservation ? 'Jenis Laporan' : 'Jenis Sesi', report.therapyType)}
     </section>
 
     ${renderEvaluations(report.evaluations)}
+    ${renderObservationItems(report.observationItems)}
     ${renderListSection('Aspek Terapi yang Ditangani', report.aspects)}
-    ${renderTextSection(report.isPeriodic ? 'Kesimpulan & Evaluasi Deskriptif' : 'Goals / Aktivitas Hari Ini', report.description || report.summary)}
+    ${renderTextSection(report.isInitialObservation ? 'Kesimpulan Observasi' : report.isPeriodic ? 'Kesimpulan & Evaluasi Deskriptif' : 'Goals / Aktivitas Hari Ini', report.description || report.summary)}
     ${renderListSection('Mainan yang Digunakan', report.toysUsed)}
     ${renderListSection('Ruang yang Dipakai', report.roomsUsed)}
     ${renderListSection('Alat Peraga / Media Terapi', report.toolsUsed)}

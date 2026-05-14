@@ -45,23 +45,55 @@ const SCHEDULE_NOTIFICATION_TYPES = [
     'schedule_change',
     'schedule_change_confirmation',
     'schedule_change_result',
+    'schedule_conflict',
     'program_change_confirmation',
     'program_enrollment',
     'new_session',
+    'session_attendance_confirmed',
     'reschedule_request',
     'reschedule_result',
     'substitute_confirmation',
     'substitute_result',
+    'center_closure',
 ];
 
 const getNotificationOutcome = (type) => {
-    if (['schedule_change_confirmation', 'program_change_confirmation', 'reschedule_request', 'substitute_confirmation'].includes(type)) {
+    if (['schedule_change_confirmation', 'program_change_confirmation', 'reschedule_request', 'substitute_confirmation', 'schedule_conflict', 'center_closure'].includes(type)) {
         return 'review';
     }
     if (['schedule_change_rejected', 'reschedule_rejected'].includes(type)) {
         return 'rejected';
     }
     return 'approved';
+};
+
+const formatScheduleSummary = (date, time, focus) => {
+    const parts = [];
+    if (date) parts.push(formatDate(date));
+    if (time) parts.push(time);
+    if (focus) parts.push(`(${focus})`);
+    return parts.join(' - ') || 'Detail jadwal belum tersedia';
+};
+
+const sortByNewest = (rows) => [...rows].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+
+const normalizeOutcome = (status) => {
+    if (status === 'declined') return 'rejected';
+    if (status === 'pending_primary') return 'review';
+    return status || 'review';
+};
+
+const getSubstituteHistoryNote = (request) => {
+    if (request.status === 'approved') {
+        if (request.requestKind === 'session_update') {
+            return request.responseNote || 'Perubahan jadwal/program sudah disetujui dan diterapkan.';
+        }
+        return request.responseNote || `Pergantian tugas ke ${request.substituteTherapistName || 'terapis pengganti'} sudah disetujui.`;
+    }
+    if (request.status === 'declined') {
+        return request.responseNote || 'Konfirmasi belum disetujui oleh terapis utama.';
+    }
+    return request.note || 'Menunggu respons terapis utama.';
 };
 
 function DeclineSubstituteModal({ request, suggestedSubstituteId, onSubmit, onClose }) {
@@ -187,13 +219,21 @@ export default function ScheduleUpdates() {
     const [declineRequest, setDeclineRequest] = useState(null);
     const [declineReschedule, setDeclineReschedule] = useState(null);
     const [filter, setFilter] = useState('all'); // 'all' | 'approved' | 'rejected'
+    const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState('');
+    const [lastLoadedAt, setLastLoadedAt] = useState('');
 
     const loadUpdates = useCallback(async () => {
         const load = async () => {
             const user = readTherapistUser();
-            if (!user) return;
+            if (!user) {
+                setLoading(false);
+                return;
+            }
 
             try {
+                setLoading(true);
+                setLoadError('');
                 const [reqRes, notifRes, sessRes, substituteRes] = await Promise.all([
                     rescheduleApi.getForTherapist(user.id),
                     notificationsApi.getAll(),
@@ -205,7 +245,8 @@ export default function ScheduleUpdates() {
                 const notifs = notifRes.data?.data || [];
                 const sessions = sessRes.data?.data || [];
                 const substituteRows = substituteRes.data?.data || [];
-                setSubstituteRequests(substituteRows.filter(item => item.status === 'pending_primary' && item.originalTherapistId === user.id));
+                const pendingSubstitutes = substituteRows.filter(item => item.status === 'pending_primary' && item.originalTherapistId === user.id);
+                setSubstituteRequests(pendingSubstitutes);
 
                 const pendingRows = requests
                     .filter(r => ['pending', 'review', 'under_review'].includes(r.status))
@@ -213,7 +254,7 @@ export default function ScheduleUpdates() {
                         id: r.id,
                         childName: r.child?.name || 'Anak',
                         parentName: r.parent?.user?.name || r.parent?.name || 'Orang Tua',
-                        originalDate: r.session ? `${formatDate(r.session.date)} â€¢ ${r.session.startTime} (${r.session.focus || 'Therapy'})` : 'Sesi asli',
+                        originalDate: r.session ? `${formatDate(r.session.date)} - ${r.session.startTime} (${r.session.focus || 'Therapy'})` : 'Sesi asli',
                         reason: r.reason || r.details || '',
                         proposedSlots: r.proposedSlots || [],
                         createdAt: r.createdAt,
@@ -221,6 +262,10 @@ export default function ScheduleUpdates() {
                 setPendingReschedules(pendingRows);
                 setSelectedRescheduleSlots(prev => {
                     const next = { ...prev };
+                    const pendingIds = new Set(pendingRows.map(row => row.id));
+                    Object.keys(next).forEach(id => {
+                        if (!pendingIds.has(id)) delete next[id];
+                    });
                     pendingRows.forEach(row => {
                         const firstAvailable = (row.proposedSlots || []).find(slot => slot.status === 'available');
                         if (!next[row.id] && firstAvailable) next[row.id] = `${firstAvailable.date}|${firstAvailable.time}`;
@@ -230,12 +275,6 @@ export default function ScheduleUpdates() {
 
                 const scheduleNotifs = notifs.filter(n => SCHEDULE_NOTIFICATION_TYPES.includes(n.type));
                 const unreadNotifs = scheduleNotifs.filter(n => !n.isRead && !(n.readBy || []).includes(user.id));
-                for (const n of unreadNotifs) {
-                    await notificationsApi.markRead(n.id);
-                }
-                if (unreadNotifs.length > 0) {
-                    window.dispatchEvent(new Event('notificationsUpdated'));
-                }
 
                 const requestRows = requests
                     .filter(r => r.status === 'approved' || r.status === 'rejected')
@@ -256,6 +295,24 @@ export default function ScheduleUpdates() {
                     }))
                     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
+                const substituteHistoryRows = substituteRows
+                    .filter(item => item.status !== 'pending_primary')
+                    .map(item => ({
+                        id: `substitute-${item.id}`,
+                        childName: item.childName || 'Anak',
+                        parentName: item.requestKind === 'session_update' ? 'Konfirmasi perubahan' : 'Konfirmasi pengganti',
+                        originalDate: formatScheduleSummary(item.date, item.startTime, item.focus || 'Therapy'),
+                        newDate: item.requestKind === 'session_update'
+                            ? describeProposedUpdates(item.proposedUpdates)
+                            : item.substituteTherapistName || '-',
+                        outcome: normalizeOutcome(item.status),
+                        resolvedOn: item.respondedAt ? formatDateTime(item.respondedAt) : '',
+                        adminNote: getSubstituteHistoryNote(item),
+                        reason: item.requestKind === 'session_update' ? 'perubahan jadwal/program' : `terapis pengganti: ${item.substituteTherapistName || '-'}`,
+                        createdAt: item.respondedAt || item.createdAt,
+                        source: 'substitute',
+                    }));
+
                 const notificationRows = scheduleNotifs.map(n => ({
                     id: `notification-${n.id}`,
                     childName: n.title || 'Pembaruan Jadwal',
@@ -270,9 +327,21 @@ export default function ScheduleUpdates() {
                     source: 'notification',
                 }));
 
-                setUpdates([...requestRows, ...notificationRows].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
+                setUpdates(sortByNewest([...requestRows, ...substituteHistoryRows, ...notificationRows]));
+                setLastLoadedAt(new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }));
+
+                if (unreadNotifs.length > 0) {
+                    Promise.allSettled(unreadNotifs.map(n => notificationsApi.markRead(n.id))).then((results) => {
+                        if (results.some(result => result.status === 'fulfilled')) {
+                            window.dispatchEvent(new Event('notificationsUpdated'));
+                        }
+                    });
+                }
             } catch (err) {
                 console.error(err);
+                setLoadError(err?.data?.error || err?.message || 'Pembaruan jadwal belum bisa dimuat.');
+            } finally {
+                setLoading(false);
             }
         };
         await load();
@@ -313,6 +382,7 @@ export default function ScheduleUpdates() {
             if (!res.ok) throw new Error(res.data?.error || 'Gagal merespons reschedule');
             setPendingReschedules(prev => prev.filter(item => item.id !== request.id));
             setDeclineReschedule(null);
+            await loadUpdates();
             window.dispatchEvent(new Event('incomingRequestsUpdated'));
             window.dispatchEvent(new Event('notificationsUpdated'));
             window.dispatchEvent(new Event('sessionUpdated'));
@@ -356,6 +426,7 @@ export default function ScheduleUpdates() {
             if (!res.ok) throw new Error(res.data?.error || 'Gagal merespons konfirmasi');
             setSubstituteRequests(prev => prev.filter(item => item.id !== request.id));
             setDeclineRequest(null);
+            await loadUpdates();
             window.dispatchEvent(new Event('notificationsUpdated'));
             window.dispatchEvent(new Event('sessionUpdated'));
         } catch (err) {
@@ -395,13 +466,25 @@ export default function ScheduleUpdates() {
                 </div>
                 <div className="flex-1">
                     <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white leading-tight">Pembaruan Jadwal</h1>
-                    <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Riwayat perubahan jadwal pasien yang telah diproses oleh Admin.</p>
+                    <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Reschedule, konfirmasi pengganti, dan update jadwal dari sistem.</p>
                 </div>
+                <button
+                    type="button"
+                    onClick={loadUpdates}
+                    disabled={loading}
+                    className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-700"
+                >
+                    <span className={`material-symbols-outlined text-[16px] ${loading ? 'animate-spin' : ''}`}>refresh</span>
+                    Refresh
+                </button>
             </header>
 
             {/* Stats Bar */}
             <div className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-4 sm:px-8 py-3">
                 <div className="flex gap-3 flex-wrap">
+                    <span className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-black text-amber-700 dark:border-amber-800/60 dark:bg-amber-900/20 dark:text-amber-300">
+                        Pending: <span>{pendingReschedules.length + substituteRequests.length}</span>
+                    </span>
                     <button 
                         onClick={() => setFilter('all')}
                         className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold transition-colors ${filter === 'all' ? 'border-teal-300 bg-teal-50 text-teal-700 dark:border-teal-700 dark:bg-teal-900/30 dark:text-teal-400' : 'border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'}`}
@@ -431,11 +514,28 @@ export default function ScheduleUpdates() {
                             Direview: <span className="font-black">{reviewCount}</span>
                         </button>
                     )}
+                    {lastLoadedAt && (
+                        <span className="inline-flex items-center text-[11px] font-semibold text-slate-400">
+                            Update terakhir {lastLoadedAt}
+                        </span>
+                    )}
                 </div>
             </div>
 
             <main className="flex-1 p-4 md:p-8">
                 <div className="max-w-4xl mx-auto flex flex-col gap-4">
+                    {loadError && (
+                        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-200">
+                            {loadError}
+                        </div>
+                    )}
+
+                    {loading && updates.length === 0 && pendingReschedules.length === 0 && substituteRequests.length === 0 && (
+                        <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm font-semibold text-slate-500 shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                            Mengambil pembaruan jadwal terbaru...
+                        </div>
+                    )}
+
                     {pendingReschedules.length > 0 && (
                         <section className="bg-white dark:bg-slate-800 rounded-2xl border border-blue-200 dark:border-blue-800/50 shadow-sm overflow-hidden">
                             <div className="px-5 py-4 border-b border-blue-100 dark:border-blue-900/40 bg-blue-50 dark:bg-blue-900/10">
@@ -589,7 +689,7 @@ export default function ScheduleUpdates() {
                         </section>
                     )}
 
-                    {filtered.length === 0 ? (
+                    {!loading && filtered.length === 0 ? (
                         <div className="text-center py-20 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700">
                             <span className="material-symbols-outlined text-4xl text-slate-300 dark:text-slate-600 mb-3">inbox</span>
                             <p className="text-slate-500 dark:text-slate-400">Belum ada pembaruan jadwal untuk Anda.</p>

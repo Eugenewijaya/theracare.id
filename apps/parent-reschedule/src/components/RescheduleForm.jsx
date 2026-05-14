@@ -17,31 +17,44 @@ const VIEW_TABS = [
   { value: 'request', label: 'Ajukan Reschedule', icon: 'edit_calendar' },
 ];
 
+const OPEN_REQUEST_STATUSES = new Set(['pending', 'review', 'under_review']);
+
 const STATUS_LABELS = {
   pending: {
-    label: 'Menunggu review admin',
+    label: 'Menunggu review',
     className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
     icon: 'pending_actions',
+    description: 'Pengajuan sudah masuk dan sedang menunggu review admin atau terapis utama.',
   },
   review: {
     label: 'Sedang direview',
     className: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
     icon: 'manage_search',
+    description: 'Admin atau terapis utama sedang mengecek ketersediaan slot.',
   },
   under_review: {
     label: 'Sedang direview',
     className: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
     icon: 'manage_search',
+    description: 'Admin atau terapis utama sedang mengecek ketersediaan slot.',
   },
   approved: {
     label: 'Disetujui',
     className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
     icon: 'check_circle',
+    description: 'Jadwal baru sudah diterapkan ke sistem.',
   },
   rejected: {
     label: 'Ditolak',
     className: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
     icon: 'cancel',
+    description: 'Pengajuan belum bisa diproses. Lihat catatan untuk alasannya.',
+  },
+  cancelled: {
+    label: 'Dibatalkan',
+    className: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
+    icon: 'block',
+    description: 'Pengajuan sudah dibatalkan.',
   },
 };
 
@@ -73,6 +86,55 @@ const formatLongDate = (dateStr) => {
     year: 'numeric',
   });
 };
+
+const formatDateTime = (value) => {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleDateString('id-ID', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
+const getReasonLabel = (value) => (
+  REASONS.find(item => item.value === value)?.label || value || 'Permintaan perubahan jadwal'
+);
+
+const normalizeRequestStatus = (status) => {
+  const value = String(status || 'pending').toLowerCase();
+  if (value === 'declined') return 'rejected';
+  if (value === 'canceled') return 'cancelled';
+  return value;
+};
+
+const isOpenRequest = (request) => OPEN_REQUEST_STATUSES.has(normalizeRequestStatus(request?.status));
+
+const getChildName = (request) => {
+  const child = request?.child || {};
+  return child.name || [child.firstName, child.lastName].filter(Boolean).join(' ') || request?.childId || 'Anak';
+};
+
+const getTherapistName = (request) => (
+  request?.session?.therapist?.user?.name
+  || request?.session?.therapist?.name
+  || request?.therapistName
+  || 'Terapis'
+);
+
+const getSessionProgram = (session = {}) => (
+  session.focus
+  || session.programName
+  || session.therapyPeriod?.program?.name
+  || 'Sesi terapi'
+);
+
+const getRequestStatusConfig = (request) => (
+  STATUS_LABELS[normalizeRequestStatus(request?.status)] || STATUS_LABELS.pending
+);
 
 const toDateKey = (date) => {
   const year = date.getFullYear();
@@ -152,13 +214,125 @@ const getSlotOperationalIssue = (slot, settings = {}) => {
   return '';
 };
 
-const RequestHistory = ({ requests }) => (
+const getSlotKey = (slot = {}) => `${slot.date || ''}_${slot.time || ''}`;
+
+const RequestTimeline = ({ request }) => {
+  const status = normalizeRequestStatus(request?.status);
+  const steps = [
+    {
+      key: 'submitted',
+      label: 'Dikirim',
+      description: 'Orang tua mengirim pengajuan.',
+      done: true,
+      time: formatDateTime(request?.createdAt),
+    },
+    {
+      key: 'review',
+      label: 'Review',
+      description: 'Admin/terapis utama mengecek slot dan dampaknya ke jadwal.',
+      done: status !== 'pending',
+      active: OPEN_REQUEST_STATUSES.has(status),
+      time: OPEN_REQUEST_STATUSES.has(status) ? 'Sedang diproses' : '',
+    },
+    {
+      key: 'result',
+      label: status === 'rejected' ? 'Ditolak' : status === 'cancelled' ? 'Dibatalkan' : 'Keputusan',
+      description: status === 'approved'
+        ? 'Jadwal baru sudah diterapkan.'
+        : status === 'rejected'
+          ? 'Pengajuan belum bisa diproses.'
+          : status === 'cancelled'
+            ? 'Pengajuan tidak aktif lagi.'
+            : 'Menunggu keputusan.',
+      done: ['approved', 'rejected', 'cancelled'].includes(status),
+      active: !['approved', 'rejected', 'cancelled'].includes(status),
+      time: request?.resolvedAt ? formatDateTime(request.resolvedAt) : '',
+    },
+  ];
+
+  return (
+    <div className="grid gap-3 sm:grid-cols-3">
+      {steps.map((step, index) => (
+        <div key={step.key} className="relative flex gap-3 rounded-2xl bg-surface-light p-3 dark:bg-background-dark">
+          <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-black ${
+            step.done
+              ? 'bg-emerald-500 text-white'
+              : step.active
+                ? 'bg-blue-500 text-white'
+                : 'bg-slate-200 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+          }`}>
+            {step.done ? <span className="material-symbols-outlined text-[16px]">check</span> : index + 1}
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs font-black uppercase tracking-wide text-slate-900 dark:text-white">{step.label}</p>
+            <p className="mt-1 text-xs leading-relaxed text-text-muted-light dark:text-text-muted-dark">{step.description}</p>
+            {step.time && <p className="mt-1 text-[11px] font-bold text-slate-400">{step.time}</p>}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const RequestHistory = ({ requests, loading, onRefresh }) => {
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [expandedId, setExpandedId] = useState('');
+  const counts = useMemo(() => ({
+    all: requests.length,
+    open: requests.filter(isOpenRequest).length,
+    approved: requests.filter(item => normalizeRequestStatus(item.status) === 'approved').length,
+    rejected: requests.filter(item => normalizeRequestStatus(item.status) === 'rejected').length,
+    cancelled: requests.filter(item => normalizeRequestStatus(item.status) === 'cancelled').length,
+  }), [requests]);
+  const visibleRequests = useMemo(() => {
+    if (statusFilter === 'all') return requests;
+    if (statusFilter === 'open') return requests.filter(isOpenRequest);
+    return requests.filter(item => normalizeRequestStatus(item.status) === statusFilter);
+  }, [requests, statusFilter]);
+
+  return (
   <section className="overflow-hidden rounded-2xl border border-border-light bg-white shadow-sm dark:border-border-dark dark:bg-surface-dark">
     <div className="border-b border-border-light px-4 py-3 dark:border-border-dark">
-      <h2 className="text-base font-bold text-slate-950 dark:text-white">Tracking Pengajuan Jadwal</h2>
-      <p className="text-xs text-text-muted-light dark:text-text-muted-dark">
-        Pantau status pengajuan tanpa menunggu refresh manual.
-      </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h2 className="text-base font-bold text-slate-950 dark:text-white">Tracking Pengajuan Jadwal</h2>
+          <p className="text-xs text-text-muted-light dark:text-text-muted-dark">
+            Pantau alur pengajuan dari terkirim, review admin/terapis, sampai keputusan akhir.
+          </p>
+        </div>
+        <div className="flex flex-col gap-2 sm:items-end">
+          <button
+            type="button"
+            onClick={onRefresh}
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-border-light bg-surface-light px-3 py-2 text-xs font-black text-slate-600 transition hover:bg-slate-100 dark:border-border-dark dark:bg-background-dark dark:text-slate-300"
+          >
+            <span className={`material-symbols-outlined text-[16px] ${loading ? 'animate-spin' : ''}`}>refresh</span>
+            Refresh
+          </button>
+        </div>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2 sm:flex">
+          {[
+            ['all', 'Semua'],
+            ['open', 'Diproses'],
+            ['approved', 'Disetujui'],
+            ['rejected', 'Ditolak'],
+            ['cancelled', 'Dibatalkan'],
+          ].map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setStatusFilter(value)}
+              className={`rounded-lg px-3 py-2 text-xs font-black transition ${
+                statusFilter === value
+                  ? 'bg-primary text-white'
+                  : 'bg-surface-light text-slate-500 hover:bg-slate-100 dark:bg-background-dark dark:text-slate-300 dark:hover:bg-slate-800'
+              }`}
+            >
+              {label} <span className="opacity-80">({counts[value] || 0})</span>
+            </button>
+          ))}
+      </div>
     </div>
 
     {requests.length === 0 ? (
@@ -166,54 +340,113 @@ const RequestHistory = ({ requests }) => (
         <span className="material-symbols-outlined text-4xl text-slate-300 dark:text-slate-600">pending_actions</span>
         <p className="text-sm font-bold text-slate-700 dark:text-slate-200">Belum ada pengajuan reschedule.</p>
         <p className="max-w-md text-xs">
-          Jika ada perubahan jadwal, statusnya akan tampil di sini dari proses review admin.
+          Jika ada perubahan jadwal, statusnya akan tampil di sini dari proses review admin atau terapis.
         </p>
+      </div>
+    ) : visibleRequests.length === 0 ? (
+      <div className="px-4 py-10 text-center text-sm font-bold text-slate-500 dark:text-slate-400">
+        Tidak ada pengajuan pada filter ini.
       </div>
     ) : (
       <div className="divide-y divide-border-light dark:divide-border-dark">
-        {requests.map((request) => {
-          const cfg = STATUS_LABELS[request.status] || STATUS_LABELS.pending;
+        {visibleRequests.map((request) => {
+          const cfg = getRequestStatusConfig(request);
           const proposedSlots = getProposedSlots(request);
+          const status = normalizeRequestStatus(request.status);
+          const expanded = expandedId === request.id;
           return (
             <div key={request.id} className="flex flex-col gap-3 p-4">
               <div className="flex flex-wrap items-start justify-between gap-2">
-                <div>
+                <div className="min-w-0">
+                  <p className="text-[11px] font-black uppercase tracking-wide text-primary">
+                    {getChildName(request)} - {getSessionProgram(request.session)}
+                  </p>
                   <p className="text-sm font-bold text-slate-900 dark:text-white">
-                    {formatLongDate(request.session?.date)} {request.session?.startTime || ''}
+                    Jadwal lama: {formatLongDate(request.session?.date)} {request.session?.startTime || ''}
                   </p>
                   <p className="text-xs text-text-muted-light dark:text-text-muted-dark">
-                    {request.reason || request.details || 'Permintaan perubahan jadwal'}
+                    {getReasonLabel(request.reason)}
+                    {request.details ? ` - ${request.details}` : ''}
                   </p>
                 </div>
-                <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold ${cfg.className}`}>
-                  <span className="material-symbols-outlined text-[14px]">{cfg.icon}</span>
-                  {cfg.label}
-                </span>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                {proposedSlots.map((slot, index) => (
-                  <span
-                    key={`${request.id}_${index}`}
-                    className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-                      slot.status === 'available'
-                        ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300'
-                        : 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300'
-                    }`}
-                    title={slot.reason || ''}
-                  >
-                    {formatDate(slot.date)} {slot.time} - {slot.status === 'available' ? 'Available' : 'Conflict'}
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold ${cfg.className}`}>
+                    <span className="material-symbols-outlined text-[14px]">{cfg.icon}</span>
+                    {cfg.label}
                   </span>
-                ))}
+                  <button
+                    type="button"
+                    onClick={() => setExpandedId(expanded ? '' : request.id)}
+                    className="rounded-full border border-border-light px-3 py-1 text-[11px] font-black text-slate-600 transition hover:bg-slate-50 dark:border-border-dark dark:text-slate-300 dark:hover:bg-background-dark"
+                  >
+                    {expanded ? 'Tutup detail' : 'Lihat detail'}
+                  </button>
+                </div>
               </div>
 
-              {request.status === 'approved' && request.newDate && (
+              <RequestTimeline request={request} />
+
+              <div className="grid gap-2 md:grid-cols-2">
+                <div className="rounded-2xl bg-surface-light p-3 dark:bg-background-dark">
+                  <p className="text-[11px] font-black uppercase tracking-wide text-slate-500 dark:text-slate-400">Dikirim</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-700 dark:text-slate-200">{formatDateTime(request.createdAt)}</p>
+                </div>
+                <div className="rounded-2xl bg-surface-light p-3 dark:bg-background-dark">
+                  <p className="text-[11px] font-black uppercase tracking-wide text-slate-500 dark:text-slate-400">Terapis utama</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-700 dark:text-slate-200">{getTherapistName(request)}</p>
+                </div>
+              </div>
+
+              {status === 'approved' && request.newDate && (
                 <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">
                   Jadwal baru: {formatLongDate(request.newDate)} {request.newStartTime || request.session?.startTime || ''}
                 </p>
               )}
               {request.reviewNote && (
-                <p className="text-xs text-slate-500 dark:text-slate-400">Catatan admin: {request.reviewNote}</p>
+                <p className="rounded-2xl border border-slate-100 bg-slate-50 p-3 text-xs font-semibold text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
+                  Catatan admin/terapis: {request.reviewNote}
+                </p>
+              )}
+
+              {expanded && (
+                <div className="rounded-2xl border border-border-light p-3 dark:border-border-dark">
+                  <p className="mb-2 text-[11px] font-black uppercase tracking-wide text-slate-500 dark:text-slate-400">Opsi jadwal yang diajukan</p>
+                  {proposedSlots.length > 0 ? (
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {proposedSlots.map((slot, index) => {
+                        const chosen = status === 'approved'
+                          && request.newDate === slot.date
+                          && (request.newStartTime || request.session?.startTime || '') === slot.time;
+                        const available = slot.status === 'available';
+                        return (
+                          <div
+                            key={`${request.id}_${index}`}
+                            className={`rounded-xl border p-3 text-xs ${
+                              chosen
+                                ? 'border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-200'
+                                : available
+                                  ? 'border-emerald-100 bg-emerald-50/70 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-900/10 dark:text-emerald-300'
+                                  : 'border-amber-100 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-900/20 dark:text-amber-300'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <p className="font-black">Opsi {index + 1}</p>
+                                <p className="mt-1 font-semibold">{formatLongDate(slot.date)} {slot.time}</p>
+                              </div>
+                              <span className="rounded-full bg-white/70 px-2 py-1 text-[10px] font-black dark:bg-slate-950/40">
+                                {chosen ? 'Dipilih' : available ? 'Tersedia' : 'Bentrok'}
+                              </span>
+                            </div>
+                            {slot.reason && <p className="mt-2 leading-relaxed opacity-80">{slot.reason}</p>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-500 dark:text-slate-400">Belum ada opsi slot tersimpan.</p>
+                  )}
+                </div>
               )}
             </div>
           );
@@ -221,7 +454,8 @@ const RequestHistory = ({ requests }) => (
       </div>
     )}
   </section>
-);
+  );
+};
 
 const ScheduleCalendar = ({
   sessions,
@@ -453,11 +687,15 @@ const RescheduleForm = () => {
   const [pendingRequest, setPendingRequest] = useState(null);
   const [requests, setRequests] = useState([]);
   const [clinicSettings, setClinicSettings] = useState({});
+  const [slotPreview, setSlotPreview] = useState([]);
+  const [previewingSlots, setPreviewingSlots] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
+  const [loadError, setLoadError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async ({ silent = false } = {}) => {
     const user = readParentUser();
     if (!user) {
       setLoading(false);
@@ -469,7 +707,8 @@ const RescheduleForm = () => {
       return;
     }
 
-    setLoading(true);
+    if (!silent) setLoading(true);
+    setLoadError('');
     try {
       const [sessionsRes, settingsRes, requestsRes] = await Promise.all([
         sessionsApi.getUpcomingForChild(childId),
@@ -477,12 +716,17 @@ const RescheduleForm = () => {
         user.parentId ? rescheduleApi.getByParent(user.parentId) : Promise.resolve({ data: { data: [] } }),
       ]);
 
+      if (!sessionsRes.ok) throw new Error(sessionsRes.data?.error || 'Jadwal anak belum bisa dimuat.');
+      if (!requestsRes.ok) throw new Error(requestsRes.data?.error || 'Tracking pengajuan belum bisa dimuat.');
+
       const sessions = sessionsRes.data?.data || [];
-      const nextRequests = requestsRes.data?.data || [];
+      const nextRequests = [...(requestsRes.data?.data || [])].sort((a, b) => (
+        new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+      ));
       setUpcomingSessions(sessions);
-      setClinicSettings(settingsRes.data?.data || {});
+      setClinicSettings(settingsRes.ok ? settingsRes.data?.data || {} : {});
       setRequests(nextRequests);
-      setPendingRequest(nextRequests.find(item => ['pending', 'review', 'under_review'].includes(item.status)) || null);
+      setPendingRequest(nextRequests.find(isOpenRequest) || null);
 
       if (sessions.length > 0) {
         setSelectedSessionId(prev => sessions.some(session => session.id === prev) ? prev : sessions[0].id);
@@ -493,8 +737,11 @@ const RescheduleForm = () => {
       } else {
         setSelectedSessionId('');
       }
+    } catch (err) {
+      console.error(err);
+      setLoadError('Data reschedule belum bisa dimuat. Coba refresh beberapa saat lagi.');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
@@ -507,16 +754,62 @@ const RescheduleForm = () => {
       'sessionUpdated',
       'scheduleUpdated',
       'notificationsUpdated',
+      'theracareDataUpdated',
     ];
-    events.forEach((eventName) => window.addEventListener(eventName, loadData));
+    const refreshSilently = () => loadData({ silent: true });
+    events.forEach((eventName) => window.addEventListener(eventName, refreshSilently));
+    const interval = window.setInterval(refreshSilently, 30000);
     return () => {
-      events.forEach((eventName) => window.removeEventListener(eventName, loadData));
+      window.clearInterval(interval);
+      events.forEach((eventName) => window.removeEventListener(eventName, refreshSilently));
     };
   }, [loadData]);
 
   const selectedSession = useMemo(() => (
     upcomingSessions.find(session => session.id === selectedSessionId)
   ), [selectedSessionId, upcomingSessions]);
+  const openRequests = useMemo(() => requests.filter(isOpenRequest), [requests]);
+  const selectedSessionPendingRequest = useMemo(() => (
+    openRequests.find(item => item.sessionId === selectedSessionId) || null
+  ), [openRequests, selectedSessionId]);
+  const filledSlots = useMemo(() => slots.filter(slot => slot.date && slot.time), [slots]);
+  const slotPreviewByKey = useMemo(() => new Map(slotPreview.map(slot => [getSlotKey(slot), slot])), [slotPreview]);
+  const availablePreviewCount = slotPreview.filter(slot => slot.status === 'available').length;
+
+  useEffect(() => {
+    const user = readParentUser() || {};
+    const childId = getPrimaryChildId(user);
+    const proposedSlots = slots.filter(slot => slot.date && slot.time);
+    setSlotPreview([]);
+    if (!childId || !selectedSessionId || proposedSlots.length === 0) {
+      setPreviewingSlots(false);
+      return undefined;
+    }
+    if (proposedSlots.some(slot => getSlotOperationalIssue(slot, clinicSettings))) {
+      setPreviewingSlots(false);
+      return undefined;
+    }
+    let active = true;
+    setPreviewingSlots(true);
+    const timeout = window.setTimeout(async () => {
+      const res = await rescheduleApi.previewSlots({ childId, sessionId: selectedSessionId, proposedSlots });
+      if (!active) return;
+      setPreviewingSlots(false);
+      if (res.ok) {
+        setSlotPreview(res.data?.data || []);
+      } else {
+        setSlotPreview(proposedSlots.map(slot => ({
+          ...slot,
+          status: 'conflict',
+          reason: res.data?.error || 'Slot belum bisa dicek.',
+        })));
+      }
+    }, 350);
+    return () => {
+      active = false;
+      window.clearTimeout(timeout);
+    };
+  }, [selectedSessionId, slots, clinicSettings]);
 
   const updateSlot = (index, field, value) => {
     setSlots(prev => prev.map((slot, i) => (
@@ -525,6 +818,7 @@ const RescheduleForm = () => {
   };
 
   const handleSubmit = async () => {
+    if (saving) return;
     if (requestType === 'reschedule' && !selectedSessionId) {
       setError('Pilih sesi yang ingin direschedule.');
       return;
@@ -537,8 +831,8 @@ const RescheduleForm = () => {
       setError('Masukkan minimal 1 preferensi waktu baru.');
       return;
     }
-    if (pendingRequest) {
-      setError('Masih ada pengajuan yang sedang diproses. Tunggu keputusan admin terlebih dahulu.');
+    if (selectedSessionPendingRequest) {
+      setError('Sesi ini sudah memiliki pengajuan yang sedang diproses. Cek statusnya di tab tracking.');
       return;
     }
 
@@ -548,6 +842,10 @@ const RescheduleForm = () => {
       setError(`${blockedSlot.date} ${blockedSlot.time}: ${getSlotOperationalIssue(blockedSlot, clinicSettings)}`);
       return;
     }
+    if (previewingSlots) {
+      setError('Tunggu pengecekan opsi jadwal selesai dulu.');
+      return;
+    }
 
     const user = readParentUser() || {};
     const childId = getPrimaryChildId(user);
@@ -555,8 +853,24 @@ const RescheduleForm = () => {
       setError('Data anak tidak ditemukan untuk akun orang tua ini.');
       return;
     }
+    const previewResult = await rescheduleApi.previewSlots({
+      childId,
+      sessionId: selectedSessionId,
+      proposedSlots,
+    });
+    if (!previewResult.ok) {
+      setError(previewResult.data?.error || 'Opsi jadwal belum bisa dicek.');
+      return;
+    }
+    const previewSlots = previewResult.data?.data || [];
+    setSlotPreview(previewSlots);
+    if (!previewSlots.some(slot => slot.status === 'available')) {
+      setError('Semua opsi jadwal bentrok. Pilih minimal satu opsi yang tersedia.');
+      return;
+    }
 
     setError('');
+    setSaving(true);
     const result = await rescheduleApi.create({
       parentId: user.parentId,
       childId,
@@ -568,6 +882,7 @@ const RescheduleForm = () => {
 
     if (!result.ok) {
       setError(result.data?.error || 'Gagal mengirim pengajuan');
+      setSaving(false);
       return;
     }
 
@@ -575,11 +890,13 @@ const RescheduleForm = () => {
     window.dispatchEvent(new Event('incomingRequestsUpdated'));
     window.dispatchEvent(new Event('rescheduleUpdated'));
     window.dispatchEvent(new Event('notificationsUpdated'));
+    window.dispatchEvent(new Event('theracareDataUpdated'));
     setSlots([{ date: '', time: '' }, { date: '', time: '' }, { date: '', time: '' }]);
     setReason('');
     setDetails('');
     setActiveView('tracking');
     setSubmitted(true);
+    setSaving(false);
   };
 
   if (submitted) {
@@ -591,7 +908,7 @@ const RescheduleForm = () => {
         <div>
           <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Pengajuan terkirim</h2>
           <p className="mt-2 max-w-sm text-sm leading-relaxed text-slate-500 dark:text-slate-400">
-            Permintaan reschedule sudah diterima. Admin center akan mereview opsi jadwal yang kamu ajukan.
+            Permintaan reschedule sudah diterima. Admin center dan terapis utama dapat meninjau opsi jadwal yang kamu ajukan.
           </p>
         </div>
         <div className="w-full max-w-sm rounded-xl border border-amber-200 bg-amber-50 p-4 text-left dark:border-amber-800/50 dark:bg-amber-900/20">
@@ -630,7 +947,7 @@ const RescheduleForm = () => {
           </div>
           <button
             type="button"
-            onClick={loadData}
+            onClick={() => loadData()}
             className="inline-flex items-center justify-center gap-2 rounded-xl border border-border-light bg-surface-light px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-100 dark:border-border-dark dark:bg-background-dark dark:text-slate-200"
           >
             <span className={`material-symbols-outlined text-[18px] ${loading ? 'animate-spin' : ''}`}>refresh</span>
@@ -661,12 +978,30 @@ const RescheduleForm = () => {
         </div>
       </section>
 
+      {loadError && (
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
+          {loadError}
+        </div>
+      )}
+
       {pendingRequest && (
         <div className="flex items-center gap-3 rounded-2xl border border-yellow-200 bg-yellow-100 p-4 dark:border-yellow-700/50 dark:bg-yellow-900/30">
           <span className="material-symbols-outlined shrink-0 text-yellow-600 dark:text-yellow-500">pending_actions</span>
-          <p className="text-sm font-medium text-yellow-800 dark:text-yellow-400">
-            Anda sudah memiliki permintaan reschedule yang sedang diproses. Silakan tunggu konfirmasi dari admin center.
-          </p>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-bold text-yellow-800 dark:text-yellow-400">
+              {openRequests.length} pengajuan masih diproses.
+            </p>
+            <p className="mt-1 text-xs font-semibold text-yellow-800/80 dark:text-yellow-400/80">
+              Kamu tetap bisa mengajukan sesi lain, tetapi sesi yang sama akan dikunci sampai ada keputusan.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setActiveView('tracking')}
+            className="shrink-0 rounded-xl bg-white/70 px-3 py-2 text-xs font-black text-yellow-800 transition hover:bg-white dark:bg-slate-950/30 dark:text-yellow-300"
+          >
+            Lihat
+          </button>
         </div>
       )}
 
@@ -700,7 +1035,7 @@ const RescheduleForm = () => {
       )}
 
       {activeView === 'tracking' && (
-        <RequestHistory requests={requests} />
+        <RequestHistory requests={requests} loading={loading} onRefresh={() => loadData()} />
       )}
 
       {activeView === 'request' && (
@@ -824,31 +1159,78 @@ const RescheduleForm = () => {
               <div className="mt-3 flex flex-col gap-3">
                 {[{ label: 'Preferensi 1 - wajib' }, { label: 'Preferensi 2 - opsional' }, { label: 'Preferensi 3 - opsional' }].map((slot, index) => (
                   <div key={slot.label} className="rounded-xl border border-border-light bg-surface-light p-4 dark:border-border-dark dark:bg-background-dark">
-                    <label className="text-xs font-bold text-text-muted-light dark:text-text-muted-dark">{slot.label}</label>
+                    {(() => {
+                      const currentSlot = slots[index];
+                      const operationalIssue = getSlotOperationalIssue(currentSlot, clinicSettings);
+                      const preview = slotPreviewByKey.get(getSlotKey(currentSlot));
+                      const isAvailable = preview?.status === 'available';
+                      const isConflict = preview?.status === 'conflict' || !!operationalIssue;
+                      return (
+                        <>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <label className="text-xs font-bold text-text-muted-light dark:text-text-muted-dark">{slot.label}</label>
+                      {currentSlot.date && currentSlot.time && (
+                        <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${
+                          previewingSlots && !operationalIssue
+                            ? 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300'
+                            : isAvailable
+                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+                              : isConflict
+                                ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+                                : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300'
+                        }`}>
+                          {previewingSlots && !operationalIssue ? 'Mengecek...' : isAvailable ? 'Available' : isConflict ? 'Conflict' : 'Belum dicek'}
+                        </span>
+                      )}
+                    </div>
                     <div className="mt-2 grid gap-2 sm:grid-cols-2">
                       <input
                         type="date"
-                        value={slots[index].date}
+                        value={currentSlot.date}
                         onChange={event => updateSlot(index, 'date', event.target.value)}
                         min={new Date().toISOString().split('T')[0]}
-                        className="min-w-0 rounded-lg border border-border-light bg-white px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary dark:border-border-dark dark:bg-surface-dark dark:text-slate-100 dark:[color-scheme:dark]"
+                        className={`min-w-0 rounded-lg border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-1 dark:bg-surface-dark dark:text-slate-100 dark:[color-scheme:dark] ${
+                          isConflict
+                            ? 'border-red-300 focus:border-red-500 focus:ring-red-500 dark:border-red-800'
+                            : 'border-border-light focus:border-primary focus:ring-primary dark:border-border-dark'
+                        }`}
                       />
                       <input
                         type="time"
-                        value={slots[index].time}
+                        value={currentSlot.time}
                         onChange={event => updateSlot(index, 'time', event.target.value)}
-                        className="min-w-0 rounded-lg border border-border-light bg-white px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary dark:border-border-dark dark:bg-surface-dark dark:text-slate-100 dark:[color-scheme:dark]"
+                        className={`min-w-0 rounded-lg border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-1 dark:bg-surface-dark dark:text-slate-100 dark:[color-scheme:dark] ${
+                          isConflict
+                            ? 'border-red-300 focus:border-red-500 focus:ring-red-500 dark:border-red-800'
+                            : 'border-border-light focus:border-primary focus:ring-primary dark:border-border-dark'
+                        }`}
                       />
                     </div>
-                    {getSlotOperationalIssue(slots[index], clinicSettings) && (
-                      <p className="mt-2 flex items-center gap-1 text-xs font-semibold text-red-600 dark:text-red-400">
+                    {(operationalIssue || preview?.reason) && (
+                      <p className={`mt-2 flex items-center gap-1 text-xs font-semibold ${
+                        isAvailable ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-600 dark:text-red-400'
+                      }`}>
                         <span className="material-symbols-outlined text-[14px]">error</span>
-                        {getSlotOperationalIssue(slots[index], clinicSettings)}
+                        {operationalIssue || preview?.reason}
                       </p>
                     )}
+                        </>
+                      );
+                    })()}
                   </div>
                 ))}
               </div>
+              {filledSlots.length > 0 && slotPreview.length > 0 && (
+                <p className={`mt-3 rounded-xl px-3 py-2 text-xs font-bold ${
+                  availablePreviewCount > 0
+                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300'
+                    : 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-300'
+                }`}>
+                  {availablePreviewCount > 0
+                    ? `${availablePreviewCount} opsi tersedia. Opsi conflict tetap tercatat agar admin/terapis tahu alternatif yang tidak dapat dipakai.`
+                    : 'Belum ada opsi yang tersedia. Pilih tanggal atau jam lain.'}
+                </p>
+              )}
             </div>
           </div>
 
@@ -869,10 +1251,10 @@ const RescheduleForm = () => {
             <button
               type="button"
               onClick={handleSubmit}
-              disabled={(requestType === 'reschedule' && upcomingSessions.length === 0) || !!pendingRequest}
+              disabled={saving || previewingSlots || (requestType === 'reschedule' && upcomingSessions.length === 0) || !!selectedSessionPendingRequest}
               className="rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-white transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              Kirim Pengajuan
+              {saving ? 'Mengirim...' : previewingSlots ? 'Mengecek opsi...' : 'Kirim Pengajuan'}
             </button>
           </div>
         </section>

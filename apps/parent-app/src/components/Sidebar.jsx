@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { notificationsApi } from '../../../shared/api/client';
+import { isNotificationRead } from '../../../shared/notifications';
 import { useClinicSettings } from '../../../shared/clinicSettings';
 import ClinicLogoMark from '../../../shared/ui/ClinicLogoMark';
 
@@ -17,6 +18,25 @@ const navItems = [
   { path: '/settings', icon: 'settings', label: 'Pengaturan' },
 ];
 
+function getParentBadgeType(notification) {
+  const type = String(notification?.type || '').toLowerCase();
+  const icon = String(notification?.icon || '').toLowerCase();
+
+  if (type.startsWith('announcement')) return 'announcement';
+  if (type.includes('report') || icon.includes('summarize')) return 'reports';
+  if (
+    type.includes('reschedule') ||
+    type.includes('schedule') ||
+    type.includes('session') ||
+    type.includes('center_closure') ||
+    type.includes('substitute')
+  ) {
+    return 'reschedule';
+  }
+
+  return 'announcement';
+}
+
 export default function Sidebar({ isOpen, onClose }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -28,16 +48,22 @@ export default function Sidebar({ isOpen, onClose }) {
   // Compute notification badges
   useEffect(() => {
     const computeBadges = async () => {
-      if (!user?.parentId) return;
+      if (!user?.parentId && !user?.id && !user?.userId) return;
       try {
         const res = await notificationsApi.getAll();
-        const allNotifs = res.data?.data || [];
-        const unread = allNotifs.filter(n => !n.isRead);
-        const reportCount = unread.filter(n => ['report_published'].includes(n.type)).length;
-        const rescheduleCount = unread.filter(n => ['reschedule_result', 'reschedule_request', 'schedule_change'].includes(n.type)).length;
-        const announcementCount = Math.max(0, unread.length - rescheduleCount - reportCount);
-        setBadgeCounts({ reports: reportCount, reschedule: rescheduleCount, announcement: announcementCount });
-      } catch(e) {}
+        if (!res.ok) return;
+
+        const nextCounts = { reports: 0, reschedule: 0, announcement: 0 };
+        (res.data?.data || [])
+          .filter(notification => !isNotificationRead(notification))
+          .forEach(notification => {
+            nextCounts[getParentBadgeType(notification)] += 1;
+          });
+
+        setBadgeCounts(nextCounts);
+      } catch(e) {
+        console.warn('[ParentSidebar] notifications unavailable', e);
+      }
     };
     computeBadges();
     window.addEventListener('notificationsUpdated', computeBadges);

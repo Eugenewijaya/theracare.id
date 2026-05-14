@@ -54,6 +54,12 @@ const formatCurrency = (value) => {
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(amount);
 };
 
+const calculateTotalForMode = ({ billingMode, totalSessions, pricePerSession, pricePerMonth, totalPrice }) => {
+    if (billingMode === 'package') return Number(totalPrice || 0);
+    if (billingMode === 'per_month') return Number(pricePerMonth || 0);
+    return Number(pricePerSession || 0) * Number(totalSessions || 0);
+};
+
 const ProgramForm = ({ data, onChange, errors }) => {
     const selected = data.program || '';
     const [therapists, setTherapists] = useState([]);
@@ -93,6 +99,11 @@ const ProgramForm = ({ data, onChange, errors }) => {
                 const icon = prog.icon || DEFAULT_PROGRAM_ICONS[prog.code] || 'star';
                 const c = colors[colorKey];
                 const pricing = programPricing[prog.code] || {};
+                const nextBillingMode = data.billingMode || pricing.billingMode || 'per_session';
+                const nextTotalSessions = Number(data.totalSessions || pricing.totalSessions || 12);
+                const nextPricePerSession = Number(pricing.pricePerSession || 0);
+                const nextPricePerMonth = Number(pricing.pricePerMonth || 0);
+                const nextPackagePrice = Number(pricing.totalPrice || 0);
                 
                 return (
                     <label key={prog.id} className={`flex items-center gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${isSelected ? `${c.border} ${c.bg}` : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 bg-white dark:bg-slate-900/30'}`}>
@@ -104,12 +115,18 @@ const ProgramForm = ({ data, onChange, errors }) => {
                                 programCode: prog.code,
                                 programDuration: prog.duration,
                                 programGoal: Array.isArray(prog.goals) ? prog.goals[0] || '' : '',
-                                programPricePerSession: pricing.pricePerSession || 0,
-                                programPricePerMonth: pricing.pricePerMonth || 0,
-                                totalPrice: data.totalPrice || pricing.totalPrice || 0,
-                                billingMode: data.billingMode || 'per_session',
+                                programPricePerSession: nextPricePerSession,
+                                programPricePerMonth: nextPricePerMonth,
+                                totalPrice: calculateTotalForMode({
+                                    billingMode: nextBillingMode,
+                                    totalSessions: nextTotalSessions,
+                                    pricePerSession: nextPricePerSession,
+                                    pricePerMonth: nextPricePerMonth,
+                                    totalPrice: nextPackagePrice,
+                                }),
+                                billingMode: nextBillingMode,
                                 periodStartDate: data.periodStartDate || todayString(),
-                                totalSessions: data.totalSessions || 12,
+                                totalSessions: nextTotalSessions,
                             })} className="sr-only" />
                         <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${c.bg}`}>
                             <span className={`material-symbols-outlined text-[20px] ${c.icon}`}>{icon}</span>
@@ -162,7 +179,20 @@ const ProgramForm = ({ data, onChange, errors }) => {
                         type="number"
                         min="1"
                         value={data.totalSessions || ''}
-                        onChange={(e) => onChange({ ...data, totalSessions: e.target.value })}
+                        onChange={(e) => {
+                            const totalSessions = Number(e.target.value || 0);
+                            onChange({
+                                ...data,
+                                totalSessions,
+                                totalPrice: calculateTotalForMode({
+                                    billingMode: data.billingMode || 'per_session',
+                                    totalSessions,
+                                    pricePerSession: data.programPricePerSession,
+                                    pricePerMonth: data.programPricePerMonth,
+                                    totalPrice: data.totalPrice,
+                                }),
+                            });
+                        }}
                         className={`w-full h-11 px-3 rounded-lg border ${errors?.totalSessions ? 'border-red-500 focus:ring-red-500' : 'border-slate-300 dark:border-slate-700 focus:ring-primary focus:border-primary'} bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-opacity-50`}
                         placeholder={data.billingMode === 'package' ? '8' : '12'}
                     />
@@ -175,7 +205,20 @@ const ProgramForm = ({ data, onChange, errors }) => {
                     <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">Mode Biaya</label>
                     <select
                         value={data.billingMode || 'per_session'}
-                        onChange={(e) => onChange({ ...data, billingMode: e.target.value })}
+                        onChange={(e) => {
+                            const billingMode = e.target.value;
+                            onChange({
+                                ...data,
+                                billingMode,
+                                totalPrice: calculateTotalForMode({
+                                    billingMode,
+                                    totalSessions: data.totalSessions,
+                                    pricePerSession: data.programPricePerSession,
+                                    pricePerMonth: data.programPricePerMonth,
+                                    totalPrice: data.totalPrice,
+                                }),
+                            });
+                        }}
                         className="w-full h-11 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-opacity-50 focus:border-primary"
                     >
                         <option value="per_session">Per sesi</option>
@@ -192,7 +235,20 @@ const ProgramForm = ({ data, onChange, errors }) => {
                         type="number"
                         min="0"
                         value={data.programPricePerSession || ''}
-                        onChange={(e) => onChange({ ...data, programPricePerSession: Number(e.target.value || 0) })}
+                        onChange={(e) => {
+                            const programPricePerSession = Number(e.target.value || 0);
+                            onChange({
+                                ...data,
+                                programPricePerSession,
+                                totalPrice: calculateTotalForMode({
+                                    billingMode: data.billingMode || 'per_session',
+                                    totalSessions: data.totalSessions,
+                                    pricePerSession: programPricePerSession,
+                                    pricePerMonth: data.programPricePerMonth,
+                                    totalPrice: data.totalPrice,
+                                }),
+                            });
+                        }}
                         className="w-full h-11 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-opacity-50 focus:border-primary"
                     />
                 </div>
@@ -202,7 +258,20 @@ const ProgramForm = ({ data, onChange, errors }) => {
                         type="number"
                         min="0"
                         value={data.programPricePerMonth || ''}
-                        onChange={(e) => onChange({ ...data, programPricePerMonth: Number(e.target.value || 0) })}
+                        onChange={(e) => {
+                            const programPricePerMonth = Number(e.target.value || 0);
+                            onChange({
+                                ...data,
+                                programPricePerMonth,
+                                totalPrice: calculateTotalForMode({
+                                    billingMode: data.billingMode || 'per_session',
+                                    totalSessions: data.totalSessions,
+                                    pricePerSession: data.programPricePerSession,
+                                    pricePerMonth: programPricePerMonth,
+                                    totalPrice: data.totalPrice,
+                                }),
+                            });
+                        }}
                         className="w-full h-11 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-opacity-50 focus:border-primary"
                     />
                 </div>
@@ -278,7 +347,7 @@ const ProgramForm = ({ data, onChange, errors }) => {
                     ))}
                 </select>
                 {errors?.therapistId && <p className="text-xs text-red-500 mt-1">{errors.therapistId}</p>}
-                <p className="text-xs text-slate-500 mt-2">Terapis utama akan ditetapkan sebagai terapis default untuk sesi anak ini, namun dapat diubah secara spesifik setiap sessinya.</p>
+                <p className="text-xs text-slate-500 mt-2">Terapis utama akan ditetapkan sebagai terapis default untuk sesi anak ini, namun dapat diubah secara spesifik setiap sesinya.</p>
             </div>
         </div>
     );

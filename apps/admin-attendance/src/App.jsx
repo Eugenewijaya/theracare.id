@@ -17,6 +17,9 @@ function getTherapistName(session) {
         || 'Terapis belum terdata';
 }
 
+const CONFIRMED_ATTENDANCE_STATUSES = new Set(['confirmed', 'active', 'done']);
+const FINAL_ATTENDANCE_STATUSES = new Set(['confirmed', 'active', 'done', 'cancelled']);
+
 function App() {
     const [attendanceData, setAttendanceData] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
@@ -40,7 +43,7 @@ function App() {
     }, []);
 
     const handleApprove = async (id) => {
-        const res = await sessionsApi.updateStatus(id, 'done');
+        const res = await sessionsApi.updateStatus(id, 'confirmed');
         if (res.ok) load();
     };
 
@@ -53,7 +56,7 @@ function App() {
 
     // Filter today's pending sessions for cards
     const pendingTodaySessions = attendanceData
-        .filter(s => s.date === today && s.status !== 'cancelled' && s.status !== 'done')
+        .filter(s => s.date === today && !FINAL_ATTENDANCE_STATUSES.has(s.status))
         .sort((a,b) => (a.startTime || '').localeCompare(b.startTime || ''))
         .map(s => {
             const now = new Date();
@@ -105,7 +108,7 @@ function App() {
 
     // Filter logs (done/cancelled)
     const logsData = attendanceData
-        .filter(s => s.status === 'done' || s.status === 'cancelled')
+        .filter(s => CONFIRMED_ATTENDANCE_STATUSES.has(s.status) || s.status === 'cancelled')
         .filter(s => {
             if (activeTab === 'today') return s.date === today;
             return isWithinTimeRange(s.date, historyFilter);
@@ -172,12 +175,12 @@ function App() {
                             {[
                                 { 
                                     label: 'Anak Hadir', 
-                                    value: attendanceData.filter(s => s.date === today && s.status === 'done').length.toString(), 
+                                    value: attendanceData.filter(s => s.date === today && CONFIRMED_ATTENDANCE_STATUSES.has(s.status)).length.toString(),
                                     icon: 'child_care', color: 'blue', accent: false 
                                 },
                                 { 
                                     label: 'Menunggu Persetujuan', 
-                                    value: attendanceData.filter(s => s.date === today && s.status !== 'cancelled' && s.status !== 'done').length.toString(), 
+                                    value: attendanceData.filter(s => s.date === today && !FINAL_ATTENDANCE_STATUSES.has(s.status)).length.toString(),
                                     icon: 'pending_actions', color: 'yellow', accent: true 
                                 },
                                 { 
@@ -254,8 +257,10 @@ function App() {
                                             </td>
                                             <td className="px-6 py-4 text-sm text-slate-700 dark:text-slate-300">{log.startTime} ({log.duration || '60 mins'})</td>
                                             <td className="px-6 py-4">
-                                                {log.status === 'done' ? (
-                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold bg-green-50 text-green-700 dark:bg-green-500/10 dark:text-green-400 border border-green-200 dark:border-green-500/20">Hadir</span>
+                                                {CONFIRMED_ATTENDANCE_STATUSES.has(log.status) ? (
+                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold bg-green-50 text-green-700 dark:bg-green-500/10 dark:text-green-400 border border-green-200 dark:border-green-500/20">
+                                                        {log.status === 'done' ? 'Selesai' : log.status === 'active' ? 'Berjalan' : 'Hadir'}
+                                                    </span>
                                                 ) : (
                                                     <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400 border border-red-200 dark:border-red-500/20">Tidak Hadir</span>
                                                 )}

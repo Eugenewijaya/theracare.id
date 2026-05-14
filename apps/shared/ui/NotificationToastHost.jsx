@@ -11,6 +11,7 @@ import {
 
 const MAX_VISIBLE_TOASTS = 3;
 const POLL_INTERVAL_MS = 30000;
+const TOAST_AUTO_DISMISS_MS = 5000;
 
 function readSeenIds(key) {
   try {
@@ -30,6 +31,7 @@ export default function NotificationToastHost({ enabled = true, role = 'user', u
   const [toasts, setToasts] = useState([]);
   const bootstrappedRef = useRef(false);
   const knownIdsRef = useRef(new Set());
+  const dismissTimersRef = useRef(new Map());
   const userKey = user?.userId || user?.id || user?.parentId || user?.nit || role || 'anonymous';
   const storageKey = useMemo(() => `theracare_notification_toasts_seen:${role}:${userKey}`, [role, userKey]);
 
@@ -40,6 +42,11 @@ export default function NotificationToastHost({ enabled = true, role = 'user', u
   }, [storageKey]);
 
   const removeToast = useCallback((id) => {
+    const timer = dismissTimersRef.current.get(id);
+    if (timer) {
+      window.clearTimeout(timer);
+      dismissTimersRef.current.delete(id);
+    }
     setToasts((prev) => prev.filter((toast) => toast.id !== id));
   }, []);
 
@@ -101,8 +108,27 @@ export default function NotificationToastHost({ enabled = true, role = 'user', u
     return () => {
       window.clearInterval(interval);
       window.removeEventListener('notificationsUpdated', refresh);
+      dismissTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+      dismissTimersRef.current.clear();
     };
   }, [enabled, refresh, userKey]);
+
+  useEffect(() => {
+    toasts.forEach((toast) => {
+      if (dismissTimersRef.current.has(toast.id)) return;
+      const timer = window.setTimeout(() => {
+        removeToast(toast.id);
+      }, TOAST_AUTO_DISMISS_MS);
+      dismissTimersRef.current.set(toast.id, timer);
+    });
+
+    const activeIds = new Set(toasts.map((toast) => toast.id));
+    dismissTimersRef.current.forEach((timer, id) => {
+      if (activeIds.has(id)) return;
+      window.clearTimeout(timer);
+      dismissTimersRef.current.delete(id);
+    });
+  }, [removeToast, toasts]);
 
   if (!enabled || toasts.length === 0) return null;
 

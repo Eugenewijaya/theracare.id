@@ -6,6 +6,7 @@ import { DEFAULT_CLINIC_SETTINGS, useClinicSettings } from '../../shared/clinicS
 import { confirmAction } from '../../shared/ui/confirmDialog';
 
 const ASSET_ACCEPT = 'image/png,image/jpeg,image/webp,image/svg+xml,image/gif,image/x-icon,image/vnd.microsoft.icon,.ico';
+const ACCEPTED_ASSET_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml', 'image/gif', 'image/x-icon', 'image/vnd.microsoft.icon'];
 const MAX_ASSET_SIZE = 5 * 1024 * 1024;
 
 function inferContentType(file) {
@@ -195,7 +196,7 @@ function App() {
         }
 
         const contentType = inferContentType(file);
-        if (!ASSET_ACCEPT.includes(contentType) && contentType !== 'image/x-icon') {
+        if (!ACCEPTED_ASSET_TYPES.includes(contentType) && !file.name.toLowerCase().endsWith('.ico')) {
             showToast('Format file tidak didukung. Gunakan PNG, JPG, WebP, SVG, GIF, atau ICO.', 'error');
             return;
         }
@@ -214,10 +215,12 @@ function App() {
             }
             const url = res.data?.data?.url;
             if (!url) throw new Error('Storage tidak mengembalikan URL file.');
-            if (kind === 'logo') setLogoUrl(url);
-            if (kind === 'favicon') setFaviconUrl(url);
-            if (kind === 'photo') setCenterPhotoUrl(url);
-            showToast('File berhasil diupload. Klik Save Changes untuk menyimpan branding.');
+            const settingKey = kind === 'logo' ? 'logoUrl' : kind === 'favicon' ? 'faviconUrl' : 'centerPhotoUrl';
+            const nextSettings = await save({ [settingKey]: url });
+            if (kind === 'logo') setLogoUrl(nextSettings.logoUrl || url);
+            if (kind === 'favicon') setFaviconUrl(nextSettings.faviconUrl || url);
+            if (kind === 'photo') setCenterPhotoUrl(nextSettings.centerPhotoUrl || url);
+            showToast('File berhasil diupload dan langsung disimpan ke branding.');
         } catch (e) {
             showToast(e.message || 'Gagal upload file ke storage bucket.', 'error');
         } finally {
@@ -564,7 +567,7 @@ function App() {
                                             <div>
                                                 <p className="text-base font-bold leading-tight mb-1">Center Logo</p>
                                                 <p className="text-slate-500 dark:text-slate-400 text-xs">Used on main navigation, portals, and PDF reports.</p>
-                                                <p className="text-slate-500 dark:text-slate-400 text-xs mt-1">Upload to CDN storage bucket or paste a hosted PNG/SVG URL.</p>
+                                                <p className="text-slate-500 dark:text-slate-400 text-xs mt-1">Upload akan langsung tersimpan ke branding. URL manual tetap bisa disimpan lewat Save Changes.</p>
                                             </div>
                                         </div>
                                         <div className="flex flex-col gap-2">
@@ -590,7 +593,7 @@ function App() {
                                             <div>
                                                 <p className="text-base font-bold leading-tight mb-1">Favicon</p>
                                                 <p className="text-slate-500 dark:text-slate-400 text-xs">Shown in browser tabs.</p>
-                                                <p className="text-slate-500 dark:text-slate-400 text-xs mt-1">Upload PNG/ICO, 32x32px or 64x64px.</p>
+                                                <p className="text-slate-500 dark:text-slate-400 text-xs mt-1">Upload PNG/ICO langsung disimpan untuk semua portal.</p>
                                             </div>
                                         </div>
                                         <div className="flex flex-col gap-2">
@@ -618,7 +621,7 @@ function App() {
                                             <div>
                                                 <p className="text-base font-bold leading-tight mb-1">Center Photo</p>
                                                 <p className="text-slate-500 dark:text-slate-400 text-xs">Used as the welcome visual on portal login pages.</p>
-                                                <p className="text-slate-500 dark:text-slate-400 text-xs mt-1">Upload a landscape JPG/PNG/WebP from your storage bucket.</p>
+                                                <p className="text-slate-500 dark:text-slate-400 text-xs mt-1">Upload foto center langsung aktif di semua portal.</p>
                                             </div>
                                         </div>
                                         <div className="flex flex-col gap-2">

@@ -15,6 +15,7 @@ import ClinicLogoMark from '../../shared/ui/ClinicLogoMark';
 import NotificationToastHost from '../../shared/ui/NotificationToastHost';
 import AutoRefreshHost from '../../shared/ui/AutoRefreshHost';
 import FriendlyLoader from '../../shared/ui/FriendlyLoader';
+import { getNotificationDestination } from '../../shared/notifications';
 
 const ParentWebDashboard = lazy(() => import('../../parent-web-dashboard/src/App'));
 const ParentReportsArchive = lazy(() => import('../../parent-reports-archive/src/App'));
@@ -104,7 +105,7 @@ function DashboardLayout() {
         <NotificationToastHost
           user={user}
           role="parent"
-          onOpenNotifications={(notification) => navigate(notification?.type === 'report_published' ? '/reports' : '/announcements')}
+          onOpenNotifications={(notification) => navigate(getNotificationDestination(notification, 'parent'))}
         />
         <div className="min-h-0 flex-1 overflow-y-auto bg-background-light dark:bg-background-dark">
           <Suspense fallback={<Loading />}>

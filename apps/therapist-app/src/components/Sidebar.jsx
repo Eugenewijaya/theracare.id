@@ -9,9 +9,9 @@ const navItems = [
   { path: '/', icon: 'space_dashboard', label: 'Dasbor', end: true },
   { path: '/schedule', icon: 'calendar_today', label: 'Jadwal Terapi' },
   { path: '/schedule-updates', icon: 'event_repeat', label: 'Pembaruan Jadwal', badgeType: 'schedule' },
-  { path: '/leave-requests', icon: 'event_busy', label: 'Pengajuan Cuti' },
+  { path: '/leave-requests', icon: 'event_busy', label: 'Pengajuan Cuti', badgeType: 'leave' },
   { path: '/availability', icon: 'date_range', label: 'Ketersediaan' },
-  { path: '/reports', icon: 'description', label: 'Laporan Anak' },
+  { path: '/reports', icon: 'description', label: 'Laporan Anak', badgeType: 'report' },
   { path: '/performance', icon: 'insights', label: 'Kinerja' },
   { path: '/meetings', icon: 'groups', label: 'Pertemuan Orang Tua' },
   { path: '/child-progress', icon: 'trending_up', label: 'Kemajuan Anak' },
@@ -22,13 +22,25 @@ const SCHEDULE_NOTIFICATION_TYPES = [
   'schedule_change',
   'schedule_change_confirmation',
   'schedule_change_result',
+  'schedule_conflict',
   'program_change_confirmation',
   'program_enrollment',
   'new_session',
+  'session_attendance_confirmed',
   'reschedule_request',
   'reschedule_result',
   'substitute_confirmation',
   'substitute_result',
+  'center_closure',
+];
+
+const REPORT_NOTIFICATION_TYPES = [
+  'report_revision_requested',
+  'report_reminder',
+];
+
+const LEAVE_NOTIFICATION_TYPES = [
+  'therapist_leave_result',
 ];
 
 export default function Sidebar({ isOpen, onClose }) {
@@ -36,7 +48,7 @@ export default function Sidebar({ isOpen, onClose }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { clinicName, primaryColor, logoUrl } = useClinicSettings();
-  const [badgeCounts, setBadgeCounts] = useState({ schedule: 0, notification: 0 });
+  const [badgeCounts, setBadgeCounts] = useState({ schedule: 0, leave: 0, report: 0, notification: 0 });
   const [totalUnread, setTotalUnread] = useState(0);
   const [sidebarWidth, setSidebarWidth] = useState(280);
 
@@ -51,8 +63,10 @@ export default function Sidebar({ isOpen, onClose }) {
         setTotalUnread(unread.length);
         
         const scheduleCount = unread.filter(n => SCHEDULE_NOTIFICATION_TYPES.includes(n.type)).length;
-        const notifCount = unread.length - scheduleCount;
-        setBadgeCounts({ schedule: scheduleCount, notification: notifCount });
+        const leaveCount = unread.filter(n => LEAVE_NOTIFICATION_TYPES.includes(n.type)).length;
+        const reportCount = unread.filter(n => REPORT_NOTIFICATION_TYPES.includes(n.type)).length;
+        const notifCount = Math.max(0, unread.length - scheduleCount - leaveCount - reportCount);
+        setBadgeCounts({ schedule: scheduleCount, leave: leaveCount, report: reportCount, notification: notifCount });
       } catch (err) {
       console.error('Failed to load notifications', err);
       }

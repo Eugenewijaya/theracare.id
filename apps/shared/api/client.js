@@ -225,6 +225,7 @@ export const rescheduleApi = {
   getAll: () => api.get('/reschedule'),
   getByParent: (id) => api.get(`/reschedule/parent/${id}`),
   getForTherapist: (id) => api.get(`/reschedule/therapist/${id}`),
+  previewSlots: (data) => api.post('/reschedule/preview-slots', data),
   create: (data) => api.post('/reschedule', data),
   updateStatus: (id, status, updates) => api.patch(`/reschedule/${id}`, { status, ...updates }),
   therapistResponse: (id, data) => api.patch(`/reschedule/${id}/therapist-response`, data),

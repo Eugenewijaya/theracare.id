@@ -63,6 +63,22 @@ router.post("/", requireAuth, requireRole("parent"), async (req, res, next) => {
   }
 });
 
+router.post("/preview-slots", requireAuth, requireRole("parent"), async (req, res, next) => {
+  try {
+    const { childId, sessionId, proposedSlots } = req.body || {};
+    if (!childId || !sessionId) return badRequest(res, "Data sesi dan anak wajib diisi");
+    const parent = await parentService.getByUserId(req.user!.id);
+    if (!parent) return res.status(403).json({ success: false, error: "Akses orang tua tidak sesuai" });
+    const child = await childService.getById(childId);
+    if (!child || child.parentId !== parent.id) {
+      return res.status(403).json({ success: false, error: "Data anak tidak sesuai dengan akun orang tua" });
+    }
+    ok(res, await rescheduleService.previewSlotsForSession({ childId, sessionId, proposedSlots }));
+  } catch (e) {
+    next(e);
+  }
+});
+
 router.patch("/:id/therapist-response", requireAuth, requireRole("therapist"), async (req, res, next) => {
   try {
     const therapist = await therapistService.getByUserId(req.user!.id);

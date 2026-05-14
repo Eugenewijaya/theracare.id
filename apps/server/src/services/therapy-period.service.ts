@@ -257,6 +257,15 @@ export const therapyPeriodService = {
     const childId = String(data.childId || "");
     const child = await db.query.children.findFirst({ where: eq(children.id, childId) });
     if (!child) return null;
+    const generationRules = normalizeScheduleRules(data.scheduleRules, data.therapistId);
+    if (data.generateSessions) {
+      if (generationRules.length === 0) {
+        throw new Error("Pilih minimal satu hari terapi, jam mulai, dan terapis utama sebelum membuat jadwal sesi.");
+      }
+      if (generationRules.some((rule) => !rule.therapistId)) {
+        throw new Error("Setiap aturan jadwal wajib memiliki therapistId.");
+      }
+    }
 
     const therapyProgram = await findOrCreateTherapyProgram({ ...data, childId });
     const periodNumber = Number(data.periodNumber || await getNextPeriodNumber(childId));
@@ -266,6 +275,7 @@ export const therapyPeriodService = {
       childId,
       therapyProgramId: therapyProgram.id,
       programId: data.programId || therapyProgram.programId,
+      scheduleRules: Array.isArray(data.scheduleRules) ? generationRules : data.scheduleRules,
       periodNumber,
       name: data.name || `Periode ${periodNumber}`,
       startDate,
@@ -293,7 +303,7 @@ export const therapyPeriodService = {
       .where(eq(therapyPrograms.id, therapyProgram.id));
 
     const generation = data.generateSessions
-      ? await this.generateSessions(period.id, { scheduleRules: data.scheduleRules })
+      ? await this.generateSessions(period.id, { scheduleRules: generationRules })
       : null;
 
     await notifyPeriodCreated(period.id, generation || undefined);

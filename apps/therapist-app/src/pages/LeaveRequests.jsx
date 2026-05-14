@@ -13,6 +13,12 @@ const STATUS_STYLE = {
   rejected: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
 };
 
+const STATUS_LABELS = {
+  pending: 'Menunggu Review',
+  approved: 'Disetujui',
+  rejected: 'Ditolak',
+};
+
 function todayKey() {
   return new Date().toISOString().split('T')[0];
 }
@@ -35,6 +41,7 @@ export default function LeaveRequests() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
+  const [statusFilter, setStatusFilter] = useState('all');
   const [form, setForm] = useState({
     type: 'cuti',
     startDate: todayKey(),
@@ -42,8 +49,8 @@ export default function LeaveRequests() {
     reason: '',
   });
 
-  const load = async () => {
-    setLoading(true);
+  const load = async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
     try {
       const res = await leaveRequestsApi.getMine();
       setRequests(res.data?.data || []);
@@ -51,12 +58,21 @@ export default function LeaveRequests() {
       console.error(e);
       setToast({ type: 'error', message: 'Gagal memuat pengajuan.' });
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
   useEffect(() => {
     load();
+    const refresh = () => load({ silent: true });
+    const interval = window.setInterval(refresh, 30000);
+    window.addEventListener('leaveRequestsUpdated', refresh);
+    window.addEventListener('notificationsUpdated', refresh);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('leaveRequestsUpdated', refresh);
+      window.removeEventListener('notificationsUpdated', refresh);
+    };
   }, []);
 
   const stats = useMemo(() => ({
@@ -64,6 +80,9 @@ export default function LeaveRequests() {
     approved: requests.filter((item) => item.status === 'approved').length,
     rejected: requests.filter((item) => item.status === 'rejected').length,
   }), [requests]);
+  const filteredRequests = useMemo(() => (
+    statusFilter === 'all' ? requests : requests.filter((item) => item.status === statusFilter)
+  ), [requests, statusFilter]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -83,6 +102,7 @@ export default function LeaveRequests() {
       setToast({ type: 'success', message: 'Pengajuan berhasil dikirim ke admin.' });
       await load();
       window.dispatchEvent(new Event('notificationsUpdated'));
+      window.dispatchEvent(new Event('leaveRequestsUpdated'));
     } catch (err) {
       console.error(err);
       setToast({ type: 'error', message: 'Pengajuan gagal dikirim.' });
@@ -190,22 +210,48 @@ export default function LeaveRequests() {
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
-              <div className="border-b border-slate-200 px-5 py-4 dark:border-slate-700">
-                <h2 className="text-base font-black text-slate-900 dark:text-white">Riwayat Pengajuan</h2>
+              <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 dark:border-slate-700 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="text-base font-black text-slate-900 dark:text-white">Riwayat Pengajuan</h2>
+                  <p className="mt-0.5 text-xs font-semibold text-slate-500 dark:text-slate-400">Status terbaru akan otomatis tersinkron setelah admin review.</p>
+                </div>
+                <div className="grid grid-cols-2 gap-2 sm:flex">
+                  {[
+                    ['all', 'Semua'],
+                    ['pending', 'Pending'],
+                    ['approved', 'Approved'],
+                    ['rejected', 'Rejected'],
+                  ].map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setStatusFilter(value)}
+                      className={`rounded-lg px-3 py-2 text-xs font-black transition-colors ${
+                        statusFilter === value
+                          ? 'bg-teal-600 text-white'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-700'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
               </div>
               <div className="divide-y divide-slate-100 dark:divide-slate-700">
                 {loading ? (
                   <div className="p-8 text-center text-sm font-semibold text-slate-500">Memuat pengajuan...</div>
-                ) : requests.length === 0 ? (
-                  <div className="p-8 text-center text-sm font-semibold text-slate-500">Belum ada pengajuan cuti.</div>
-                ) : requests.map((request) => (
+                ) : filteredRequests.length === 0 ? (
+                  <div className="p-8 text-center text-sm font-semibold text-slate-500">
+                    {requests.length === 0 ? 'Belum ada pengajuan cuti.' : 'Tidak ada pengajuan pada filter ini.'}
+                  </div>
+                ) : filteredRequests.map((request) => (
                   <article key={request.id} className="p-5">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           <h3 className="text-sm font-black text-slate-900 dark:text-white">{getTypeLabel(request.type)}</h3>
                           <span className={`rounded-full px-2.5 py-1 text-[11px] font-black uppercase ${STATUS_STYLE[request.status] || STATUS_STYLE.pending}`}>
-                            {request.status}
+                            {STATUS_LABELS[request.status] || request.status}
                           </span>
                         </div>
                         <p className="mt-1 text-sm font-semibold text-slate-600 dark:text-slate-300">
@@ -216,6 +262,20 @@ export default function LeaveRequests() {
                           <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600 dark:bg-slate-900/50 dark:text-slate-300">
                             Catatan admin: {request.reviewNote}
                           </p>
+                        )}
+                        {Array.isArray(request.history) && request.history.length > 0 && (
+                          <details className="mt-3 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-900/50">
+                            <summary className="cursor-pointer font-black text-slate-600 dark:text-slate-300">Lihat log status</summary>
+                            <div className="mt-2 space-y-1.5 text-slate-500 dark:text-slate-400">
+                              {request.history.map((log, index) => (
+                                <p key={`${log.createdAt}-${index}`}>
+                                  <span className="font-black">{STATUS_LABELS[log.status] || log.status}</span>
+                                  {log.note ? ` - ${log.note}` : ''}
+                                  <span className="opacity-70"> ({formatDate(String(log.createdAt || '').slice(0, 10))})</span>
+                                </p>
+                              ))}
+                            </div>
+                          </details>
                         )}
                       </div>
                       <p className="text-xs font-semibold text-slate-400">{formatDate(request.createdAt?.slice(0, 10))}</p>

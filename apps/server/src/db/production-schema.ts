@@ -152,5 +152,13 @@ export async function ensureProductionSchema() {
     CREATE INDEX IF NOT EXISTS audit_logs_created_at_idx ON audit_logs(created_at);
     CREATE INDEX IF NOT EXISTS audit_logs_entity_idx ON audit_logs(entity_type, entity_id);
     CREATE INDEX IF NOT EXISTS audit_logs_actor_user_id_idx ON audit_logs(actor_user_id);
+
+    DO $$
+    BEGIN
+      IF to_regclass('public.announcements') IS NOT NULL THEN
+        ALTER TABLE announcements
+          ADD COLUMN IF NOT EXISTS category text NOT NULL DEFAULT 'general';
+      END IF;
+    END $$;
   `);
 }

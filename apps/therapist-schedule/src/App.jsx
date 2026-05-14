@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { authApi, sessionsApi } from '../../shared/api/client';
+import { adminApi, authApi, leaveRequestsApi, sessionsApi, therapistsApi } from '../../shared/api/client';
 import PortalProfileMenu from '../../shared/ui/PortalProfileMenu';
+import TherapistWeeklyScheduleTable from '../../shared/ui/TherapistWeeklyScheduleTable';
 import { clearTherapistUser, readTherapistUser } from '../../shared/sessionIdentity';
 
 const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const ATTENDANCE_CONFIRMED_STATUSES = new Set(['confirmed', 'checked_in', 'present']);
 
 function parseDate(str) {
     if (!str) return new Date();
@@ -50,6 +52,10 @@ function getRemainingSeconds(session) {
     return Math.max(0, total - Math.floor((Date.now() - started) / 1000));
 }
 
+function isAttendanceConfirmed(session) {
+    return ATTENDANCE_CONFIRMED_STATUSES.has(String(session?.raw?.status || session?.status || '').toLowerCase());
+}
+
 function getProgramStyle(programType = '') {
     if (programType.includes('Occupational') || programType === 'OT') return { tag: 'OT', color: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' };
     if (programType.includes('Speech') || programType === 'ST') return { tag: 'ST', color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' };
@@ -69,7 +75,11 @@ function App({ onLogout }) {
 
     const [currentDate, setCurrentDate] = useState(new Date());
     const [sessions, setSessions] = useState([]);
+    const [allSessions, setAllSessions] = useState([]);
+    const [leaveRequests, setLeaveRequests] = useState([]);
+    const [centerClosures, setCenterClosures] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [actionError, setActionError] = useState('');
     
     const [finishModal, setFinishModal] = useState(null);
     const [startModal, setStartModal] = useState(null);
@@ -82,8 +92,19 @@ function App({ onLogout }) {
         }
         const dateKey = formatKey(currentDate);
         try {
-            const res = await sessionsApi.getForTherapist(currentUser.id, dateKey);
+            const [res, allRes, profileRes, leaveRes, closureRes] = await Promise.all([
+                sessionsApi.getForTherapist(currentUser.id, dateKey),
+                sessionsApi.getForTherapist(currentUser.id),
+                therapistsApi.getMe().catch(() => ({ data: { data: null } })),
+                leaveRequestsApi.getMine().catch(() => ({ data: { data: [] } })),
+                adminApi.getCenterClosures().catch(() => ({ data: { data: { closures: [] } } })),
+            ]);
             const rawSessions = res.data?.data || [];
+            const profile = profileRes.data?.data;
+            if (profile?.id) setCurrentUser(prev => prev ? { ...prev, ...profile } : profile);
+            setAllSessions(allRes.data?.data || rawSessions);
+            setLeaveRequests(leaveRes.data?.data || []);
+            setCenterClosures(closureRes.data?.data?.closures || []);
             
             const mapped = rawSessions.map(s => {
                 const program = s.focus || s.child?.therapyPrograms?.[0]?.type || 'General Therapy';
@@ -103,8 +124,10 @@ function App({ onLogout }) {
             }).sort((a, b) => a.start.localeCompare(b.start));
             
             setSessions(mapped);
+            setActionError('');
         } catch (e) {
             console.error('Failed to load therapist schedule', e);
+            setActionError(e?.data?.error || e?.message || 'Jadwal belum bisa dimuat. Coba refresh sebentar lagi.');
         } finally {
             setLoading(false);
         }
@@ -194,12 +217,14 @@ function App({ onLogout }) {
     const confirmStart = async () => {
         if (!startModal) return;
         try {
+            setActionError('');
             await sessionsApi.updateStatus(startModal.id, 'active');
             loadSessions();
             window.dispatchEvent(new Event('sessionUpdated'));
             setTimeLeft(getDurationSeconds(startModal));
         } catch (e) {
             console.error('Failed to start session', e);
+            setActionError(e?.data?.error || e?.message || 'Sesi belum bisa dimulai. Pastikan admin sudah mengonfirmasi kehadiran anak.');
         }
         setStartModal(null);
     };
@@ -260,6 +285,12 @@ function App({ onLogout }) {
                     <div className="space-y-6">
                         <h2 className="text-2xl font-bold mb-6">{isToday ? "Today's Sessions" : `${isTomorrow ? "Tomorrow's" : formatDisplay(currentDate).split(',')[0] + "'s"} Sessions`}</h2>
 
+                        {actionError && (
+                            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-200">
+                                {actionError}
+                            </div>
+                        )}
+
                         {loading ? (
                             <div className="flex justify-center p-10"><span className="text-slate-500">Loading schedule...</span></div>
                         ) : sessions.length === 0 ? (
@@ -273,7 +304,8 @@ function App({ onLogout }) {
                                 const state = session.status;
                                 const isDone = state === 'done';
                                 const isActive = state === 'active';
-                                const canStart = (state === 'upcoming' || state === 'next') && !activeInSchedule;
+                                const attendanceConfirmed = isAttendanceConfirmed(session);
+                                const canStart = attendanceConfirmed && !activeInSchedule;
 
                                 return (
                                     <div key={session.id} className={`relative overflow-hidden flex flex-col lg:flex-row items-start lg:items-center justify-between p-5 sm:p-6 gap-5 lg:gap-0 rounded-2xl shadow-sm transition-all ${
@@ -333,13 +365,15 @@ function App({ onLogout }) {
                                                 <button
                                                     onClick={canStart ? () => openStart(session) : undefined}
                                                     disabled={!canStart}
+                                                    title={attendanceConfirmed ? 'Mulai sesi terapi' : 'Menunggu admin mengonfirmasi kehadiran anak'}
                                                     className={`flex-1 lg:flex-none px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl font-bold flex items-center justify-center gap-2 border min-w-[160px] transition-colors text-sm sm:text-base ${
                                                         canStart
                                                             ? 'bg-primary text-slate-900 border-primary hover:bg-primary/90 cursor-pointer'
                                                             : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed border-slate-200 dark:border-slate-700'
                                                     }`}
                                                 >
-                                                    <span className="material-symbols-outlined text-[20px]">play_circle</span> Start Session
+                                                    <span className="material-symbols-outlined text-[20px]">{attendanceConfirmed ? 'play_circle' : 'lock_clock'}</span>
+                                                    {attendanceConfirmed ? 'Start Session' : 'Menunggu Hadir'}
                                                 </button>
                                             )}
                                         </div>
@@ -348,6 +382,19 @@ function App({ onLogout }) {
                             })
                         )}
                     </div>
+
+                    <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                        <TherapistWeeklyScheduleTable
+                            title="Jadwal Terapi Mingguan Saya"
+                            subtitle="Sumber jadwal yang sama dengan dashboard: sesi aktif, jadwal kerja, cuti, dan off center."
+                            sessions={allSessions}
+                            therapists={currentUser ? [currentUser] : []}
+                            leaveRequests={leaveRequests}
+                            centerClosures={centerClosures}
+                            initialDate={currentDate}
+                            compact
+                        />
+                    </section>
                 </div>
             </main>
 

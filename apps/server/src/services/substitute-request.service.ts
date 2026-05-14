@@ -141,6 +141,7 @@ export const substituteRequestService = {
     const availability = await evaluateTherapistSlot(data.substituteTherapistId, {
       date: session.date,
       time: session.startTime,
+      duration: session.duration || undefined,
     }, session.id);
     if (availability.status !== "available") {
       throw httpError(409, availability.reason || "Terapis pengganti bentrok pada slot tersebut", availability);

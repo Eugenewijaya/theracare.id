@@ -17,7 +17,7 @@ router.get("/announcements", requireAuth, requireRole("admin"), async (req, res,
 router.get("/announcements/role/:role", requireAuth, async (req, res, next) => {
   try {
     const requestedRole = req.params.role as string;
-    if (req.user?.role !== "admin" && requestedRole !== "all" && requestedRole !== req.user?.role) {
+    if (req.user?.role !== "admin" && requestedRole !== req.user?.role) {
       return res.status(403).json({ success: false, error: "Akses pengumuman ditolak" });
     }
     ok(res, await announcementService.getForRole(requestedRole));
@@ -25,6 +25,11 @@ router.get("/announcements/role/:role", requireAuth, async (req, res, next) => {
 });
 router.post("/announcements", requireAuth, requireRole("admin"), async (req, res, next) => {
   try {
+    if (!req.body?.title?.trim()) return badRequest(res, "Judul pengumuman wajib diisi");
+    if (!req.body?.content?.trim()) return badRequest(res, "Isi pengumuman wajib diisi");
+    if (!Array.isArray(req.body?.targetRoles) || req.body.targetRoles.length === 0) {
+      return badRequest(res, "Pilih minimal satu target penerima");
+    }
     const announcement = await announcementService.create({ ...req.body, createdBy: req.user!.id });
     await auditLogService.create({
       actor: req.user,
@@ -32,13 +37,18 @@ router.post("/announcements", requireAuth, requireRole("admin"), async (req, res
       entityType: "announcement",
       entityId: announcement.id,
       summary: `Pengumuman ${announcement.title || announcement.id} dibuat`,
-      metadata: { targetRoles: announcement.targetRoles || req.body?.targetRoles || req.body?.targetRole || ["all"] },
+      metadata: { targetRoles: announcement.targetRoles || req.body?.targetRoles || req.body?.targetRole || ["all"], category: announcement.category || req.body?.category || "general" },
     });
     created(res, announcement);
   } catch (e) { next(e); }
 });
 router.patch("/announcements/:id", requireAuth, requireRole("admin"), async (req, res, next) => {
   try {
+    if (typeof req.body?.title === "string" && !req.body.title.trim()) return badRequest(res, "Judul pengumuman wajib diisi");
+    if (typeof req.body?.content === "string" && !req.body.content.trim()) return badRequest(res, "Isi pengumuman wajib diisi");
+    if (Array.isArray(req.body?.targetRoles) && req.body.targetRoles.length === 0 && req.body?.isActive !== false) {
+      return badRequest(res, "Pilih minimal satu target penerima");
+    }
     const result = await announcementService.update(req.params.id as string, req.body);
     if (!result) return notFound(res);
     await auditLogService.create({

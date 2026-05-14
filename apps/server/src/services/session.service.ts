@@ -1,10 +1,11 @@
 import { db } from "../db/index.js";
 import { reports, rescheduleRequests, sessionRatings, therapySessions } from "../db/schema.js";
-import { eq, and, gte, sql } from "drizzle-orm";
+import { eq, and, gte, inArray, sql } from "drizzle-orm";
 import { generateId } from "../utils/id-generators.js";
 import { httpError } from "../utils/http-error.js";
 import { attachChildPhotoUrl, getChildPhotoUrlMap } from "./child.service.js";
 import { evaluateSessionSlot } from "./scheduling-availability.service.js";
+import { notificationService } from "./notification.service.js";
 
 type TherapySessionInsert = typeof therapySessions.$inferInsert;
 
@@ -111,7 +112,7 @@ export const sessionService = {
 
   async getCompletedForChild(childId: string) {
     const sessions = await db.query.therapySessions.findMany({
-      where: and(eq(therapySessions.childId, childId), eq(therapySessions.status, "done")),
+      where: and(eq(therapySessions.childId, childId), inArray(therapySessions.status, ["done", "completed"])),
       with: { therapist: { with: { user: true } }, therapyPeriod: { with: { program: true } } },
       orderBy: (s, { desc }) => [desc(s.date), desc(s.startTime)],
     });
@@ -167,6 +168,12 @@ export const sessionService = {
   },
 
   async updateStatus(id: string, status: string, cancelReason?: string) {
+    const existing = await db.query.therapySessions.findFirst({
+      where: eq(therapySessions.id, id),
+      with: { therapist: { with: { user: true } }, child: true },
+    });
+    if (!existing) return null;
+
     const timestampUpdates: Partial<typeof therapySessions.$inferInsert> = {};
     if (status === "active") {
       timestampUpdates.startedAt = new Date();
@@ -179,11 +186,39 @@ export const sessionService = {
       timestampUpdates.startedAt = null;
       timestampUpdates.endedAt = null;
     }
-    const [updated] = await db.update(therapySessions)
-      .set({ status, ...timestampUpdates, ...(cancelReason ? { cancelReason } : {}) })
-      .where(eq(therapySessions.id, id))
-      .returning();
-    return updated;
+
+    return db.transaction(async (tx) => {
+      const [updated] = await tx.update(therapySessions)
+        .set({ status, ...timestampUpdates, ...(cancelReason ? { cancelReason } : {}) })
+        .where(eq(therapySessions.id, id))
+        .returning();
+
+      const therapistUserId = existing.therapist?.userId || existing.therapist?.user?.id;
+      const childName = existing.child?.name || existing.childId;
+      if (updated && status === "confirmed" && therapistUserId) {
+        await notificationService.create({
+          type: "session_attendance_confirmed",
+          icon: "how_to_reg",
+          title: "Anak sudah dikonfirmasi hadir",
+          message: `${childName} sudah dikonfirmasi hadir untuk sesi ${existing.startTime}. Sesi dapat dimulai saat waktunya.`,
+          targetRole: "therapist",
+          targetUserId: therapistUserId,
+          relatedId: id,
+        }, tx);
+      }
+      if (updated && status === "done" && therapistUserId) {
+        await notificationService.create({
+          type: "report_reminder",
+          icon: "edit_note",
+          title: "Laporan harian perlu diisi",
+          message: `Sesi ${childName} sudah selesai. Simpan draft atau kirim laporan harian agar orang tua mendapat update.`,
+          targetRole: "therapist",
+          targetUserId: therapistUserId,
+          relatedId: id,
+        }, tx);
+      }
+      return updated;
+    });
   },
 
   async saveNotes(id: string, notes: string) {

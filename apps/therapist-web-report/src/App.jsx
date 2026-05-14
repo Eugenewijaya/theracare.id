@@ -20,11 +20,17 @@ const getChildrenFromSessions = (sessions) => {
         sessions.forEach(s => {
             if (s.child && !childMap.has(s.child.id)) {
                 const childSessions = sessions.filter(sess => sess.childId === s.child.id);
-                const completed = childSessions.filter(sess => sess.status === 'done').length;
+                const activePeriod = (s.child.therapyPeriods || []).find(period => period.status === 'active') || (s.child.therapyPeriods || [])[0] || null;
+                const periodSessions = activePeriod?.id
+                    ? childSessions.filter(sess => sess.therapyPeriodId === activePeriod.id)
+                    : childSessions;
+                const completed = activePeriod?.completedSessions ?? periodSessions.filter(sess => sess.status === 'done').length;
+                const total = activePeriod?.totalSessions || periodSessions.length || childSessions.length;
                 childMap.set(s.child.id, {
                     ...s.child,
-                    program: s.child.therapyPrograms?.[0]?.type || 'General Therapy',
-                    totalSessions: childSessions.length,
+                    program: activePeriod?.program?.name || activePeriod?.therapyProgram?.type || s.child.therapyPrograms?.[0]?.type || 'General Therapy',
+                    activePeriodId: activePeriod?.id || '',
+                    totalSessions: total,
                     completedSessions: completed
                 });
             }
@@ -110,6 +116,57 @@ const SCALES = [
 ];
 
 const ASPECTS_CHECKBOX = ['Fine Motor Skills', 'Gross Motor Skills', 'Speech & Language', 'Cognitive', 'Social Emotional', 'Self-Care', 'Sensory Processing'];
+const PERIODIC_UNLOCK_PERCENT = 50;
+const REPORT_SUBMIT_STATUS = 'ready_for_parent';
+const REPORT_DRAFT_STATUS = 'draft';
+
+const INITIAL_OBSERVATION_ITEMS = [
+    {
+        id: 'eye_contact',
+        aspect: 'Kontak Mata',
+        prompt: 'Respons kontak mata saat diajak bicara dan saat memperhatikan materi terapi.',
+    },
+    {
+        id: 'name_response',
+        aspect: 'Respons Ketika Nama Dipanggil',
+        prompt: 'Konsistensi anak melihat atau merespons saat namanya dipanggil.',
+    },
+    {
+        id: 'dominant_hand',
+        aspect: 'Dominan Tangan',
+        prompt: 'Tangan yang paling sering digunakan saat aktivitas, tos, memegang alat tulis, atau bermain.',
+    },
+    {
+        id: 'learning_endurance',
+        aspect: 'Ketahanan Belajar',
+        prompt: 'Durasi anak dapat duduk, mengikuti instruksi, menunggu giliran, dan menyelesaikan aktivitas.',
+    },
+    {
+        id: 'communication',
+        aspect: 'Komunikasi',
+        prompt: 'Cara anak meminta sesuatu, menolak aktivitas, mengikuti instruksi, dan menyampaikan kebutuhan.',
+    },
+    {
+        id: 'cognitive',
+        aspect: 'Kognitif',
+        prompt: 'Pemahaman anggota tubuh, warna, huruf, angka, urutan, pra-akademik, dan pemecahan masalah sederhana.',
+    },
+    {
+        id: 'pre_school',
+        aspect: 'Kemampuan Pra Sekolah',
+        prompt: 'Kemampuan meniru, menulis, memegang alat tulis, mengikuti tugas meja, dan kesiapan belajar.',
+    },
+    {
+        id: 'motor',
+        aspect: 'Kemampuan Motorik',
+        prompt: 'Motorik halus, motorik kasar, keseimbangan, koordinasi bilateral, dan respons terhadap aktivitas sensori.',
+    },
+    {
+        id: 'independence',
+        aspect: 'Kemandirian',
+        prompt: 'Kemampuan menyelesaikan tugas, merapikan alat, mengikuti rutinitas, dan kebutuhan bantuan.',
+    },
+];
 
 // ── Sub Components ───────────────────────────────────────────────────
 function ScaleSelector({ aspectId, value, onChange }) {
@@ -142,7 +199,7 @@ function ReportLanding({ children, onSelectType }) {
                 <p className="text-slate-500 dark:text-slate-400 mt-1.5">Pilih jenis laporan yang ingin Anda buat.</p>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
                 {/* Daily Report Card */}
                 <button
                     onClick={() => onSelectType('harian')}
@@ -170,10 +227,26 @@ function ReportLanding({ children, onSelectType }) {
                     </div>
                     <h2 className="text-lg font-bold mb-1.5">Laporan Periodik</h2>
                     <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
-                        Rangkuman kemajuan anak dalam sebuah periode program. Tersedia setelah target sesi program terpenuhi.
+                        Rangkuman kemajuan anak dalam sebuah periode program. Bisa mulai dicicil saat progres program mencapai 50%.
                     </p>
                     <div className="mt-4 flex items-center gap-1.5 text-amber-600 dark:text-amber-400 font-bold text-sm group-hover:gap-3 transition-all">
                         Buat Laporan Periodik <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
+                    </div>
+                </button>
+
+                <button
+                    onClick={() => onSelectType('observasi_awal')}
+                    className="group text-left p-6 rounded-2xl border-2 border-slate-200 dark:border-slate-700 hover:border-sky-400 dark:hover:border-sky-600 bg-white dark:bg-slate-800 transition-all hover:shadow-lg hover:-translate-y-0.5"
+                >
+                    <div className="w-12 h-12 rounded-xl bg-sky-50 dark:bg-sky-900/30 flex items-center justify-center mb-4 group-hover:bg-sky-100 transition-colors">
+                        <span className="material-symbols-outlined text-sky-600 dark:text-sky-400 text-[28px]">fact_check</span>
+                    </div>
+                    <h2 className="text-lg font-bold mb-1.5">Observasi Awal</h2>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
+                        Catatan kemampuan awal anak dari beberapa sesi observasi sebagai dasar program terapi berikutnya.
+                    </p>
+                    <div className="mt-4 flex items-center gap-1.5 text-sky-600 dark:text-sky-400 font-bold text-sm group-hover:gap-3 transition-all">
+                        Buat Observasi Awal <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
                     </div>
                 </button>
             </div>
@@ -238,7 +311,7 @@ function DailyReportGate({ onConfirm, onBack, childrenData, sessions = [], repor
                             </div>
                         </div>
                         <div className="mt-3 w-full bg-teal-100 dark:bg-teal-900 rounded-full h-1.5 overflow-hidden">
-                            <div className="bg-teal-500 h-1.5 rounded-full" style={{ width: `${Math.round((child.completedSessions/child.totalSessions)*100)}%` }}></div>
+                            <div className="bg-teal-500 h-1.5 rounded-full" style={{ width: `${child.totalSessions ? Math.round((child.completedSessions / child.totalSessions) * 100) : 0}%` }}></div>
                         </div>
                     </div>
                 )}
@@ -275,7 +348,7 @@ function DailyReportGate({ onConfirm, onBack, childrenData, sessions = [], repor
                                     >
                                         <span className="min-w-0 truncate">{formatSessionDate(session)} - {session.startTime || session.time || '-'} - {session.focus || child.program || 'Sesi terapi'}</span>
                                         <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-black ${missing ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'}`}>
-                                            {missing ? 'Belum dilaporkan' : (report?.status === 'needs_revision' ? 'Perlu revisi' : 'Sudah ada laporan')}
+                                            {missing ? (report?.status === 'needs_revision' ? 'Perlu revisi' : report?.status === REPORT_DRAFT_STATUS ? 'Draft' : 'Belum dilaporkan') : 'Sudah ada laporan'}
                                         </span>
                                     </button>
                                 ))}
@@ -306,12 +379,12 @@ function PeriodicReportGate({ onConfirm, onBack, childrenData }) {
     const [showBlock, setShowBlock] = useState(false);
 
     const child = children.find(c => c.id === selectedChild);
-    const isComplete = child ? child.completedSessions >= child.totalSessions : false;
-    const pct = child ? Math.round((child.completedSessions/child.totalSessions)*100) : 0;
+    const pct = child && child.totalSessions ? Math.round((child.completedSessions / child.totalSessions) * 100) : 0;
+    const canStartDraft = child ? pct >= PERIODIC_UNLOCK_PERCENT : false;
 
     const handleAttempt = () => {
         if (!selectedChild) return;
-        if (!isComplete) { setShowBlock(true); return; }
+        if (!canStartDraft) { setShowBlock(true); return; }
         onConfirm(selectedChild);
     };
 
@@ -323,7 +396,7 @@ function PeriodicReportGate({ onConfirm, onBack, childrenData }) {
 
             <div>
                 <h1 className="text-2xl font-black">Laporan Periodik</h1>
-                <p className="text-slate-500 text-sm mt-1">Laporan periodik hanya dapat dibuat setelah seluruh sesi program terselesaikan.</p>
+                <p className="text-slate-500 text-sm mt-1">Laporan periodik dapat mulai dicicil saat progres program mencapai {PERIODIC_UNLOCK_PERCENT}%.</p>
             </div>
 
             <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 space-y-5">
@@ -340,17 +413,17 @@ function PeriodicReportGate({ onConfirm, onBack, childrenData }) {
                 </div>
 
                 {child && (
-                    <div className={`p-4 rounded-xl border animate-in fade-in ${isComplete ? 'bg-green-50 dark:bg-green-900/20 border-green-100 dark:border-green-800/50' : 'bg-amber-50 dark:bg-amber-900/20 border-amber-100 dark:border-amber-800/50'}`}>
+                    <div className={`p-4 rounded-xl border animate-in fade-in ${canStartDraft ? 'bg-green-50 dark:bg-green-900/20 border-green-100 dark:border-green-800/50' : 'bg-amber-50 dark:bg-amber-900/20 border-amber-100 dark:border-amber-800/50'}`}>
                         <div className="flex items-center gap-3 mb-3">
-                            <span className={`material-symbols-outlined ${isComplete ? 'text-green-600' : 'text-amber-500'}`} style={{ fontVariationSettings: "'FILL' 1" }}>
-                                {isComplete ? 'check_circle' : 'pending'}
+                            <span className={`material-symbols-outlined ${canStartDraft ? 'text-green-600' : 'text-amber-500'}`} style={{ fontVariationSettings: "'FILL' 1" }}>
+                                {canStartDraft ? 'check_circle' : 'pending'}
                             </span>
-                            <p className={`font-bold text-sm ${isComplete ? 'text-green-800 dark:text-green-300' : 'text-amber-800 dark:text-amber-300'}`}>
-                                {isComplete ? 'Seluruh sesi telah selesai — Laporan periodik dapat dibuat!' : `Sesi belum terpenuhi (${child.completedSessions}/${child.totalSessions})`}
+                            <p className={`font-bold text-sm ${canStartDraft ? 'text-green-800 dark:text-green-300' : 'text-amber-800 dark:text-amber-300'}`}>
+                                {canStartDraft ? 'Progress sudah cukup untuk mulai draft laporan periodik.' : `Belum mencapai ${PERIODIC_UNLOCK_PERCENT}% (${child.completedSessions}/${child.totalSessions || 0} sesi)`}
                             </p>
                         </div>
                         <div className="w-full bg-white dark:bg-slate-900 rounded-full h-2 overflow-hidden border border-slate-200 dark:border-slate-700">
-                            <div className={`h-2 rounded-full transition-all ${isComplete ? 'bg-green-500' : 'bg-amber-400'}`} style={{ width: `${pct}%` }}></div>
+                            <div className={`h-2 rounded-full transition-all ${canStartDraft ? 'bg-green-500' : 'bg-amber-400'}`} style={{ width: `${pct}%` }}></div>
                         </div>
                         <p className="text-xs mt-1.5 text-right font-medium opacity-70">{pct}% selesai</p>
                     </div>
@@ -362,7 +435,7 @@ function PeriodicReportGate({ onConfirm, onBack, childrenData }) {
                         <div>
                             <p className="font-bold text-red-700 dark:text-red-400 text-sm">Sesi Program Belum Terpenuhi</p>
                             <p className="text-xs text-red-600/80 dark:text-red-400/80 mt-0.5">
-                                Terapis hanya dapat membuat laporan periodik setelah semua sesi dalam program selesai dilaksanakan, atau jika Admin telah mengizinkan secara khusus.
+                                Terapis dapat mulai mencicil laporan periodik setelah progress anak mencapai minimal {PERIODIC_UNLOCK_PERCENT}%.
                             </p>
                         </div>
                     </div>
@@ -382,25 +455,237 @@ function PeriodicReportGate({ onConfirm, onBack, childrenData }) {
 }
 
 // ── Daily Form ───────────────
+function ObservationReportGate({ onConfirm, onBack, childrenData }) {
+    const [selectedChild, setSelectedChild] = useState('');
+
+    return (
+        <div className="max-w-2xl mx-auto px-4 sm:px-8 py-8 space-y-6">
+            <button onClick={onBack} className="flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors">
+                <span className="material-symbols-outlined text-[18px]">arrow_back</span> Kembali
+            </button>
+            <div>
+                <h1 className="text-2xl font-black">Laporan Observasi Awal</h1>
+                <p className="text-slate-500 text-sm mt-1">Pilih anak untuk membuat catatan kemampuan awal dari beberapa sesi observasi.</p>
+            </div>
+            <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 space-y-5">
+                <div>
+                    <label className="block text-sm font-bold mb-2 text-slate-700 dark:text-slate-300">Pilih Pasien Anak</label>
+                    <select
+                        value={selectedChild}
+                        onChange={e => setSelectedChild(e.target.value)}
+                        className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-sky-500 outline-none font-medium"
+                    >
+                        <option value="" disabled>Pilih anak yang diobservasi...</option>
+                        {childrenData.map(c => <option key={c.id} value={c.id}>{c.name} - {c.program}</option>)}
+                    </select>
+                </div>
+                <button
+                    onClick={() => selectedChild && onConfirm(selectedChild)}
+                    disabled={!selectedChild}
+                    className="w-full px-6 py-3 rounded-xl font-bold bg-sky-500 text-white hover:bg-sky-600 transition-colors shadow-md disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                    <span className="material-symbols-outlined text-[18px]">fact_check</span>
+                    Lanjut ke Form Observasi
+                </button>
+            </div>
+        </div>
+    );
+}
+
+function ObservationReportForm({ childId, onBack, currentUser, childrenData, reports = [], initialReport, onReportSaved }) {
+    const child = childrenData.find(c => c.id === childId);
+    const sourceReport = initialReport || reports.find(report => (
+        report.type === 'observasi_awal'
+        && report.childId === childId
+        && [REPORT_DRAFT_STATUS, 'needs_revision'].includes(report.status)
+    )) || null;
+    const sourceItems = sourceReport?.evaluations?.observationItems;
+
+    const [dateFrom, setDateFrom] = useState(sourceReport?.dateFrom || '');
+    const [dateTo, setDateTo] = useState(sourceReport?.dateTo || '');
+    const [observationSessions, setObservationSessions] = useState(sourceReport?.evaluations?.observationSessions || '3 sesi');
+    const [items, setItems] = useState(Array.isArray(sourceItems) && sourceItems.length ? sourceItems : INITIAL_OBSERVATION_ITEMS.map(item => ({ ...item, note: '' })));
+    const [summary, setSummary] = useState(sourceReport?.summary || sourceReport?.description || '');
+    const [recommendations, setRecommendations] = useState(sourceReport?.recommendations || sourceReport?.parentNotes || '');
+    const [internalNotes, setInternalNotes] = useState(sourceReport?.internalNotes || '');
+    const [submitted, setSubmitted] = useState(false);
+    const [submittedAsDraft, setSubmittedAsDraft] = useState(false);
+    const [formError, setFormError] = useState('');
+
+    const updateItem = (id, note) => setItems(prev => prev.map(item => item.id === id ? { ...item, note } : item));
+
+    const handleSubmit = async (status = REPORT_SUBMIT_STATUS) => {
+        const isDraft = status === REPORT_DRAFT_STATUS;
+        const report = {
+            ...(sourceReport?.id ? { id: sourceReport.id } : {}),
+            type: 'observasi_awal',
+            status,
+            childId,
+            childName: child?.name || '',
+            therapistId: currentUser?.id || '',
+            therapistName: currentUser?.name || '',
+            sessionType: 'Observasi awal',
+            dateFrom,
+            dateTo,
+            aspects: items.map(item => item.aspect),
+            evaluations: { observationSessions, observationItems: items },
+            description: summary,
+            summary,
+            recommendations,
+            parentNotes: recommendations,
+            internalNotes,
+        };
+        try {
+            const res = await reportsApi.save(report);
+            if (!res.ok) {
+                setFormError(reportErrorMessage(res, 'Laporan observasi awal belum bisa disimpan.'));
+                return;
+            }
+            onReportSaved && onReportSaved();
+            window.dispatchEvent(new CustomEvent('reportUpdated', { detail: { id: res.data?.data?.id || report.id || '', type: 'observasi_awal' } }));
+            window.dispatchEvent(new Event('notificationsUpdated'));
+            setSubmittedAsDraft(isDraft);
+            setSubmitted(true);
+        } catch (e) {
+            console.error(e);
+            setFormError('Laporan observasi awal belum bisa disimpan. Coba ulang beberapa saat lagi.');
+        }
+    };
+
+    if (submitted) return (
+        <div className="max-w-2xl mx-auto px-4 sm:px-8 py-16 flex flex-col items-center text-center gap-5">
+            <div className="w-20 h-20 rounded-full bg-sky-100 dark:bg-sky-900/30 flex items-center justify-center ring-8 ring-sky-50 dark:ring-sky-900/10">
+                <span className="material-symbols-outlined text-5xl text-sky-600 dark:text-sky-400">task_alt</span>
+            </div>
+            <h2 className="text-2xl font-black">{submittedAsDraft ? 'Draft Observasi Tersimpan!' : 'Observasi Awal Terkirim!'}</h2>
+            <p className="text-slate-500 text-sm max-w-sm">
+                {submittedAsDraft
+                    ? `Draft observasi awal ${child?.name || 'anak'} tersimpan dan bisa dilanjutkan lagi nanti.`
+                    : `Laporan observasi awal ${child?.name || 'anak'} telah tersimpan dan tersedia untuk orang tua.`}
+            </p>
+            <button onClick={onBack} className="mt-4 px-6 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-slate-600 hover:bg-slate-50 transition-colors">Kembali ke Laporan Anak</button>
+        </div>
+    );
+
+    return (
+        <div className="max-w-3xl mx-auto px-4 sm:px-8 py-6 space-y-8 pb-24">
+            <div className="flex items-center gap-4">
+                <button onClick={onBack} className="flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors">
+                    <span className="material-symbols-outlined text-[18px]">arrow_back</span>
+                </button>
+                <div>
+                    <h1 className="text-2xl font-black">Observasi Kemampuan Awal</h1>
+                    <p className="text-sm text-slate-500 mt-0.5">Pasien: <span className="font-bold text-sky-600">{child?.name || '-'}</span></p>
+                </div>
+            </div>
+
+            {formError && (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-800 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-200">
+                    {formError}
+                </div>
+            )}
+
+            <section className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                <h3 className="font-bold text-lg mb-5 flex items-center gap-2">
+                    <span className="material-symbols-outlined text-sky-500">event_note</span> Detail Observasi
+                </h3>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                    <div>
+                        <label className="block text-sm font-bold mb-2 text-slate-600 dark:text-slate-400">Jumlah Sesi Observasi</label>
+                        <input value={observationSessions} onChange={e => setObservationSessions(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-sky-400 outline-none" placeholder="Contoh: 3 sesi" />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-bold mb-2 text-slate-600 dark:text-slate-400">Tanggal Mulai</label>
+                        <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-sky-400 outline-none" />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-bold mb-2 text-slate-600 dark:text-slate-400">Tanggal Akhir</label>
+                        <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-sky-400 outline-none" />
+                    </div>
+                </div>
+            </section>
+
+            <section className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
+                <div>
+                    <h3 className="font-bold text-lg flex items-center gap-2">
+                        <span className="material-symbols-outlined text-sky-500">psychology_alt</span> Aspek Observasi
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-1">Struktur ini disarikan dari template IEP observasi awal, lalu disesuaikan agar bisa diisi fleksibel di aplikasi.</p>
+                </div>
+                <div className="space-y-4">
+                    {items.map(item => (
+                        <div key={item.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900/50">
+                            <div className="mb-3">
+                                <p className="text-sm font-black text-slate-900 dark:text-white">{item.aspect}</p>
+                                <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">{item.prompt}</p>
+                            </div>
+                            <textarea
+                                value={item.note || ''}
+                                onChange={e => updateItem(item.id, e.target.value)}
+                                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-4 min-h-[90px] resize-y text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-sky-400/40 outline-none text-sm placeholder:text-slate-400"
+                                placeholder={`Catatan ${item.aspect.toLowerCase()}...`}
+                            />
+                        </div>
+                    ))}
+                </div>
+            </section>
+
+            <section className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-5">
+                <div>
+                    <h3 className="font-bold text-lg mb-3">Kesimpulan Observasi</h3>
+                    <textarea value={summary} onChange={e => setSummary(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl p-4 min-h-[120px] resize-y text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-sky-400/50 outline-none text-sm placeholder:text-slate-400" placeholder="Tuliskan gambaran umum kemampuan awal anak dan prioritas terapi..." />
+                </div>
+                <div>
+                    <h3 className="font-bold text-lg mb-3">Rekomendasi Awal untuk Orang Tua</h3>
+                    <textarea value={recommendations} onChange={e => setRecommendations(e.target.value)} className="w-full bg-green-50/30 dark:bg-green-900/10 border border-green-100 dark:border-green-900/30 rounded-xl p-4 min-h-[100px] resize-y text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-green-400/40 outline-none text-sm placeholder:text-slate-400" placeholder="Saran aktivitas rumah atau hal yang perlu diperhatikan orang tua..." />
+                </div>
+                <div>
+                    <h3 className="font-bold text-lg mb-3">Catatan Internal</h3>
+                    <textarea value={internalNotes} onChange={e => setInternalNotes(e.target.value)} className="w-full bg-amber-50/40 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 rounded-xl p-4 min-h-[80px] resize-y text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-amber-400/40 outline-none text-sm placeholder:text-slate-400" placeholder="Catatan khusus tim internal..." />
+                </div>
+            </section>
+
+            <div className="fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 p-4 z-20">
+                <div className="max-w-3xl mx-auto flex justify-between items-center gap-4 px-4 sm:px-8">
+                    <button onClick={onBack} className="px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 transition-colors text-sm">Batal</button>
+                    <button onClick={() => handleSubmit(REPORT_DRAFT_STATUS)} className="px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 transition-colors text-sm flex items-center gap-2">
+                        <span className="material-symbols-outlined text-[18px]">draft</span> Simpan Draft
+                    </button>
+                    <button onClick={() => handleSubmit(REPORT_SUBMIT_STATUS)} className="px-8 py-2.5 rounded-xl bg-sky-500 text-white font-bold shadow-lg shadow-sky-500/20 hover:bg-sky-600 transition-all flex items-center gap-2 text-sm">
+                        <span className="material-symbols-outlined text-[18px]">send</span> Kirim ke Orang Tua
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 function DailyReportForm({ childId, sessionId, onBack, currentUser, childrenData, sessions, reports, initialReport, onReportSaved }) {
     const children = childrenData;
     const child = children.find(c => c.id === childId);
     const linkedSession = findLinkedSession(sessions, childId, sessionId || initialReport?.sessionId || '');
+    const sourceReport = initialReport || reports.find(report => (
+        report.type === 'harian'
+        && report.sessionId
+        && report.sessionId === linkedSession?.id
+        && [REPORT_DRAFT_STATUS, 'needs_revision'].includes(report.status)
+    )) || null;
     const priorMissingSession = hasPriorMissingDailyReport(sessions, reports, linkedSession);
 
-    const [aspects, setAspects] = useState(() => Object.fromEntries((initialReport?.aspects || []).map(item => [item, true])));
-    const [rating, setRating] = useState(initialReport?.sessionScore || 4);
-    const [sessionType, setSessionType] = useState(initialReport?.sessionType || 'Sesi harian');
-    const [description, setDescription] = useState(initialReport?.description || '');
-    const [toysText, setToysText] = useState((initialReport?.toysUsed || []).join(', '));
-    const [toolsText, setToolsText] = useState((initialReport?.toolsUsed || []).join(', '));
+    const [aspects, setAspects] = useState(() => Object.fromEntries((sourceReport?.aspects || []).map(item => [item, true])));
+    const [rating, setRating] = useState(sourceReport?.sessionScore || 4);
+    const [sessionType, setSessionType] = useState(sourceReport?.sessionType || 'Sesi harian');
+    const [description, setDescription] = useState(sourceReport?.description || '');
+    const [toysText, setToysText] = useState((sourceReport?.toysUsed || []).join(', '));
+    const [toolsText, setToolsText] = useState((sourceReport?.toolsUsed || []).join(', '));
     const [rooms, setRooms] = useState([]);
-    const [roomsUsed, setRoomsUsed] = useState(initialReport?.roomsUsed || []);
-    const [childResponse, setChildResponse] = useState(initialReport?.childResponse || '');
-    const [obstacles, setObstacles] = useState(initialReport?.obstacles || '');
-    const [recommendations, setRecommendations] = useState(initialReport?.recommendations || '');
-    const [internalNotes, setInternalNotes] = useState(initialReport?.internalNotes || '');
+    const [roomsUsed, setRoomsUsed] = useState(sourceReport?.roomsUsed || []);
+    const [childResponse, setChildResponse] = useState(sourceReport?.childResponse || '');
+    const [obstacles, setObstacles] = useState(sourceReport?.obstacles || '');
+    const [recommendations, setRecommendations] = useState(sourceReport?.recommendations || '');
+    const [internalNotes, setInternalNotes] = useState(sourceReport?.internalNotes || '');
     const [submitted, setSubmitted] = useState(false);
+    const [submittedAsDraft, setSubmittedAsDraft] = useState(false);
     const [formError, setFormError] = useState('');
     const toggleAspect = (key) => setAspects(prev => ({ ...prev, [key]: !prev[key] }));
     const activeRooms = rooms.filter(room => room.status === 'active');
@@ -423,14 +708,16 @@ function DailyReportForm({ childId, sessionId, onBack, currentUser, childrenData
         return () => { active = false; };
     }, []);
 
-    const handleSubmit = async () => {
-        if (priorMissingSession) {
+    const handleSubmit = async (status = REPORT_SUBMIT_STATUS) => {
+        const isDraft = status === REPORT_DRAFT_STATUS;
+        if (!isDraft && priorMissingSession) {
             setFormError(`Selesaikan laporan sesi sebelumnya dulu: ${formatSessionDate(priorMissingSession)} pukul ${priorMissingSession.startTime || priorMissingSession.time || '-'}.`);
             return;
         }
         const report = {
-            ...(initialReport?.id ? { id: initialReport.id } : {}),
+            ...(sourceReport?.id ? { id: sourceReport.id } : {}),
             type: 'harian',
+            status,
             childId,
             childName: child?.name || '',
             therapistId: currentUser?.id || '',
@@ -460,6 +747,7 @@ function DailyReportForm({ childId, sessionId, onBack, currentUser, childrenData
             onReportSaved && onReportSaved();
             window.dispatchEvent(new CustomEvent('reportUpdated', { detail: { id: res.data?.data?.id || report.id || '', type: 'harian' } }));
             window.dispatchEvent(new Event('notificationsUpdated'));
+            setSubmittedAsDraft(isDraft);
             setSubmitted(true);
         } catch (e) {
             console.error(e);
@@ -472,8 +760,12 @@ function DailyReportForm({ childId, sessionId, onBack, currentUser, childrenData
             <div className="w-20 h-20 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center ring-8 ring-green-50 dark:ring-green-900/10">
                 <span className="material-symbols-outlined text-5xl text-green-600 dark:text-green-400">check_circle</span>
             </div>
-            <h2 className="text-2xl font-black">Laporan Berhasil Disimpan!</h2>
-            <p className="text-slate-500 text-sm max-w-sm">Laporan harian sesi terapi {child?.name} telah disimpan dan langsung tersedia untuk orang tua. Admin ikut menerima notifikasi pemantauan.</p>
+            <h2 className="text-2xl font-black">{submittedAsDraft ? 'Draft Laporan Tersimpan!' : 'Laporan Berhasil Dikirim!'}</h2>
+            <p className="text-slate-500 text-sm max-w-sm">
+                {submittedAsDraft
+                    ? `Draft laporan harian sesi terapi ${child?.name || 'anak'} tersimpan dan belum tampil di portal orang tua.`
+                    : `Laporan harian sesi terapi ${child?.name || 'anak'} telah disimpan dan langsung tersedia untuk orang tua. Admin ikut menerima notifikasi pemantauan.`}
+            </p>
             <div className="flex gap-3 mt-4">
                 <button onClick={onBack} className="px-6 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-slate-600 hover:bg-slate-50 transition-colors">Buat Laporan Lain</button>
             </div>
@@ -649,8 +941,11 @@ function DailyReportForm({ childId, sessionId, onBack, currentUser, childrenData
             <div className="fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 p-4 z-20">
                 <div className="max-w-3xl mx-auto flex justify-between items-center gap-4 px-4 sm:px-8">
                     <button onClick={onBack} className="px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 transition-colors text-sm">Batal</button>
-                    <button onClick={handleSubmit} className="px-8 py-2.5 rounded-xl bg-teal-500 text-white font-bold shadow-lg shadow-teal-500/20 hover:bg-teal-600 transition-all flex items-center gap-2 text-sm">
-                        <span className="material-symbols-outlined text-[18px]">send</span> Simpan Laporan Harian
+                    <button onClick={() => handleSubmit(REPORT_DRAFT_STATUS)} className="px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 transition-colors text-sm flex items-center gap-2">
+                        <span className="material-symbols-outlined text-[18px]">draft</span> Simpan Draft
+                    </button>
+                    <button onClick={() => handleSubmit(REPORT_SUBMIT_STATUS)} className="px-8 py-2.5 rounded-xl bg-teal-500 text-white font-bold shadow-lg shadow-teal-500/20 hover:bg-teal-600 transition-all flex items-center gap-2 text-sm">
+                        <span className="material-symbols-outlined text-[18px]">send</span> Kirim ke Orang Tua
                     </button>
                 </div>
             </div>
@@ -659,18 +954,24 @@ function DailyReportForm({ childId, sessionId, onBack, currentUser, childrenData
 }
 
 // ── Periodic Report Form ─────────────────────────────────────────────
-function PeriodicReportForm({ childId, onBack, currentUser, childrenData, initialReport, onReportSaved }) {
+function PeriodicReportForm({ childId, onBack, currentUser, childrenData, reports = [], initialReport, onReportSaved }) {
     const children = childrenData;
     const child = children.find(c => c.id === childId);
+    const sourceReport = initialReport || reports.find(report => (
+        report.type === 'periodik'
+        && report.childId === childId
+        && [REPORT_DRAFT_STATUS, 'needs_revision'].includes(report.status)
+    )) || null;
 
-    const [dateFrom, setDateFrom] = useState(initialReport?.dateFrom || '');
-    const [dateTo, setDateTo]   = useState(initialReport?.dateTo || '');
-    const [evaluations, setEvaluations] = useState(initialReport?.evaluations || {});
-    const [progressPoints, setProgressPoints] = useState(initialReport?.progressPoints?.length ? initialReport.progressPoints : ['', '', '']);
-    const [improvementPoints, setImprovementPoints] = useState(initialReport?.improvementPoints?.length ? initialReport.improvementPoints : ['', '', '']);
-    const [summary, setSummary] = useState(initialReport?.summary || '');
-    const [parentNotes, setParentNotes] = useState(initialReport?.parentNotes || '');
+    const [dateFrom, setDateFrom] = useState(sourceReport?.dateFrom || '');
+    const [dateTo, setDateTo]   = useState(sourceReport?.dateTo || '');
+    const [evaluations, setEvaluations] = useState(sourceReport?.evaluations || {});
+    const [progressPoints, setProgressPoints] = useState(sourceReport?.progressPoints?.length ? sourceReport.progressPoints : ['', '', '']);
+    const [improvementPoints, setImprovementPoints] = useState(sourceReport?.improvementPoints?.length ? sourceReport.improvementPoints : ['', '', '']);
+    const [summary, setSummary] = useState(sourceReport?.summary || '');
+    const [parentNotes, setParentNotes] = useState(sourceReport?.parentNotes || '');
     const [submitted, setSubmitted] = useState(false);
+    const [submittedAsDraft, setSubmittedAsDraft] = useState(false);
     const [formError, setFormError] = useState('');
 
     const handleEvalChange = (id, val) => setEvaluations(prev => ({...prev, [id]: val}));
@@ -678,10 +979,12 @@ function PeriodicReportForm({ childId, onBack, currentUser, childrenData, initia
     const addItem = (setter) => setter(prev => [...prev, '']);
     const removeItem = (setter, idx) => setter(prev => prev.filter((_, i) => i !== idx));
 
-    const handleSubmit = async () => {
+    const handleSubmit = async (status = REPORT_SUBMIT_STATUS) => {
+        const isDraft = status === REPORT_DRAFT_STATUS;
         const report = {
-            ...(initialReport?.id ? { id: initialReport.id } : {}),
+            ...(sourceReport?.id ? { id: sourceReport.id } : {}),
             type: 'periodik',
+            status,
             childId,
             childName: child?.name || '',
             therapistId: currentUser?.id || '',
@@ -704,6 +1007,7 @@ function PeriodicReportForm({ childId, onBack, currentUser, childrenData, initia
             onReportSaved && onReportSaved();
             window.dispatchEvent(new CustomEvent('reportUpdated', { detail: { id: res.data?.data?.id || report.id || '', type: 'periodik' } }));
             window.dispatchEvent(new Event('notificationsUpdated'));
+            setSubmittedAsDraft(isDraft);
             setSubmitted(true);
         } catch (e) {
             console.error(e);
@@ -716,8 +1020,12 @@ function PeriodicReportForm({ childId, onBack, currentUser, childrenData, initia
             <div className="w-20 h-20 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center ring-8 ring-amber-50 dark:ring-amber-900/10">
                 <span className="material-symbols-outlined text-5xl text-amber-600 dark:text-amber-400" style={{fontVariationSettings:"'FILL' 1"}}>task_alt</span>
             </div>
-            <h2 className="text-2xl font-black">Laporan Periodik Tersimpan!</h2>
-            <p className="text-slate-500 text-sm max-w-sm">Laporan periodik untuk {child?.name} telah disimpan dan langsung tersedia untuk orang tua. Admin tetap dapat meninjau dan meminta revisi bila diperlukan.</p>
+            <h2 className="text-2xl font-black">{submittedAsDraft ? 'Draft Periodik Tersimpan!' : 'Laporan Periodik Terkirim!'}</h2>
+            <p className="text-slate-500 text-sm max-w-sm">
+                {submittedAsDraft
+                    ? `Draft laporan periodik untuk ${child?.name || 'anak'} tersimpan dan bisa dilanjutkan lagi nanti.`
+                    : `Laporan periodik untuk ${child?.name || 'anak'} telah disimpan dan langsung tersedia untuk orang tua. Admin tetap dapat meninjau dan meminta revisi bila diperlukan.`}
+            </p>
             <button onClick={onBack} className="mt-4 px-6 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-slate-600 hover:bg-slate-50 transition-colors">Kembali ke Laporan Anak</button>
         </div>
     );
@@ -859,8 +1167,11 @@ function PeriodicReportForm({ childId, onBack, currentUser, childrenData, initia
             <div className="fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 p-4 z-20">
                 <div className="max-w-3xl mx-auto flex justify-between items-center gap-4 px-4 sm:px-8">
                     <button onClick={onBack} className="px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 transition-colors text-sm">Batal</button>
-                    <button onClick={handleSubmit} className="px-8 py-2.5 rounded-xl bg-amber-500 text-white font-bold shadow-lg shadow-amber-500/20 hover:bg-amber-600 transition-all flex items-center gap-2 text-sm">
-                        <span className="material-symbols-outlined text-[18px]">send</span> Simpan & Kirim ke Orang Tua
+                    <button onClick={() => handleSubmit(REPORT_DRAFT_STATUS)} className="px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 transition-colors text-sm flex items-center gap-2">
+                        <span className="material-symbols-outlined text-[18px]">draft</span> Simpan Draft
+                    </button>
+                    <button onClick={() => handleSubmit(REPORT_SUBMIT_STATUS)} className="px-8 py-2.5 rounded-xl bg-amber-500 text-white font-bold shadow-lg shadow-amber-500/20 hover:bg-amber-600 transition-all flex items-center gap-2 text-sm">
+                        <span className="material-symbols-outlined text-[18px]">send</span> Kirim ke Orang Tua
                     </button>
                 </div>
             </div>
@@ -898,15 +1209,15 @@ function DailySessionHistory({ rows, onCreateReport }) {
                             </div>
                             <div className="flex shrink-0 items-center gap-2">
                                 <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${missing ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-200' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200'}`}>
-                                    {missing ? 'Belum dilaporkan' : (report?.status === 'needs_revision' ? 'Perlu revisi' : 'Sudah dilaporkan')}
+                                    {missing ? (report?.status === 'needs_revision' ? 'Perlu revisi' : report?.status === REPORT_DRAFT_STATUS ? 'Draft' : 'Belum dilaporkan') : 'Sudah dilaporkan'}
                                 </span>
                                 {missing && (
                                     <button
                                         type="button"
-                                        onClick={() => onCreateReport(session)}
+                                        onClick={() => onCreateReport(session, report)}
                                         className="rounded-lg bg-teal-500 px-3 py-1.5 text-xs font-black text-white hover:bg-teal-600"
                                     >
-                                        Isi
+                                        {report?.status === 'needs_revision' ? 'Revisi' : report?.status === REPORT_DRAFT_STATUS ? 'Lanjutkan' : 'Isi'}
                                     </button>
                                 )}
                             </div>
@@ -924,9 +1235,25 @@ function DailySessionHistory({ rows, onCreateReport }) {
 
 function ReportHistory({ onSelectReport, reports }) {
     const statusLabel = (status) => {
+        if (status === 'draft') return 'Draft';
         if (status === 'approved' || status === 'published' || status === 'ready_for_parent') return 'Siap Dibaca';
         if (status === 'needs_revision') return 'Perlu Revisi';
         return 'Menunggu Review';
+    };
+    const typeLabel = (type) => {
+        if (type === 'periodik') return 'Laporan Periodik';
+        if (type === 'observasi_awal') return 'Observasi Awal';
+        return 'Laporan Harian';
+    };
+    const typeIcon = (type) => {
+        if (type === 'periodik') return 'auto_graph';
+        if (type === 'observasi_awal') return 'fact_check';
+        return 'edit_document';
+    };
+    const typeColor = (type) => {
+        if (type === 'periodik') return 'bg-amber-50 dark:bg-amber-900/30 text-amber-600';
+        if (type === 'observasi_awal') return 'bg-sky-50 dark:bg-sky-900/30 text-sky-600';
+        return 'bg-teal-50 dark:bg-teal-900/30 text-teal-600';
     };
 
     if (!reports.length) return (
@@ -938,7 +1265,7 @@ function ReportHistory({ onSelectReport, reports }) {
 
     return (
         <div className="flex flex-col gap-3">
-            {reports.slice(0, 5).map(r => {
+            {reports.map(r => {
                 const editWindow = getReportEditWindow(r);
                 return (
                 <div
@@ -947,12 +1274,12 @@ function ReportHistory({ onSelectReport, reports }) {
                     onClick={() => onSelectReport(r)}
                 >
                     <div className="flex items-center gap-3">
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${r.type === 'periodik' ? 'bg-amber-50 dark:bg-amber-900/30' : 'bg-teal-50 dark:bg-teal-900/30'}`}>
-                            <span className={`material-symbols-outlined text-[20px] ${r.type === 'periodik' ? 'text-amber-600' : 'text-teal-600'}`}>{r.type === 'periodik' ? 'auto_graph' : 'edit_document'}</span>
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${typeColor(r.type)}`}>
+                            <span className="material-symbols-outlined text-[20px]">{typeIcon(r.type)}</span>
                         </div>
                         <div>
                             <p className="font-bold text-sm">{r.childName || 'Anak'}</p>
-                            <p className="text-xs text-slate-500">{r.type === 'periodik' ? 'Laporan Periodik' : 'Laporan Harian'} · {r.date || r.dateFrom}</p>
+                            <p className="text-xs text-slate-500">{typeLabel(r.type)} · {r.date || r.dateFrom || '-'}</p>
                         </div>
                     </div>
                     <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400">
@@ -970,10 +1297,16 @@ function ReportHistory({ onSelectReport, reports }) {
 function ReportDetail({ report, onBack, onEdit }) {
     const centerSettings = useClinicSettings();
     const statusLabel = (status) => {
+        if (status === 'draft') return 'Draft';
         if (status === 'approved' || status === 'published' || status === 'ready_for_parent') return 'Siap Dibaca';
         if (status === 'needs_revision') return 'Perlu Revisi';
         return 'Menunggu Review';
     };
+    const reportTypeLabel = report.type === 'periodik'
+        ? 'Laporan Periodik'
+        : report.type === 'observasi_awal'
+            ? 'Observasi Awal'
+            : 'Laporan Harian';
     const isReady = ['approved', 'published', 'ready_for_parent'].includes(report.status);
     const editWindow = getReportEditWindow(report);
     const handleDownload = () => {
@@ -1024,7 +1357,7 @@ function ReportDetail({ report, onBack, onEdit }) {
                     Akses ubah laporan sudah ditutup karena laporan ini sudah dipublikasikan lebih dari {editWindow.editWindowHours || 48} jam.
                 </div>
             )}
-            <h2 className="text-2xl font-bold mb-4">Detail {report.type === 'periodik' ? 'Laporan Periodik' : 'Laporan Harian'}</h2>
+            <h2 className="text-2xl font-bold mb-4">Detail {reportTypeLabel}</h2>
             <div className="space-y-3">
                 <p><strong>Nama Anak:</strong> {report.childName || report.childId}</p>
                 <p><strong>Tanggal:</strong> {report.date || report.dateFrom || '—'}</p>
@@ -1034,6 +1367,19 @@ function ReportDetail({ report, onBack, onEdit }) {
                 {report.description && <div className="mt-4"><p><strong>Goals / Aktivitas Hari Ini:</strong></p><p className="mt-1 whitespace-pre-wrap text-slate-600 dark:text-slate-300">{report.description}</p></div>}
                 {report.childResponse && <div className="mt-4"><p><strong>Respons Anak:</strong></p><p className="mt-1 whitespace-pre-wrap text-slate-600 dark:text-slate-300">{report.childResponse}</p></div>}
                 {report.obstacles && <div className="mt-4"><p><strong>Kendala / Observasi:</strong></p><p className="mt-1 whitespace-pre-wrap text-slate-600 dark:text-slate-300">{report.obstacles}</p></div>}
+                {Array.isArray(report.evaluations?.observationItems) && report.evaluations.observationItems.length > 0 && (
+                    <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900/60">
+                        <p className="text-sm font-black">Aspek Observasi Awal</p>
+                        <div className="mt-3 space-y-3">
+                            {report.evaluations.observationItems.map(item => (
+                                <div key={item.id || item.aspect} className="rounded-lg bg-white p-3 text-sm dark:bg-slate-800">
+                                    <p className="font-black text-slate-800 dark:text-slate-100">{item.aspect}</p>
+                                    {item.note && <p className="mt-1 whitespace-pre-wrap text-slate-600 dark:text-slate-300">{item.note}</p>}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
                 {renderList('Aspek terapi', report.aspects)}
                 {renderList('Mainan', report.toysUsed)}
                 {renderList('Ruang dipakai', report.roomsUsed)}
@@ -1116,13 +1462,15 @@ function App() {
         setSelectedReport(null);
         setSelectedChildId(report.childId || '');
         setSelectedSessionId(report.sessionId || '');
-        setScreen(report.type === 'periodik' ? 'periodic-form' : 'daily-form');
+        if (report.type === 'periodik') setScreen('periodic-form');
+        else if (report.type === 'observasi_awal') setScreen('observation-form');
+        else setScreen('daily-form');
     };
 
-    const handleCreateDailyFromSession = (session) => {
+    const handleCreateDailyFromSession = (session, report = null) => {
         const blockedSession = hasPriorMissingDailyReport(sessions, reports, session);
         const target = blockedSession || session;
-        setEditingReport(null);
+        setEditingReport(blockedSession ? (reports.find(item => item.sessionId === blockedSession.id && item.type === 'harian') || null) : report);
         setSelectedChildId(target.childId || '');
         setSelectedSessionId(target.id || '');
         setScreen('daily-form');
@@ -1141,7 +1489,11 @@ function App() {
                     ) : (
                         <>
                             {screen === 'landing' && (
-                                <ReportLanding onSelectType={(type) => setScreen(type === 'harian' ? 'daily-gate' : 'periodic-gate')}>
+                                <ReportLanding onSelectType={(type) => {
+                                    if (type === 'harian') setScreen('daily-gate');
+                                    else if (type === 'observasi_awal') setScreen('observation-gate');
+                                    else setScreen('periodic-gate');
+                                }}>
                                     <DailySessionHistory rows={dailyReportQueue} onCreateReport={handleCreateDailyFromSession} />
                                     <ReportHistory onSelectReport={handleSelectReport} reports={reports} />
                                 </ReportLanding>
@@ -1167,7 +1519,17 @@ function App() {
                                 />
                             )}
                             {screen === 'periodic-form' && (
-                                <PeriodicReportForm childId={selectedChildId} onBack={goBack} currentUser={currentUser} childrenData={childrenData} initialReport={editingReport} onReportSaved={loadData} />
+                                <PeriodicReportForm childId={selectedChildId} onBack={goBack} currentUser={currentUser} childrenData={childrenData} reports={reports} initialReport={editingReport} onReportSaved={loadData} />
+                            )}
+                            {screen === 'observation-gate' && (
+                                <ObservationReportGate
+                                    onBack={goBack}
+                                    childrenData={childrenData}
+                                    onConfirm={(id) => { setEditingReport(null); setSelectedChildId(id); setSelectedSessionId(''); setScreen('observation-form'); }}
+                                />
+                            )}
+                            {screen === 'observation-form' && (
+                                <ObservationReportForm childId={selectedChildId} onBack={goBack} currentUser={currentUser} childrenData={childrenData} reports={reports} initialReport={editingReport} onReportSaved={loadData} />
                             )}
                             {screen === 'report-detail' && selectedReport && (
                                 <ReportDetail report={selectedReport} onBack={goBack} onEdit={handleEditReport} />

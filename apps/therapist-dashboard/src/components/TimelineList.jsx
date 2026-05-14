@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { reportsApi, sessionsApi } from '../../../shared/api/client';
 import ChildProfileModal from './ChildProfileModal';
@@ -30,6 +30,27 @@ function getRemainingSeconds(session) {
     return Math.max(0, total - Math.floor((Date.now() - started) / 1000));
 }
 
+const ATTENDANCE_CONFIRMED_STATUSES = new Set(['confirmed', 'checked_in', 'present']);
+
+function isAttendanceConfirmed(session) {
+    return ATTENDANCE_CONFIRMED_STATUSES.has(String(session?.status || '').toLowerCase());
+}
+
+function getSessionStartDate(session) {
+    const date = session?.date ? String(session.date).split('T')[0] : todayKey();
+    const time = session?.startTime || session?.time || '00:00';
+    const value = new Date(`${date}T${time}`);
+    return Number.isNaN(value.getTime()) ? null : value;
+}
+
+function isInScheduledWindow(session) {
+    const start = getSessionStartDate(session);
+    if (!start) return false;
+    const end = new Date(start.getTime() + getDurationSeconds(session) * 1000);
+    const now = new Date();
+    return now >= start && now <= end;
+}
+
 const TimelineList = () => {
     const navigate = useNavigate();
     const [sessions, setSessions] = useState([]);
@@ -41,6 +62,8 @@ const TimelineList = () => {
     const [profileModalSession, setProfileModalSession] = useState(null);
     const [allSessions, setAllSessions] = useState([]);
     const [reports, setReports] = useState([]);
+    const [actionError, setActionError] = useState('');
+    const autoStartedIds = useRef(new Set());
 
     const fetchSessions = async () => {
         const user = getStoredTherapist();
@@ -122,14 +145,33 @@ const TimelineList = () => {
         } catch (e) { console.error(e); }
     };
 
-    const startSession = async (sessionId) => {
+    const startSession = async (sessionId, options = {}) => {
         try {
+            setActionError('');
             await sessionsApi.updateStatus(sessionId, 'active');
             await fetchSessions();
             window.dispatchEvent(new Event('sessionUpdated'));
             setTimeLeft(45 * 60);
-        } catch (e) { console.error(e); }
+        } catch (e) {
+            console.error(e);
+            if (!options.auto) {
+                setActionError(e?.data?.error || e?.message || 'Sesi belum bisa dimulai.');
+            }
+        }
     };
+
+    useEffect(() => {
+        if (sessions.some(s => s.status === 'active')) return;
+        const candidate = sessions.find(session => (
+            isAttendanceConfirmed(session)
+            && isInScheduledWindow(session)
+            && !session.startedAt
+            && !autoStartedIds.current.has(session.id)
+        ));
+        if (!candidate) return;
+        autoStartedIds.current.add(candidate.id);
+        startSession(candidate.id, { auto: true });
+    }, [sessions]);
 
     return (
         <section className="flex flex-col gap-8">
@@ -144,6 +186,12 @@ const TimelineList = () => {
                 </div>
             </div>
 
+            {actionError && (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-200">
+                    {actionError}
+                </div>
+            )}
+
             {sessions.length === 0 ? (
                 <div className="text-center py-10 text-slate-500">
                     <span className="material-symbols-outlined text-4xl mb-2 opacity-50">event_busy</span>
@@ -155,6 +203,7 @@ const TimelineList = () => {
                 {sessions.map(session => {
                     const isDone = session.status === 'done';
                     const isActive = session.status === 'active';
+                    const isConfirmed = isAttendanceConfirmed(session);
                     const childName = session.child ? session.child.name : (session.name || 'Unknown Child');
 
                     return (
@@ -210,8 +259,9 @@ const TimelineList = () => {
                                         <span className={`inline-flex items-center px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-widest mb-2 ${
                                             isDone ? 'bg-slate-100 dark:bg-slate-800 text-slate-500' :
                                             isActive ? 'hidden' :
+                                            isConfirmed ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400' :
                                             'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
-                                        }`}>{isDone ? 'Completed' : 'Upcoming'}</span>
+                                        }`}>{isDone ? 'Completed' : isConfirmed ? 'Ready' : 'Waiting Check-in'}</span>
                                         <div className="flex items-center justify-end gap-1.5 text-sm font-bold text-slate-600 dark:text-slate-300">
                                             <span className="material-symbols-outlined text-[16px]">schedule</span>
                                             {session.startTime || session.time} ({session.duration || '60 mins'})
@@ -293,9 +343,15 @@ const TimelineList = () => {
                                     )}
                                     {!isDone && !isActive && (
                                         <>
-                                            <button onClick={() => startSession(session.id)} className="text-white hover:bg-teal-600 bg-teal-500 text-sm font-bold flex items-center gap-1.5 px-4 py-2 rounded-xl shadow-md transition-colors hover:shadow-lg">
-                                                <span className="material-symbols-outlined text-[18px]">play_arrow</span> Start Session
-                                            </button>
+                                            {isConfirmed ? (
+                                                <button onClick={() => startSession(session.id)} className="text-white hover:bg-teal-600 bg-teal-500 text-sm font-bold flex items-center gap-1.5 px-4 py-2 rounded-xl shadow-md transition-colors hover:shadow-lg">
+                                                    <span className="material-symbols-outlined text-[18px]">play_arrow</span> Mulai Sesi
+                                                </button>
+                                            ) : (
+                                                <button disabled className="cursor-not-allowed text-slate-500 bg-slate-100 dark:bg-slate-800 dark:text-slate-400 text-sm font-bold flex items-center gap-1.5 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700">
+                                                    <span className="material-symbols-outlined text-[18px]">lock_clock</span> Menunggu konfirmasi hadir
+                                                </button>
+                                            )}
                                         </>
                                     )}
                                 </div>

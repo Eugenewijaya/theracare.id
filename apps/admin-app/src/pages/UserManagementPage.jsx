@@ -21,6 +21,7 @@ export default function UserManagementPage() {
     const [showPass, setShowPass]     = useState({});
     const [passwordOverrides, setPasswordOverrides] = useState({});
     const [loading, setLoading]       = useState(true);
+    const [loadError, setLoadError]   = useState('');
     const [isUnlocked, setIsUnlocked] = useState(() => getSessionUnlockState(USER_MANAGEMENT_UNLOCK_KEY));
     const [gatePassword, setGatePassword] = useState('');
     const [gateError, setGateError] = useState('');
@@ -28,14 +29,23 @@ export default function UserManagementPage() {
     const load = async () => {
         setLoading(true);
         try {
+            setLoadError('');
             const [pRes, tRes] = await Promise.all([
                 parentsApi.getAll(),
                 therapistsApi.getAll(),
             ]);
+            if (!pRes.ok || !tRes.ok) {
+                const message = pRes.data?.error || tRes.data?.error || 'Gagal memuat data user.';
+                setLoadError(message);
+                showToast(message, 'error');
+                return;
+            }
             setParents(pRes.data?.data || []);
             setTherapists(tRes.data?.data || []);
         } catch (e) {
             console.error("Failed to load users", e);
+            setLoadError('Gagal memuat data user.');
+            showToast('Gagal memuat data user.', 'error');
         } finally {
             setLoading(false);
         }
@@ -85,24 +95,38 @@ export default function UserManagementPage() {
     };
 
     const handleReset = async (user, type) => {
-        let res;
-        if (type === 'parents') res = await parentsApi.resetPassword(user.id);
-        else res = await therapistsApi.resetPassword(user.id);
-        
-        if (res.ok) {
-            const nextPassword = res.data?.data?.tempPassword || res.data?.data?.newPassword || res.data?.data?.password || '';
-            if (nextPassword) {
-                setPasswordOverrides(prev => ({ ...prev, [user.id]: nextPassword }));
-                setShowPass(prev => ({ ...prev, [user.id]: true }));
-                if (type === 'parents') {
-                    setParents(prev => prev.map(item => item.id === user.id ? { ...item, tempPassword: nextPassword } : item));
-                } else {
-                    setTherapists(prev => prev.map(item => item.id === user.id ? { ...item, tempPassword: nextPassword } : item));
+        const confirmed = await confirmAction({
+            tone: 'warning',
+            title: `Reset password ${user.name}?`,
+            message: 'Password lama tidak bisa dipakai setelah reset. Berikan password baru langsung ke user terkait.',
+            confirmText: 'Reset password',
+            cancelText: 'Batal',
+        });
+        if (!confirmed) return;
+
+        try {
+            let res;
+            if (type === 'parents') res = await parentsApi.resetPassword(user.id);
+            else res = await therapistsApi.resetPassword(user.id);
+
+            if (res.ok) {
+                const nextPassword = res.data?.data?.tempPassword || res.data?.data?.newPassword || res.data?.data?.password || '';
+                if (nextPassword) {
+                    setPasswordOverrides(prev => ({ ...prev, [user.id]: nextPassword }));
+                    setShowPass(prev => ({ ...prev, [user.id]: true }));
+                    if (type === 'parents') {
+                        setParents(prev => prev.map(item => item.id === user.id ? { ...item, tempPassword: nextPassword } : item));
+                    } else {
+                        setTherapists(prev => prev.map(item => item.id === user.id ? { ...item, tempPassword: nextPassword } : item));
+                    }
                 }
+                showToast(`Password ${user.name}: ${nextPassword || 'berhasil direset'}`);
+            } else {
+                showToast(`Gagal mereset password: ${res.data?.error || res.data?.message || 'Error'}`, 'error');
             }
-            showToast(`Password ${user.name}: ${nextPassword || 'berhasil direset'}`);
-        } else {
-            showToast(`Gagal mereset password: ${res.data?.error || res.data?.message || 'Error'}`, 'error');
+        } catch (error) {
+            console.error('Failed to reset password', error);
+            showToast('Gagal mereset password.', 'error');
         }
     };
 
@@ -121,15 +145,31 @@ export default function UserManagementPage() {
 
     const handleToggleStatus = async (user, type) => {
         const next = user.status === 'active' ? 'suspended' : 'active';
-        let res;
-        if (type === 'parents') res = await parentsApi.updateStatus(user.id, next);
-        else res = await therapistsApi.updateStatus(user.id, next);
-        
-        if (res.ok) {
-            load();
-            showToast(`${user.name} account ${next}.`, next === 'active' ? 'success' : 'warning');
-        } else {
-            showToast(`Gagal mengubah status: ${res.data?.error || res.data?.message || 'Error'}`, 'error');
+        const confirmed = await confirmAction({
+            tone: next === 'active' ? 'success' : 'warning',
+            title: `${next === 'active' ? 'Aktifkan' : 'Tangguhkan'} akun ${user.name}?`,
+            message: next === 'active'
+                ? 'User akan bisa login kembali ke portalnya.'
+                : 'User tidak akan bisa login sampai akunnya diaktifkan lagi.',
+            confirmText: next === 'active' ? 'Aktifkan' : 'Tangguhkan',
+            cancelText: 'Batal',
+        });
+        if (!confirmed) return;
+
+        try {
+            let res;
+            if (type === 'parents') res = await parentsApi.updateStatus(user.id, next);
+            else res = await therapistsApi.updateStatus(user.id, next);
+
+            if (res.ok) {
+                load();
+                showToast(`${user.name} account ${next}.`, next === 'active' ? 'success' : 'warning');
+            } else {
+                showToast(`Gagal mengubah status: ${res.data?.error || res.data?.message || 'Error'}`, 'error');
+            }
+        } catch (error) {
+            console.error('Failed to update user status', error);
+            showToast('Gagal mengubah status user.', 'error');
         }
     };
 
@@ -144,21 +184,26 @@ export default function UserManagementPage() {
         });
         if (!confirmed) return;
 
-        const res = type === 'parents'
-            ? await parentsApi.delete(user.id)
-            : await therapistsApi.delete(user.id);
+        try {
+            const res = type === 'parents'
+                ? await parentsApi.delete(user.id)
+                : await therapistsApi.delete(user.id);
 
-        if (res.ok) {
-            if (type === 'parents') {
-                setParents(prev => prev.filter(item => item.id !== user.id));
+            if (res.ok) {
+                if (type === 'parents') {
+                    setParents(prev => prev.filter(item => item.id !== user.id));
+                } else {
+                    setTherapists(prev => prev.filter(item => item.id !== user.id));
+                }
+                load();
+                const archived = res.data?.data?.archived;
+                showToast(`${user.name} berhasil ${archived ? 'diarsipkan dan disembunyikan' : 'dihapus'}.`);
             } else {
-                setTherapists(prev => prev.filter(item => item.id !== user.id));
+                showToast(`Gagal menghapus: ${res.data?.error || res.data?.message || 'Error'}`, 'error');
             }
-            load();
-            const archived = res.data?.data?.archived;
-            showToast(`${user.name} berhasil ${archived ? 'diarsipkan dan disembunyikan' : 'dihapus'}.`);
-        } else {
-            showToast(`Gagal menghapus: ${res.data?.error || res.data?.message || 'Error'}`, 'error');
+        } catch (error) {
+            console.error('Failed to delete user', error);
+            showToast('Gagal menghapus user.', 'error');
         }
     };
 
@@ -256,7 +301,23 @@ export default function UserManagementPage() {
                             <h1 className="text-slate-900 dark:text-white text-3xl font-bold leading-tight">User Management</h1>
                             <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Manage parent accounts, reset passwords, and control access.</p>
                         </div>
+                        <button
+                            type="button"
+                            onClick={load}
+                            disabled={loading}
+                            className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-primary/20 dark:bg-primary/5 dark:text-slate-200"
+                        >
+                            <span className={`material-symbols-outlined text-[18px] ${loading ? 'animate-spin' : ''}`}>refresh</span>
+                            Refresh
+                        </button>
                     </div>
+
+                    {loadError && (
+                        <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
+                            <span className="material-symbols-outlined text-[20px]">error</span>
+                            <span className="min-w-0 flex-1">{loadError}</span>
+                        </div>
+                    )}
 
                     {/* Summary Stats */}
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">

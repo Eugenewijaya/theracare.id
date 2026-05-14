@@ -32,3 +32,50 @@ export function formatNotificationTime(notification) {
 export function sortNotifications(notifications = []) {
   return [...notifications].sort((a, b) => getNotificationTimestamp(b) - getNotificationTimestamp(a));
 }
+
+export function getNotificationDestination(notification, role = 'user') {
+  const type = String(notification?.type || '').toLowerCase();
+  const icon = String(notification?.icon || '').toLowerCase();
+  const userRole = String(role || '').toLowerCase();
+
+  if (type.startsWith('announcement')) {
+    if (userRole === 'admin') return '/notifications';
+    return '/announcements';
+  }
+
+  if (type.startsWith('report_') || type.includes('report') || icon.includes('summarize')) {
+    return userRole === 'parent' ? '/reports' : '/reports';
+  }
+
+  if (type.includes('leave') || type.includes('cuti')) {
+    return userRole === 'admin' ? '/therapist-leave-requests' : '/leave-requests';
+  }
+
+  if (type.includes('meeting')) {
+    if (userRole === 'admin') return '/parent-meetings';
+    return '/meetings';
+  }
+
+  if (type.includes('reschedule')) {
+    if (userRole === 'parent') return '/reschedule';
+    if (userRole === 'therapist') return '/schedule-updates';
+    return '/requests';
+  }
+
+  if (type.includes('substitute') || type.includes('schedule') || type.includes('session') || type.includes('center_closure')) {
+    if (userRole === 'parent') return '/reschedule';
+    if (userRole === 'therapist') return '/schedule-updates';
+    return '/scheduling';
+  }
+
+  if (type.includes('program')) {
+    if (userRole === 'admin') return '/programs';
+    return '/announcements';
+  }
+
+  if (type.includes('child') || type.includes('registration')) {
+    return userRole === 'admin' ? '/children' : '/announcements';
+  }
+
+  return userRole === 'admin' ? '/notifications' : '/announcements';
+}

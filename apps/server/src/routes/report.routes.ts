@@ -27,6 +27,16 @@ async function canReadReport(req: Request, report: any) {
   return false;
 }
 
+function toParentSafeReport(report: any) {
+  if (!report) return report;
+  const { internalNotes, reviewLog, ...safeReport } = report;
+  return safeReport;
+}
+
+function reportResponseForRole(req: Request, report: any) {
+  return req.user?.role === "parent" ? toParentSafeReport(report) : report;
+}
+
 router.get("/therapist/:id", requireAuth, async (req, res, next) => {
   try {
     if (req.user?.role !== "admin") {
@@ -53,7 +63,8 @@ router.get("/child/:id", requireAuth, async (req, res, next) => {
     } else if (req.user?.role !== "admin") {
       return res.status(403).json({ error: "Akses laporan anak ditolak" });
     }
-    ok(res, await reportService.getForChild(req.params.id as string, req.query.type as string as string, options));
+    const reports = await reportService.getForChild(req.params.id as string, req.query.type as string as string, options);
+    ok(res, req.user?.role === "parent" ? reports.map(toParentSafeReport) : reports);
   } catch (e) { next(e); }
 });
 
@@ -64,7 +75,7 @@ router.get("/session/:id", requireAuth, async (req, res, next) => {
     if (!await canReadReport(req, report)) {
       return res.status(403).json({ error: "Akses laporan sesi ditolak" });
     }
-    ok(res, report);
+    ok(res, reportResponseForRole(req, report));
   } catch (e) { next(e); }
 });
 
@@ -79,7 +90,7 @@ router.get("/:id", requireAuth, async (req, res, next) => {
     if (!await canReadReport(req, report)) {
       return res.status(403).json({ error: "Akses laporan anak ditolak" });
     }
-    ok(res, report);
+    ok(res, reportResponseForRole(req, report));
   } catch (e) { next(e); }
 });
 

@@ -229,7 +229,7 @@ export const therapySessions = pgTable("therapy_sessions", {
   startTime: varchar("start_time", { length: 5 }).notNull(), // HH:MM
   duration: varchar("duration", { length: 20 }).default("60 mins"),
   focus: text("focus"),
-  status: text("status").notNull().default("upcoming"), // upcoming | active | done | cancelled
+  status: text("status").notNull().default("upcoming"), // upcoming | confirmed | active | done | cancelled
   notes: text("notes"),
   cancelReason: text("cancel_reason"),
   startedAt: timestamp("started_at"),
@@ -241,7 +241,7 @@ export const therapySessions = pgTable("therapy_sessions", {
 
 export const reports = pgTable("reports", {
   id: text("id").primaryKey(), // REP-0001
-  type: text("type").notNull(), // harian | periodik
+  type: text("type").notNull(), // harian | periodik | observasi_awal
   therapyPeriodId: text("therapy_period_id").references(() => therapyPeriods.id),
   childId: text("child_id")
     .notNull()
@@ -375,6 +375,7 @@ export const announcements = pgTable("announcements", {
   id: text("id").primaryKey(),
   title: text("title").notNull(),
   content: text("content"),
+  category: text("category").notNull().default("general"),
   isActive: boolean("is_active").notNull().default(true),
   createdBy: text("created_by").references(() => user.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),

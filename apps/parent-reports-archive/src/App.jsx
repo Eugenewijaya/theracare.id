@@ -40,6 +40,80 @@ const buildTypeColors = (programs) => {
 
 const isParentVisibleReport = (report) => PARENT_VISIBLE_REPORT_STATUSES.has(report?.status);
 const getReportStatusLabel = (report) => REPORT_STATUS_LABELS[report?.status] || 'Siap Dibaca';
+const hasReportValue = (value) => Array.isArray(value) ? value.length > 0 : Boolean(value);
+const getReportKind = (report) => {
+    if (report?.type === 'observasi_awal') return 'observasi_awal';
+    if (report?.type === 'periodik' || report?.dateFrom || report?.dateTo || hasReportValue(report?.progressPoints) || hasReportValue(report?.improvementPoints)) return 'periodik';
+    return 'harian';
+};
+const getReportKindLabel = (kind) => {
+    if (kind === 'observasi_awal') return 'Observasi Awal';
+    if (kind === 'periodik') return 'Laporan Periodik';
+    return 'Laporan Harian';
+};
+const toTextList = (value) => {
+    if (Array.isArray(value)) return value.filter(item => String(item || '').trim());
+    if (!value) return [];
+    return String(value).split('\n').map(item => item.trim()).filter(Boolean);
+};
+const getObservationItems = (report) => (
+    Array.isArray(report?.evaluations?.observationItems) ? report.evaluations.observationItems : []
+);
+const getEvaluationEntries = (report) => Object.entries(report?.evaluations || {})
+    .filter(([key, value]) => key !== 'observationItems' && key !== 'observationSessions' && Number.isFinite(Number(value)));
+
+const normalizeParentReport = (savedReport, { childId, childProfile, session, programs, rating, parentId }) => {
+    const { internalNotes, reviewLog, ...publicReport } = savedReport;
+    const kind = getReportKind(savedReport);
+    const focus = savedReport.sessionFocus || savedReport.program || session?.focus || '';
+    const programLabel = kind === 'harian'
+        ? guessTherapyType(focus || savedReport.sessionType, programs)
+        : (savedReport.program || savedReport.sessionFocus || session?.focus || getReportKindLabel(kind));
+    const summary = savedReport.description || savedReport.summary || '';
+    const parentNotes = savedReport.recommendations || savedReport.parentNotes || '';
+
+    return {
+        ...publicReport,
+        id: savedReport.id,
+        kind,
+        reportKindLabel: getReportKindLabel(kind),
+        sessionId: savedReport.sessionId || session?.id || '',
+        childId,
+        childName: savedReport.childName || session?.child?.name || childProfile?.name || 'Anak',
+        parentId: parentId || childProfile?.parentId || session?.child?.parentId || '',
+        date: savedReport.date || session?.date || savedReport.dateFrom || '',
+        dateFrom: kind === 'harian' ? '' : (savedReport.dateFrom || savedReport.date || session?.date || ''),
+        dateTo: kind === 'harian' ? '' : (savedReport.dateTo || savedReport.date || session?.date || ''),
+        type: savedReport.type || kind,
+        programLabel,
+        title: savedReport.title || focus || (kind === 'observasi_awal' ? 'Observasi Kemampuan Awal' : kind === 'periodik' ? 'Laporan Periodik Terapi' : 'Laporan Harian Terapi'),
+        therapist: savedReport.therapistName || session?.therapist?.name || 'Terapis',
+        therapistName: savedReport.therapistName || session?.therapist?.name || 'Terapis',
+        sessionType: savedReport.sessionType || savedReport.sessionFocus || programLabel || '',
+        parentRating: rating?.rating || null,
+        ratingComment: rating?.comment || '',
+        description: summary || (kind === 'harian'
+            ? 'Laporan sudah tersedia, namun Goals / Aktivitas Hari Ini belum diisi.'
+            : 'Ringkasan laporan belum diisi.'),
+        hasNotes: !!summary.trim(),
+        aspects: toTextList(savedReport.aspects),
+        evaluations: savedReport.evaluations || {},
+        observationItems: getObservationItems(savedReport),
+        observationSessions: savedReport.evaluations?.observationSessions || '',
+        progressPoints: toTextList(savedReport.progressPoints),
+        improvementPoints: toTextList(savedReport.improvementPoints),
+        childResponse: savedReport.childResponse || '',
+        obstacles: savedReport.obstacles || '',
+        toysUsed: toTextList(savedReport.toysUsed),
+        roomsUsed: toTextList(savedReport.roomsUsed),
+        toolsUsed: toTextList(savedReport.toolsUsed),
+        parentNotes,
+        recommendations: parentNotes,
+        status: savedReport.status,
+        statusLabel: getReportStatusLabel(savedReport),
+        canRate: !!savedReport.sessionId,
+    };
+};
 
 // ── Helpers ────────────────────────────────────────────────────────────
 const formatDate = (dateStr) => {
@@ -126,6 +200,27 @@ function ReportDetailModal({ report, onClose, onDownload }) {
             </div>
         </div>
     ) : null;
+    const textBlock = (title, value, tone = 'default') => String(value || '').trim() ? (
+        <div className={tone === 'parent'
+            ? 'rounded-2xl border border-green-100 bg-green-50 p-4 dark:border-green-900/30 dark:bg-green-900/10'
+            : ''
+        }>
+            <p className={`text-xs font-black uppercase tracking-wider ${tone === 'parent' ? 'text-green-700' : 'text-slate-500'}`}>{title}</p>
+            <p className={`mt-2 whitespace-pre-wrap text-sm leading-relaxed ${tone === 'parent' ? 'text-green-800 dark:text-green-200' : 'text-slate-700 dark:text-slate-300'}`}>{value}</p>
+        </div>
+    ) : null;
+    const meta = (label, value) => (
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/60">
+            <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">{label}</p>
+            <p className="mt-1 text-sm font-bold text-slate-800 dark:text-slate-100">{value || '-'}</p>
+        </div>
+    );
+    const evaluationEntries = getEvaluationEntries(report);
+    const mainSectionTitle = report.kind === 'periodik'
+        ? 'Kesimpulan Periode'
+        : report.kind === 'observasi_awal'
+            ? 'Ringkasan Observasi Awal'
+            : 'Goals / Aktivitas Hari Ini';
     return (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm" onClick={onClose}>
             <article className="max-h-[88vh] w-full max-w-3xl overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl dark:bg-slate-900" onClick={e => e.stopPropagation()}>
@@ -142,21 +237,53 @@ function ReportDetailModal({ report, onClose, onDownload }) {
                     </button>
                 </div>
                 <div className="grid gap-5">
-                    <div>
-                        <p className="text-xs font-black uppercase tracking-wider text-slate-500">
-                            {report.type === 'periodik' ? 'Kesimpulan Periode' : 'Goals / Aktivitas Hari Ini'}
-                        </p>
-                        <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-700 dark:text-slate-300">
-                            {report.description || report.summary || 'Belum ada ringkasan.'}
-                        </p>
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                        {meta('Anak', report.childName)}
+                        {meta('Jenis', report.reportKindLabel || getReportKindLabel(report.kind || report.type))}
+                        {meta('Program / Fokus', report.programLabel || report.sessionType || report.sessionFocus)}
+                        {meta('Status', report.statusLabel || getReportStatusLabel(report))}
                     </div>
-                    {report.childResponse && <div><p className="text-xs font-black uppercase tracking-wider text-slate-500">Respons Anak</p><p className="mt-2 whitespace-pre-wrap text-sm text-slate-700 dark:text-slate-300">{report.childResponse}</p></div>}
-                    {report.obstacles && <div><p className="text-xs font-black uppercase tracking-wider text-slate-500">Kendala / Observasi</p><p className="mt-2 whitespace-pre-wrap text-sm text-slate-700 dark:text-slate-300">{report.obstacles}</p></div>}
+                    {report.parentRating && (
+                        <div>
+                            <p className="text-xs font-black uppercase tracking-wider text-slate-500">Rating Orang Tua</p>
+                            <div className="mt-2 flex flex-wrap items-center gap-3">
+                                {renderStars(report.parentRating)}
+                                {report.ratingComment && <span className="text-sm text-slate-600 dark:text-slate-300">{report.ratingComment}</span>}
+                            </div>
+                        </div>
+                    )}
+                    {textBlock(mainSectionTitle, report.description || report.summary || 'Belum ada ringkasan.')}
+                    {evaluationEntries.length > 0 && (
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/60">
+                            <p className="text-xs font-black uppercase tracking-wider text-slate-500">Indikator Capaian Terapi</p>
+                            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                                {evaluationEntries.map(([key, value]) => <EvalBar key={key} label={key} value={Number(value)} />)}
+                            </div>
+                        </div>
+                    )}
+                    {Array.isArray(report.observationItems) && report.observationItems.length > 0 && (
+                        <div>
+                            <p className="text-xs font-black uppercase tracking-wider text-slate-500">Aspek Observasi Awal</p>
+                            <div className="mt-3 grid gap-3">
+                                {report.observationItems.map((item, index) => (
+                                    <div key={`${item.aspect || 'observasi'}-${index}`} className="rounded-2xl border border-slate-200 p-4 dark:border-slate-700">
+                                        <p className="text-sm font-black text-slate-900 dark:text-white">{item.aspect || `Aspek ${index + 1}`}</p>
+                                        {item.prompt && <p className="mt-1 text-xs font-semibold text-slate-500">{item.prompt}</p>}
+                                        {item.note && <p className="mt-3 whitespace-pre-wrap text-sm text-slate-700 dark:text-slate-300">{item.note}</p>}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                    {list('Pencapaian Periode Ini', report.progressPoints)}
+                    {list('Area yang Perlu Ditingkatkan', report.improvementPoints)}
+                    {textBlock('Respons Anak', report.childResponse)}
+                    {textBlock('Kendala / Observasi', report.obstacles)}
                     {list('Aspek terapi', report.aspects)}
                     {list('Mainan', report.toysUsed)}
                     {list('Ruang dipakai', report.roomsUsed)}
                     {list('Alat peraga', report.toolsUsed)}
-                    {report.parentNotes && <div className="rounded-2xl border border-green-100 bg-green-50 p-4 dark:border-green-900/30 dark:bg-green-900/10"><p className="text-xs font-black uppercase tracking-wider text-green-700">Masukan untuk Orang Tua</p><p className="mt-2 whitespace-pre-wrap text-sm text-green-800 dark:text-green-200">{report.parentNotes}</p></div>}
+                    {textBlock('Masukan untuk Orang Tua', report.parentNotes || report.recommendations, 'parent')}
                 </div>
                 <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
                     <button onClick={onClose} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300">Tutup</button>
@@ -175,8 +302,8 @@ function DailyReportCard({ report, onRate, onDownload, onView, typeColors = {} }
                 <div className="flex flex-col gap-1 sm:min-w-[140px] sm:border-r sm:border-slate-200 sm:dark:border-slate-700 sm:pr-4">
                     <span className="text-slate-400 text-[11px] font-bold uppercase tracking-wider">Tanggal</span>
                     <p className="text-slate-900 dark:text-slate-100 font-bold text-sm">{formatDate(report.date)}</p>
-                    <div className={`mt-1 inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold w-fit ${typeColors[report.type]?.bg || DEFAULT_COLOR}`}>
-                        {report.type}
+                    <div className={`mt-1 inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold w-fit ${typeColors[report.programLabel]?.bg || DEFAULT_COLOR}`}>
+                        {report.programLabel}
                     </div>
                     <div className="mt-1 inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold w-fit bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300">
                         {report.statusLabel}
@@ -245,17 +372,17 @@ function DailyReportCard({ report, onRate, onDownload, onView, typeColors = {} }
                 )}
 
                 {/* Actions */}
-                <div className="flex gap-3 pt-1">
+                <div className="flex flex-col gap-3 pt-1 sm:flex-row">
                     <button
                         onClick={() => onView(report)}
-                        className="flex items-center gap-2 h-9 px-4 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors text-xs font-bold"
+                        className="flex h-9 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-700"
                     >
                         <span className="material-symbols-outlined text-[16px]">visibility</span>
                         Lihat Detail
                     </button>
                     <button
                         onClick={() => onDownload(report)}
-                        className="flex items-center gap-2 h-9 px-4 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:opacity-90 transition-opacity text-xs font-bold shadow-md"
+                        className="flex h-9 items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 text-xs font-bold text-white shadow-md transition-opacity hover:opacity-90 dark:bg-white dark:text-slate-900"
                     >
                         <span className="material-symbols-outlined text-[16px]">picture_as_pdf</span>
                         Cetak / PDF
@@ -268,17 +395,30 @@ function DailyReportCard({ report, onRate, onDownload, onView, typeColors = {} }
 
 // ── PeriodicReportCard ─────────────────────────────────────────────────
 function PeriodicReportCard({ report, onDownload, onView }) {
+    const isObservation = report.kind === 'observasi_awal' || report.type === 'observasi_awal';
+    const headerClass = isObservation
+        ? 'bg-sky-50 dark:bg-sky-900/20 px-5 py-4 flex items-center justify-between gap-3'
+        : 'bg-amber-50 dark:bg-amber-900/20 px-5 py-4 flex items-center justify-between gap-3';
+    const titleClass = isObservation ? 'font-black text-sky-900 dark:text-sky-200' : 'font-black text-amber-900 dark:text-amber-200';
+    const dateClass = isObservation ? 'text-xs text-sky-700 dark:text-sky-400 mt-0.5' : 'text-xs text-amber-700 dark:text-amber-400 mt-0.5';
+    const badgeClass = isObservation
+        ? 'text-xs font-bold px-3 py-1 bg-white dark:bg-slate-800 rounded-full border border-sky-200 dark:border-sky-700 text-sky-600 dark:text-sky-400 shrink-0'
+        : 'text-xs font-bold px-3 py-1 bg-white dark:bg-slate-800 rounded-full border border-amber-200 dark:border-amber-700 text-amber-600 dark:text-amber-400 shrink-0';
+    const cardClass = isObservation
+        ? 'border border-sky-200 dark:border-sky-800/50 rounded-2xl overflow-hidden bg-white dark:bg-slate-800 shadow-sm'
+        : 'border border-amber-200 dark:border-amber-800/50 rounded-2xl overflow-hidden bg-white dark:bg-slate-800 shadow-sm';
+    const observationItems = Array.isArray(report.observationItems) ? report.observationItems : [];
     return (
-        <div className="border border-amber-200 dark:border-amber-800/50 rounded-2xl overflow-hidden bg-white dark:bg-slate-800 shadow-sm">
+        <div className={cardClass}>
             {/* Header */}
-            <div className="bg-amber-50 dark:bg-amber-900/20 px-5 py-4 flex items-center justify-between gap-3">
+            <div className={headerClass}>
                 <div>
-                    <p className="font-black text-amber-900 dark:text-amber-200">Laporan Periodik</p>
-                    <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+                    <p className={titleClass}>{isObservation ? 'Observasi Awal' : 'Laporan Periodik'}</p>
+                    <p className={dateClass}>
                         {formatDate(report.dateFrom)} s/d {formatDate(report.dateTo)}
                     </p>
                 </div>
-                <span className="text-xs font-bold px-3 py-1 bg-white dark:bg-slate-800 rounded-full border border-amber-200 dark:border-amber-700 text-amber-600 dark:text-amber-400 shrink-0">
+                <span className={badgeClass}>
                     {getReportStatusLabel(report)}
                 </span>
             </div>
@@ -291,6 +431,23 @@ function PeriodicReportCard({ report, onDownload, onView }) {
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
                             {Object.entries(report.evaluations).map(([key, val]) => (
                                 <EvalBar key={key} label={key} value={val} />
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {observationItems.length > 0 && (
+                    <div>
+                        <p className="text-xs font-bold text-sky-700 dark:text-sky-400 uppercase tracking-wider mb-2 flex items-center gap-1">
+                            <span className="material-symbols-outlined text-[14px]">psychology</span>
+                            Aspek Observasi Awal
+                        </p>
+                        <div className="grid gap-2">
+                            {observationItems.slice(0, 4).map((item, index) => (
+                                <div key={`${item.aspect || 'observasi'}-${index}`} className="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+                                    <p className="text-sm font-bold text-slate-800 dark:text-slate-100">{item.aspect || `Aspek ${index + 1}`}</p>
+                                    {item.note && <p className="mt-1 line-clamp-2 text-xs text-slate-500 dark:text-slate-400">{item.note}</p>}
+                                </div>
                             ))}
                         </div>
                     </div>
@@ -351,17 +508,17 @@ function PeriodicReportCard({ report, onDownload, onView }) {
                     </div>
                 )}
 
-                <div className="flex gap-3 pt-1">
+                <div className="flex flex-col gap-3 pt-1 sm:flex-row">
                     <button
                         onClick={() => onView(report)}
-                        className="flex items-center gap-2 h-9 px-4 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors text-xs font-bold"
+                        className="flex h-9 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-700"
                     >
                         <span className="material-symbols-outlined text-[16px]">visibility</span>
                         Lihat Detail
                     </button>
                     <button
                         onClick={() => onDownload(report)}
-                        className="flex items-center gap-2 h-9 px-4 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:opacity-90 transition-opacity text-xs font-bold shadow-md"
+                        className="flex h-9 items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 text-xs font-bold text-white shadow-md transition-opacity hover:opacity-90 dark:bg-white dark:text-slate-900"
                     >
                         <span className="material-symbols-outlined text-[16px]">picture_as_pdf</span>
                         Cetak / PDF
@@ -391,6 +548,7 @@ function App({ onLogout }) {
     const [typeFilter, setTypeFilter] = useState('All');
     const [dailyReports, setDailyReports] = useState([]);
     const [periodicReports, setPeriodicReports] = useState([]);
+    const [observationReports, setObservationReports] = useState([]);
     const [toast, setToast]           = useState('');
     const [page, setPage]             = useState(1);
     const [activeTab, setActiveTab]   = useState('harian');
@@ -416,6 +574,8 @@ function App({ onLogout }) {
                 if (user.parentId) {
                     const childRes = await childrenApi.getByParent(user.parentId);
                     children = childRes.data?.data || [];
+                } else if (Array.isArray(user.children) && user.children.length) {
+                    children = user.children;
                 } else if (user.childId) {
                     const childRes = await childrenApi.getById(user.childId);
                     children = childRes.data?.data ? [childRes.data.data] : [];
@@ -431,17 +591,27 @@ function App({ onLogout }) {
                     childId = preferredChild.id || preferredChild.nita;
                     setSelectedChild(childId);
                 }
-            } catch { /* ignore */ }
+            } catch (e) {
+                console.error('Failed to load parent report profile data', e);
+                setToast('Gagal memuat profil anak untuk arsip laporan.');
+            }
         } else {
             try {
                 const pRes = await adminApi.getPrograms();
                 setProgramsList(pRes.data?.data || []);
-            } catch(e){}
+            } catch(e){
+                console.error('Failed to load program filters', e);
+            }
         }
 
-        if (!childId) return;
-
-        const savedUser = user || {};
+        const selectedProfile = availableChildren.find(c => c.id === childId || c.nita === childId);
+        if (selectedProfile?.id) childId = selectedProfile.id;
+        if (!childId) {
+            setDailyReports([]);
+            setPeriodicReports([]);
+            setObservationReports([]);
+            return;
+        }
 
         try {
             const rRes = await reportsApi.getForChild(childId);
@@ -451,7 +621,6 @@ function App({ onLogout }) {
             }
             const therapistReports = rRes.data?.data || [];
             const visibleReports = therapistReports.filter(isParentVisibleReport);
-            const visibleDailyReports = visibleReports.filter(report => report.type === 'harian');
 
             const sRes = await sessionsApi.getCompletedForChild(childId);
             const sessions = sRes.data?.data || [];
@@ -461,50 +630,32 @@ function App({ onLogout }) {
             const allProg = pRes.data?.data || [];
             const childProfile =
                 availableChildren.find(c => c.id === childId || c.nita === childId) ||
-                (savedUser.children || []).find(c => c.id === childId || c.nita === childId);
+                (user?.children || []).find(c => c.id === childId || c.nita === childId);
 
-            const mapped = await Promise.all(visibleDailyReports.map(async savedReport => {
+            const mappedReports = await Promise.all(visibleReports.map(async savedReport => {
                 const s = savedReport.sessionId ? sessionMap.get(savedReport.sessionId) : null;
                 let rating = null;
                 if (savedReport.sessionId) {
                     try {
                         const rtgRes = await sessionsApi.getRating(savedReport.sessionId);
                         rating = rtgRes.data?.data;
-                    } catch(e){}
+                    } catch(e){
+                        console.error('Failed to load report rating', e);
+                    }
                 }
-                
-                return {
-                    id:           savedReport.id,
-                    sessionId:    savedReport.sessionId || s?.id || '',
+                return normalizeParentReport(savedReport, {
                     childId,
-                    childName:    savedReport.childName || s?.child?.name || childProfile?.name || 'Anak',
-                    parentId:     savedUser.parentId || childProfile?.parentId || s?.child?.parentId || '',
-                    date:         savedReport.date || s?.date,
-                    type:         guessTherapyType(savedReport.sessionFocus || savedReport.program || s?.focus, allProg),
-                    title:        savedReport.sessionFocus || s?.focus || 'Laporan Harian Terapi',
-                    therapist:    savedReport.therapistName || s?.therapist?.name || 'Terapis',
-                    sessionType:  savedReport.sessionType || savedReport.sessionFocus || '',
-                    parentRating: rating?.rating || null,
-                    ratingComment: rating?.comment || '',
-                    description:  savedReport.description || savedReport.summary || 'Laporan sudah tersedia, namun Goals / Aktivitas Hari Ini belum diisi.',
-                    hasNotes:     !!(savedReport.description || savedReport.summary || '').trim(),
-                    aspects:      savedReport.aspects || [],
-                    evaluations:  savedReport.evaluations || {},
-                    childResponse: savedReport.childResponse || '',
-                    obstacles:    savedReport.obstacles || '',
-                    toysUsed:     savedReport.toysUsed || [],
-                    roomsUsed:    savedReport.roomsUsed || [],
-                    toolsUsed:    savedReport.toolsUsed || [],
-                    reviewLog:    savedReport.reviewLog || [],
-                    parentNotes:  savedReport.recommendations || savedReport.parentNotes || '',
-                    status:       savedReport.status,
-                    statusLabel:  getReportStatusLabel(savedReport),
-                    canRate:      !!savedReport.sessionId,
-                };
+                    childProfile,
+                    session: s,
+                    programs: allProg,
+                    rating,
+                    parentId: user?.parentId,
+                });
             }));
 
-            setDailyReports(mapped);
-            setPeriodicReports(visibleReports.filter(report => report.type === 'periodik'));
+            setDailyReports(mappedReports.filter(report => report.kind === 'harian'));
+            setPeriodicReports(mappedReports.filter(report => report.kind === 'periodik'));
+            setObservationReports(mappedReports.filter(report => report.kind === 'observasi_awal'));
         } catch(e) {
             console.error(e);
             setToast('Gagal memuat arsip laporan.');
@@ -523,8 +674,9 @@ function App({ onLogout }) {
         const matchSearch = !search ||
             r.title.toLowerCase().includes(search.toLowerCase()) ||
             r.therapist.toLowerCase().includes(search.toLowerCase()) ||
-            r.description.toLowerCase().includes(search.toLowerCase());
-        const matchType = typeFilter === 'All' || r.type === typeFilter;
+            r.description.toLowerCase().includes(search.toLowerCase()) ||
+            String(r.programLabel || '').toLowerCase().includes(search.toLowerCase());
+        const matchType = typeFilter === 'All' || r.programLabel === typeFilter;
         return matchSearch && matchType;
     });
 
@@ -546,14 +698,9 @@ function App({ onLogout }) {
             setToast('Rating hanya bisa disimpan untuk laporan yang terhubung ke sesi.');
             return;
         }
-        if (!ratingModal.parentId) {
-            setToast('Data orang tua belum lengkap untuk menyimpan rating.');
-            return;
-        }
         try {
             const response = await sessionsApi.addRating(ratingModal.sessionId, {
                 childId: ratingModal.childId,
-                parentId: ratingModal.parentId,
                 rating: hoverRating,
                 comment: ratingComment.trim()
             });
@@ -602,7 +749,7 @@ function App({ onLogout }) {
 
                     {/* Tabs */}
                     <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
-                        <div className="flex border-b border-slate-200 dark:border-slate-700">
+                        <div className="flex overflow-x-auto border-b border-slate-200 dark:border-slate-700">
                             <button
                                 onClick={() => { setActiveTab('harian'); setPage(1); }}
                                 className={`flex-1 sm:flex-none px-6 py-3.5 font-bold text-sm border-b-2 transition-colors ${activeTab === 'harian' ? 'border-sky-500 text-sky-600 dark:text-sky-400 bg-sky-50/30 dark:bg-sky-900/10' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
@@ -614,6 +761,12 @@ function App({ onLogout }) {
                                 className={`flex-1 sm:flex-none px-6 py-3.5 font-bold text-sm border-b-2 transition-colors ${activeTab === 'periodik' ? 'border-amber-500 text-amber-600 dark:text-amber-400 bg-amber-50/30 dark:bg-amber-900/10' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
                             >
                                 📊 Laporan Periodik
+                            </button>
+                            <button
+                                onClick={() => { setActiveTab('observasi_awal'); setPage(1); }}
+                                className={`flex-1 sm:flex-none px-6 py-3.5 font-bold text-sm border-b-2 transition-colors ${activeTab === 'observasi_awal' ? 'border-sky-500 text-sky-600 dark:text-sky-400 bg-sky-50/30 dark:bg-sky-900/10' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+                            >
+                                Observasi Awal
                             </button>
                         </div>
 
@@ -716,6 +869,24 @@ function App({ onLogout }) {
                                             icon="auto_graph"
                                             title="Laporan periodik belum tersedia."
                                             subtitle="Terapis belum menyusun laporan rangkuman periodik untuk anak Anda. Laporan periodik dibuat setelah seluruh sesi program selesai."
+                                        />
+                                    )}
+                                </>
+                            )}
+
+                            {activeTab === 'observasi_awal' && (
+                                <>
+                                    {observationReports.length > 0 ? (
+                                        <div className="flex flex-col gap-5">
+                                            {observationReports.map((r, idx) => (
+                                                <PeriodicReportCard key={r.id || idx} report={r} onDownload={handleDownload} onView={setSelectedReportDetail} />
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <EmptyState
+                                            icon="psychology"
+                                            title="Laporan observasi awal belum tersedia."
+                                            subtitle="Laporan observasi awal akan muncul setelah terapis menyimpan dan mengirimkannya ke portal orang tua."
                                         />
                                     )}
                                 </>

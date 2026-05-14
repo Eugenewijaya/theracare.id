@@ -11,7 +11,29 @@ const PROGRAM_COLORS = {
     default: { bg: 'bg-slate-100 dark:bg-slate-800', dot: 'bg-slate-500', text: 'text-slate-600 dark:text-slate-400' }
 };
 
-const getEventColor = (focus) => PROGRAM_COLORS[focus] || PROGRAM_COLORS.default;
+const OFF_STATUSES = new Set(['cancelled', 'canceled', 'therapist_off', 'center_closed', 'off', 'leave']);
+const STATUS_LABELS = {
+    upcoming: 'Terjadwal',
+    confirmed: 'Hadir dikonfirmasi',
+    active: 'Berjalan',
+    done: 'Selesai',
+    cancelled: 'Off / dibatalkan',
+    one_time_visit: 'One-time visit',
+};
+
+const getEventColor = (focus, status = '') => {
+    const normalized = String(status).toLowerCase();
+    if (OFF_STATUSES.has(normalized)) {
+        return { bg: 'bg-red-100 dark:bg-red-900/30', dot: 'bg-red-500', text: 'text-red-700 dark:text-red-300' };
+    }
+    if (normalized === 'done') {
+        return { bg: 'bg-emerald-100 dark:bg-emerald-900/30', dot: 'bg-emerald-500', text: 'text-emerald-700 dark:text-emerald-300' };
+    }
+    if (normalized === 'active') {
+        return { bg: 'bg-amber-100 dark:bg-amber-900/30', dot: 'bg-amber-500', text: 'text-amber-700 dark:text-amber-300' };
+    }
+    return PROGRAM_COLORS[focus] || PROGRAM_COLORS.default;
+};
 const getShortFocus = (focus) => focus?.match(/\((.*?)\)/)?.[1] || focus?.substring(0, 3).toUpperCase() || 'SES';
 
 const SidePanel = ({
@@ -79,8 +101,9 @@ const SidePanel = ({
                         {daySessions.length > 0 ? daySessions.map((session, i) => {
                             const child = getChild(session);
                             const therapist = therapistsList.find(t => t.id === session.therapistId) || { name: 'Terapis tidak dikenal' };
-                            const colors = getEventColor(session.focus);
+                            const colors = getEventColor(session.focus, session.status);
                             const shortFocus = session.isOneTime ? 'OTV' : getShortFocus(session.focus);
+                            const statusLabel = STATUS_LABELS[session.status] || session.status || 'Terjadwal';
 
                             return (
                                 <div key={session.id || i} className="relative">
@@ -93,6 +116,9 @@ const SidePanel = ({
                                                 {session.startTime} ({session.duration})
                                             </span>
                                         </div>
+                                        <span className={`mt-2 inline-flex rounded-full px-2 py-0.5 text-[10px] font-black ${colors.bg} ${colors.text}`}>
+                                            {statusLabel}
+                                        </span>
 
                                         <h4 className="mt-3 font-bold text-sm text-slate-900 dark:text-white break-words">{child.name}</h4>
                                         {session.isOneTime && <p className="mt-1 text-[11px] text-slate-500">One-time visit, tidak tersimpan sebagai data anak.</p>}
@@ -108,14 +134,19 @@ const SidePanel = ({
                                             </p>
                                         </div>
 
-                                        {onEditSession && (
+                                        {onEditSession && !session.isOneTime && (
                                             <button
                                                 onClick={() => onEditSession(session)}
                                                 className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2 text-xs font-black text-white transition hover:bg-primary/90"
                                             >
-                                                <span className="material-symbols-outlined text-[16px]">{session.isOneTime ? 'info' : 'edit'}</span>
-                                                {session.isOneTime ? 'Lihat Detail' : 'Edit Sesi'}
+                                                <span className="material-symbols-outlined text-[16px]">edit</span>
+                                                Edit Sesi
                                             </button>
+                                        )}
+                                        {session.isOneTime && (
+                                            <div className="mt-3 rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-semibold text-slate-500 dark:border-slate-800 dark:bg-slate-900/60">
+                                                Log one-time visit hanya untuk catatan kedatangan dan tidak diedit sebagai sesi terapi reguler.
+                                            </div>
                                         )}
                                     </div>
                                 </div>
