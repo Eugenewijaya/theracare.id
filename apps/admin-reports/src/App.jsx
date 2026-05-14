@@ -7,6 +7,20 @@ import { confirmAction } from '../../shared/ui/confirmDialog';
 import { getReportEditWindow, isParentVisibleReport } from '../../shared/reportRules';
 
 const toDateValue = (date) => date.toISOString().split('T')[0];
+const REPORT_REVIEW_QUEUE_STATUSES = ['pending_review'];
+const REPORT_REVISION_STATUSES = ['needs_revision'];
+const REPORT_HISTORY_STATUSES = ['approved', 'published', 'ready_for_parent'];
+const REPORT_MONITORING_STATUSES = [
+    ...REPORT_REVIEW_QUEUE_STATUSES,
+    ...REPORT_REVISION_STATUSES,
+    ...REPORT_HISTORY_STATUSES,
+];
+
+const reviewTabs = [
+    { value: 'review', label: 'Perlu Review' },
+    { value: 'revision', label: 'Menunggu Revisi' },
+    { value: 'history', label: 'Riwayat' },
+];
 
 const buildRange = (timeframe, customRange) => {
     const end = new Date();
@@ -57,7 +71,8 @@ function App() {
     const [toast, setToast] = useState(null);
     const [reviewNotes, setReviewNotes] = useState({});
     const [reviewAction, setReviewAction] = useState(null);
-    const [data, setData] = useState({ children: [], sessions: [], therapists: [], programs: [], stats: {}, pendingReports: [] });
+    const [reviewTab, setReviewTab] = useState('review');
+    const [data, setData] = useState({ children: [], sessions: [], therapists: [], programs: [], stats: {}, reports: [] });
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const centerSettings = useClinicSettings();
@@ -99,7 +114,7 @@ function App() {
                 children: childrenRes.ok ? childrenRes.data?.data || [] : [],
                 therapists: therapistsRes.ok ? therapistsRes.data?.data || [] : [],
                 programs: programsRes.ok ? programsRes.data?.data || [] : [],
-                pendingReports: pendingReportsRes.ok ? (pendingReportsRes.data?.data || []).filter(report => ['pending_review', 'needs_revision', 'approved', 'published', 'ready_for_parent'].includes(report.status)).slice(0, 12) : [],
+                reports: pendingReportsRes.ok ? (pendingReportsRes.data?.data || []).filter(report => REPORT_MONITORING_STATUSES.includes(report.status)) : [],
             });
             if (failedLabels.length > 0) {
                 setError(`Sebagian data belum bisa dimuat: ${failedLabels.join(', ')}. Metrik lain tetap ditampilkan dari data yang tersedia.`);
@@ -112,7 +127,7 @@ function App() {
                 children: [],
                 therapists: [],
                 programs: [],
-                pendingReports: [],
+                reports: [],
             });
             setError('Backend belum bisa memuat laporan.');
         } finally {
@@ -124,6 +139,23 @@ function App() {
         setToast({ msg, type });
         setTimeout(() => setToast(null), 3500);
     };
+
+    const reportReviewGroups = useMemo(() => {
+        const reports = data.reports || [];
+        return {
+            review: reports
+                .filter(report => REPORT_REVIEW_QUEUE_STATUSES.includes(report.status))
+                .slice(0, 12),
+            revision: reports
+                .filter(report => REPORT_REVISION_STATUSES.includes(report.status))
+                .slice(0, 12),
+            history: reports
+                .filter(report => REPORT_HISTORY_STATUSES.includes(report.status))
+                .slice(0, 24),
+        };
+    }, [data.reports]);
+
+    const activeReviewReports = reportReviewGroups[reviewTab] || [];
 
     // Calculate dynamic KPIs from persisted backend data.
     const kpis = useMemo(() => {
@@ -300,7 +332,7 @@ function App() {
             };
             setData(prev => ({
                 ...prev,
-                pendingReports: prev.pendingReports.map(item => item.id === report.id ? updatedReport : item),
+                reports: prev.reports.map(item => item.id === report.id ? updatedReport : item),
             }));
             setReviewNotes(prev => ({ ...prev, [report.id]: '' }));
             window.dispatchEvent(new CustomEvent('reportUpdated', { detail: { id: report.id, status } }));
@@ -421,8 +453,8 @@ function App() {
             <section className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-6">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
                     <div>
-                        <h3 className="font-bold text-slate-900 dark:text-white text-lg">Pemantauan Laporan Terapis</h3>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Laporan terapis langsung tampil di portal orang tua. Admin tetap bisa preview dan meminta revisi dalam jendela edit.</p>
+                        <h3 className="font-bold text-slate-900 dark:text-white text-lg">Review Laporan Terapis</h3>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Laporan yang sudah disetujui dipindahkan ke riwayat agar antrean review tidak bertumpuk.</p>
                     </div>
                     <button
                         type="button"
@@ -433,15 +465,41 @@ function App() {
                         Refresh
                     </button>
                 </div>
-                {data.pendingReports.length > 0 ? (
+                <div className="mb-5 flex flex-wrap gap-2 rounded-xl bg-slate-100 p-1 dark:bg-slate-900/70">
+                    {reviewTabs.map(tab => (
+                        <button
+                            key={tab.value}
+                            type="button"
+                            onClick={() => setReviewTab(tab.value)}
+                            className={`inline-flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-black transition sm:flex-none ${
+                                reviewTab === tab.value
+                                    ? 'bg-white text-primary shadow-sm dark:bg-slate-800 dark:text-blue-300'
+                                    : 'text-slate-500 hover:bg-white/70 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800/70 dark:hover:text-slate-100'
+                            }`}
+                        >
+                            {tab.label}
+                            <span className={`rounded-full px-2 py-0.5 text-[10px] ${
+                                reviewTab === tab.value
+                                    ? 'bg-primary/10 text-primary dark:bg-blue-400/10 dark:text-blue-300'
+                                    : 'bg-slate-200 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+                            }`}>
+                                {reportReviewGroups[tab.value]?.length || 0}
+                            </span>
+                        </button>
+                    ))}
+                </div>
+                {activeReviewReports.length > 0 ? (
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                        {data.pendingReports.slice(0, 6).map((report) => {
+                        {activeReviewReports.map((report) => {
                             const editWindow = getReportEditWindow(report);
                             const revisionLocked = isParentVisibleReport(report.status) && !editWindow.canEdit;
                             const isApproved = ['approved', 'published', 'ready_for_parent'].includes(report.status);
                             const isBusy = reviewAction?.id === report.id;
                             const approveBusy = isBusy && reviewAction?.status === 'approved';
                             const revisionBusy = isBusy && reviewAction?.status === 'needs_revision';
+                            const isReviewQueue = reviewTab === 'review';
+                            const isRevisionQueue = reviewTab === 'revision';
+                            const isHistory = reviewTab === 'history';
                             return (
                             <article key={report.id} className="rounded-xl border border-slate-200 dark:border-slate-700 p-4 flex flex-col gap-3">
                                 <div className="flex items-start justify-between gap-3">
@@ -477,13 +535,21 @@ function App() {
                                         Masa ubah laporan sudah lewat 48 jam sejak dipublikasikan ke orang tua.
                                     </div>
                                 )}
-                                <textarea
-                                    value={reviewNotes[report.id] || ''}
-                                    onChange={e => setReviewNotes(prev => ({ ...prev, [report.id]: e.target.value }))}
-                                    rows={2}
-                                    placeholder="Catatan review / alasan revisi untuk terapis..."
-                                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-primary/30 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                                />
+                                {(isReviewQueue || isHistory) && (
+                                    <textarea
+                                        value={reviewNotes[report.id] || ''}
+                                        onChange={e => setReviewNotes(prev => ({ ...prev, [report.id]: e.target.value }))}
+                                        rows={2}
+                                        disabled={revisionLocked}
+                                        placeholder={isHistory ? 'Catatan jika perlu meminta revisi ulang...' : 'Catatan review / alasan revisi untuk terapis...'}
+                                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-primary/30 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:disabled:bg-slate-900/60"
+                                    />
+                                )}
+                                {isRevisionQueue && (
+                                    <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-300">
+                                        Menunggu terapis mengirim revisi. Laporan ini tidak masuk antrean approval sampai dikirim ulang.
+                                    </div>
+                                )}
                                 <div className="flex flex-col sm:flex-row gap-2">
                                     <button
                                         type="button"
@@ -493,22 +559,46 @@ function App() {
                                     >
                                         Preview
                                     </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => handleReviewReport(report, 'approved')}
-                                        disabled={isApproved || isBusy}
-                                        className="flex-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-100 disabled:text-emerald-700"
-                                    >
-                                        {approveBusy ? 'Menyetujui...' : isApproved ? 'Sudah Tampil' : 'Setujui'}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => handleReviewReport(report, 'needs_revision')}
-                                        disabled={revisionLocked || isBusy}
-                                        className="flex-1 rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-45 dark:hover:bg-slate-700"
-                                    >
-                                        {revisionBusy ? 'Mengirim...' : 'Minta Revisi'}
-                                    </button>
+                                    {isReviewQueue && (
+                                        <>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleReviewReport(report, 'approved')}
+                                                disabled={isApproved || isBusy}
+                                                className="flex-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-100 disabled:text-emerald-700"
+                                            >
+                                                {approveBusy ? 'Menyetujui...' : 'Setujui'}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleReviewReport(report, 'needs_revision')}
+                                                disabled={revisionLocked || isBusy}
+                                                className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-45 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-700"
+                                            >
+                                                {revisionBusy ? 'Mengirim...' : 'Minta Revisi'}
+                                            </button>
+                                        </>
+                                    )}
+                                    {isHistory && (
+                                        <>
+                                            <div className="flex-1 rounded-lg bg-emerald-50 px-3 py-2 text-center text-xs font-bold text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300">
+                                                Sudah Tampil
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleReviewReport(report, 'needs_revision')}
+                                                disabled={revisionLocked || isBusy}
+                                                className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-45 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-700"
+                                            >
+                                                {revisionBusy ? 'Mengirim...' : 'Minta Revisi'}
+                                            </button>
+                                        </>
+                                    )}
+                                    {isRevisionQueue && (
+                                        <div className="flex-1 rounded-lg bg-amber-50 px-3 py-2 text-center text-xs font-bold text-amber-700 dark:bg-amber-900/20 dark:text-amber-300">
+                                            Menunggu Revisi
+                                        </div>
+                                    )}
                                 </div>
                             </article>
                             );
@@ -516,7 +606,11 @@ function App() {
                     </div>
                 ) : (
                     <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-700 p-8 text-center text-sm font-semibold text-slate-400">
-                        Belum ada laporan terapis untuk dipantau.
+                        {reviewTab === 'review'
+                            ? 'Belum ada laporan baru yang perlu direview.'
+                            : reviewTab === 'revision'
+                                ? 'Belum ada laporan yang sedang menunggu revisi terapis.'
+                                : 'Belum ada riwayat laporan yang sudah disetujui.'}
                     </div>
                 )}
             </section>
