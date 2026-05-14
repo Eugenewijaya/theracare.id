@@ -101,7 +101,11 @@ function DashboardLayout() {
           role="parent"
           onRefresh={() => setRefreshKey((key) => key + 1)}
         />
-        <NotificationToastHost user={user} role="parent" onOpenNotifications={() => navigate('/announcements')} />
+        <NotificationToastHost
+          user={user}
+          role="parent"
+          onOpenNotifications={(notification) => navigate(notification?.type === 'report_published' ? '/reports' : '/announcements')}
+        />
         <div className="min-h-0 flex-1 overflow-y-auto bg-background-light dark:bg-background-dark">
           <Suspense fallback={<Loading />}>
             <Routes key={refreshKey}>

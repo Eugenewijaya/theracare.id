@@ -513,8 +513,9 @@ function App({ onLogout }) {
 
     useEffect(() => {
         loadReports();
-        window.addEventListener('parentChildSelectionChanged', loadReports);
-        return () => window.removeEventListener('parentChildSelectionChanged', loadReports);
+        const events = ['parentChildSelectionChanged', 'reportUpdated', 'notificationsUpdated'];
+        events.forEach(eventName => window.addEventListener(eventName, loadReports));
+        return () => events.forEach(eventName => window.removeEventListener(eventName, loadReports));
     }, [selectedChild]);
 
     // Filtered daily
@@ -674,7 +675,7 @@ function App({ onLogout }) {
                                         <EmptyState
                                             icon="folder_open"
                                             title={search ? 'Tidak ada laporan yang cocok.' : 'Belum ada laporan harian.'}
-                                            subtitle={search ? 'Coba kata kunci lain.' : 'Laporan harian akan muncul setelah terapis mengirim laporan dan admin menyetujuinya.'}
+                                            subtitle={search ? 'Coba kata kunci lain.' : 'Laporan harian akan muncul setelah terapis mengirim laporan.'}
                                         />
                                     )}
 

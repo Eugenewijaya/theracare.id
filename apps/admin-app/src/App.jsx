@@ -13,7 +13,6 @@ import { setClinicPortalTitle } from '../../shared/clinicSettings';
 
 const ClinicAdmin = lazy(() => import('../../clinic-admin/src/App'));
 const AdminScheduling = lazy(() => import('../../admin-scheduling/src/App'));
-const BulkSchedule = lazy(() => import('../../bulk-schedule/src/App'));
 const AdminRequests = lazy(() => import('../../admin-requests/src/App'));
 const ParentsMeeting = lazy(() => import('../../parents-meeting/src/App'));
 const AdminAttendance = lazy(() => import('../../admin-attendance/src/App'));
@@ -100,13 +99,21 @@ function DashboardLayout() {
           role="admin"
           onRefresh={() => setRefreshKey((key) => key + 1)}
         />
-        <NotificationToastHost user={user} role="admin" onOpenNotifications={() => navigate('/notifications')} />
+        <NotificationToastHost
+          user={user}
+          role="admin"
+          onOpenNotifications={(notification) => {
+            if (String(notification?.type || '').startsWith('report_')) navigate('/reports');
+            else if (String(notification?.type || '').includes('schedule') || String(notification?.type || '').includes('reschedule') || String(notification?.type || '').includes('substitute')) navigate('/scheduling');
+            else navigate('/notifications');
+          }}
+        />
         <div className="min-h-0 flex-1 overflow-y-auto bg-background-light dark:bg-background-dark">
           <Suspense fallback={<Loading />}>
             <Routes key={refreshKey}>
               <Route index element={<ClinicAdmin />} />
               <Route path="scheduling" element={<AdminScheduling />} />
-              <Route path="bulk-schedule" element={<BulkSchedule />} />
+              <Route path="bulk-schedule" element={<Navigate to="/scheduling" replace />} />
               <Route path="requests" element={<AdminRequests />} />
               <Route path="parent-meetings" element={<ParentsMeeting mode="admin" />} />
               <Route path="attendance" element={<AdminAttendance />} />

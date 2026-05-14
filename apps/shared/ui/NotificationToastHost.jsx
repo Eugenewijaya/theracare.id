@@ -53,9 +53,9 @@ export default function NotificationToastHost({ enabled = true, role = 'user', u
     }
   }, [removeToast]);
 
-  const openNotification = useCallback(async (id) => {
-    await markRead(id);
-    if (typeof onOpenNotifications === 'function') onOpenNotifications();
+  const openNotification = useCallback(async (toast) => {
+    await markRead(toast.id);
+    if (typeof onOpenNotifications === 'function') onOpenNotifications(toast);
   }, [markRead, onOpenNotifications]);
 
   const refresh = useCallback(async () => {
@@ -146,7 +146,7 @@ export default function NotificationToastHost({ enabled = true, role = 'user', u
                   </button>
                   <button
                     type="button"
-                    onClick={() => openNotification(toast.id)}
+                    onClick={() => openNotification(toast)}
                     className="rounded-lg bg-sky-600 px-3 py-1.5 text-[11px] font-black text-white shadow-sm transition hover:bg-sky-700"
                   >
                     Lihat

@@ -742,7 +742,7 @@ function App() {
     return (
         <>
             {/* Top Navigation Bar */}
-            <TopNavBar />
+            <TopNavBar onAddSingleSchedule={() => handleOpenAddSession(selectedDate || new Date())} />
 
             <div className="relative flex min-w-0 flex-1 overflow-hidden">
                 {/* Main Content Area */}

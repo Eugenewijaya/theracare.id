@@ -227,6 +227,7 @@ export const rescheduleApi = {
   getForTherapist: (id) => api.get(`/reschedule/therapist/${id}`),
   create: (data) => api.post('/reschedule', data),
   updateStatus: (id, status, updates) => api.patch(`/reschedule/${id}`, { status, ...updates }),
+  therapistResponse: (id, data) => api.patch(`/reschedule/${id}/therapist-response`, data),
   delete: (id) => api.delete(`/reschedule/${id}`),
 };
 

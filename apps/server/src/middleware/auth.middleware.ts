@@ -5,7 +5,6 @@ import { and, eq, gt } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { authSession, user as userTable } from "../db/schema.js";
 
-// Extend Express Request to include user
 declare global {
   namespace Express {
     interface Request {
@@ -21,9 +20,6 @@ declare global {
   }
 }
 
-/**
- * Middleware: require a valid Better Auth session
- */
 export const requireAuth = async (
   req: Request,
   res: Response,
@@ -33,6 +29,7 @@ export const requireAuth = async (
     let session = await auth.api.getSession({
       headers: fromNodeHeaders(req.headers),
     });
+
     if (!session?.user) {
       const token = req.get("x-theracare-session-token")?.trim();
       if (token) {
@@ -56,13 +53,16 @@ export const requireAuth = async (
         }
       }
     }
-    if (!session || !session.user) {
-      return res.status(401).json({ error: "Unauthorized — silakan login terlebih dahulu" });
+
+    if (!session?.user) {
+      return res.status(401).json({ success: false, error: "Unauthorized - silakan login terlebih dahulu" });
     }
+
     const u = session.user as any;
     if (u.status === "suspended" || u.status === "deleted" || u.banned) {
-      return res.status(403).json({ error: "Akun Anda ditangguhkan" });
+      return res.status(403).json({ success: false, error: "Akun Anda ditangguhkan" });
     }
+
     req.user = {
       id: u.id,
       name: u.name,
@@ -72,21 +72,19 @@ export const requireAuth = async (
       phone: u.phone,
     };
     next();
-  } catch {
-    return res.status(401).json({ error: "Sesi tidak valid" });
+  } catch (error) {
+    console.error("[auth] session validation failed", error);
+    return res.status(401).json({ success: false, error: "Sesi tidak valid" });
   }
 };
 
-/**
- * Middleware: require specific role(s)
- */
 export const requireRole = (...roles: string[]) => {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!req.user) {
-      return res.status(401).json({ error: "Unauthorized" });
+      return res.status(401).json({ success: false, error: "Unauthorized" });
     }
     if (!roles.includes(req.user.role)) {
-      return res.status(403).json({ error: "Akses ditolak — role tidak sesuai" });
+      return res.status(403).json({ success: false, error: "Akses ditolak - role tidak sesuai" });
     }
     next();
   };

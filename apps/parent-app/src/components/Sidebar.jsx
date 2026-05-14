@@ -10,7 +10,7 @@ const navItems = [
   { path: '/progress', icon: 'bar_chart', label: 'Kemajuan Anak' },
   { path: '/profile', icon: 'account_circle', label: 'Profil Anak' },
   { path: '/attendance', icon: 'co_present', label: 'Log Kehadiran' },
-  { path: '/reports', icon: 'folder_open', label: 'Daftar Laporan' },
+  { path: '/reports', icon: 'folder_open', label: 'Daftar Laporan', badgeType: 'reports' },
   { path: '/reschedule', icon: 'swap_horiz', label: 'Penjadwalan Ulang', badgeType: 'reschedule' },
   { path: '/announcements', icon: 'campaign', label: 'Pengumuman', badgeType: 'announcement' },
   { path: '/meetings', icon: 'groups', label: 'Parent Meeting' },
@@ -22,7 +22,7 @@ export default function Sidebar({ isOpen, onClose }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { clinicName, primaryColor, logoUrl } = useClinicSettings();
-  const [badgeCounts, setBadgeCounts] = useState({ reschedule: 0, announcement: 0 });
+  const [badgeCounts, setBadgeCounts] = useState({ reports: 0, reschedule: 0, announcement: 0 });
   const [sidebarWidth, setSidebarWidth] = useState(256);
 
   // Compute notification badges
@@ -33,9 +33,10 @@ export default function Sidebar({ isOpen, onClose }) {
         const res = await notificationsApi.getAll();
         const allNotifs = res.data?.data || [];
         const unread = allNotifs.filter(n => !n.isRead);
+        const reportCount = unread.filter(n => ['report_published'].includes(n.type)).length;
         const rescheduleCount = unread.filter(n => ['reschedule_result', 'reschedule_request', 'schedule_change'].includes(n.type)).length;
-        const announcementCount = unread.length - rescheduleCount;
-        setBadgeCounts({ reschedule: rescheduleCount, announcement: announcementCount });
+        const announcementCount = Math.max(0, unread.length - rescheduleCount - reportCount);
+        setBadgeCounts({ reports: reportCount, reschedule: rescheduleCount, announcement: announcementCount });
       } catch(e) {}
     };
     computeBadges();

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { rescheduleApi, notificationsApi, sessionsApi, substituteRequestsApi } from '../../../shared/api/client';
 import { readTherapistUser } from '../../../shared/sessionIdentity';
 import { confirmAction, notifyDialog } from '../../../shared/ui/confirmDialog';
@@ -34,6 +34,35 @@ const DECLINE_TEMPLATES = [
     'Saya sedang perlu koordinasi ulang karena ada catatan klinis yang harus dijelaskan dulu.',
     'Saya menyarankan terapis lain yang lebih sesuai dengan program sesi ini.',
 ];
+
+const RESCHEDULE_DECLINE_TEMPLATES = [
+    'Saya belum menyetujui karena opsi jadwal yang diajukan bentrok dengan kebutuhan terapi anak.',
+    'Saya perlu koordinasi ulang dengan orang tua karena perubahan jadwal perlu penyesuaian program.',
+    'Saya menyarankan orang tua mengajukan opsi waktu lain yang masih dalam jam operasional center.',
+];
+
+const SCHEDULE_NOTIFICATION_TYPES = [
+    'schedule_change',
+    'schedule_change_confirmation',
+    'schedule_change_result',
+    'program_change_confirmation',
+    'program_enrollment',
+    'new_session',
+    'reschedule_request',
+    'reschedule_result',
+    'substitute_confirmation',
+    'substitute_result',
+];
+
+const getNotificationOutcome = (type) => {
+    if (['schedule_change_confirmation', 'program_change_confirmation', 'reschedule_request', 'substitute_confirmation'].includes(type)) {
+        return 'review';
+    }
+    if (['schedule_change_rejected', 'reschedule_rejected'].includes(type)) {
+        return 'rejected';
+    }
+    return 'approved';
+};
 
 function DeclineSubstituteModal({ request, suggestedSubstituteId, onSubmit, onClose }) {
     const [reason, setReason] = useState('');
@@ -93,15 +122,73 @@ function DeclineSubstituteModal({ request, suggestedSubstituteId, onSubmit, onCl
     );
 }
 
+function DeclineRescheduleModal({ request, onSubmit, onClose }) {
+    const [reason, setReason] = useState('');
+    const canSubmit = reason.trim().length >= 8;
+
+    return (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
+            <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900" style={{ animation: 'theracareDeclineIn 180ms ease-out' }}>
+                <div className="flex items-start justify-between gap-4 border-b border-slate-100 p-5 dark:border-slate-800">
+                    <div>
+                        <h2 className="text-lg font-black text-slate-950 dark:text-white">Tolak reschedule?</h2>
+                        <p className="mt-1 text-sm font-medium text-slate-500 dark:text-slate-400">
+                            {request.childName} - {request.originalDate}
+                        </p>
+                    </div>
+                    <button onClick={onClose} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800">
+                        <span className="material-symbols-outlined text-[18px]">close</span>
+                    </button>
+                </div>
+                <div className="p-5">
+                    <div className="mb-3 flex flex-wrap gap-2">
+                        {RESCHEDULE_DECLINE_TEMPLATES.map(template => (
+                            <button
+                                key={template}
+                                onClick={() => setReason(template)}
+                                className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] font-black text-slate-600 transition hover:border-teal-200 hover:bg-teal-50 hover:text-teal-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                            >
+                                Template
+                            </button>
+                        ))}
+                    </div>
+                    <textarea
+                        value={reason}
+                        onChange={e => setReason(e.target.value)}
+                        rows={5}
+                        placeholder="Tulis alasan yang jelas untuk orang tua dan admin..."
+                        className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-900 outline-none transition focus:border-teal-400 focus:ring-4 focus:ring-teal-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                        autoFocus
+                    />
+                </div>
+                <div className="flex flex-col-reverse gap-2 border-t border-slate-100 p-4 dark:border-slate-800 sm:flex-row sm:justify-end">
+                    <button onClick={onClose} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-black text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">Batal</button>
+                    <button
+                        onClick={() => canSubmit && onSubmit(reason.trim())}
+                        disabled={!canSubmit}
+                        className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-black text-white shadow-sm transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                        Kirim Penolakan
+                    </button>
+                </div>
+                <style>{`@keyframes theracareDeclineIn { from { opacity:0; transform:translateY(10px) scale(.97); } to { opacity:1; transform:translateY(0) scale(1); } }`}</style>
+            </div>
+        </div>
+    );
+}
+
 export default function ScheduleUpdates() {
     const [updates, setUpdates] = useState([]);
+    const [pendingReschedules, setPendingReschedules] = useState([]);
     const [substituteRequests, setSubstituteRequests] = useState([]);
     const [suggestedSubstitutes, setSuggestedSubstitutes] = useState({});
+    const [selectedRescheduleSlots, setSelectedRescheduleSlots] = useState({});
     const [respondingId, setRespondingId] = useState('');
     const [declineRequest, setDeclineRequest] = useState(null);
+    const [declineReschedule, setDeclineReschedule] = useState(null);
     const [filter, setFilter] = useState('all'); // 'all' | 'approved' | 'rejected'
 
-    useEffect(() => {
+    const loadUpdates = useCallback(async () => {
         const load = async () => {
             const user = readTherapistUser();
             if (!user) return;
@@ -120,8 +207,29 @@ export default function ScheduleUpdates() {
                 const substituteRows = substituteRes.data?.data || [];
                 setSubstituteRequests(substituteRows.filter(item => item.status === 'pending_primary' && item.originalTherapistId === user.id));
 
-                const scheduleNotifTypes = ['schedule_change', 'schedule_change_confirmation', 'program_change_confirmation', 'new_session', 'program_enrollment', 'substitute_confirmation', 'substitute_result'];
-                const unreadNotifs = notifs.filter(n => scheduleNotifTypes.includes(n.type) && !n.isRead && !(n.readBy || []).includes(user.id));
+                const pendingRows = requests
+                    .filter(r => ['pending', 'review', 'under_review'].includes(r.status))
+                    .map(r => ({
+                        id: r.id,
+                        childName: r.child?.name || 'Anak',
+                        parentName: r.parent?.user?.name || r.parent?.name || 'Orang Tua',
+                        originalDate: r.session ? `${formatDate(r.session.date)} â€¢ ${r.session.startTime} (${r.session.focus || 'Therapy'})` : 'Sesi asli',
+                        reason: r.reason || r.details || '',
+                        proposedSlots: r.proposedSlots || [],
+                        createdAt: r.createdAt,
+                    }));
+                setPendingReschedules(pendingRows);
+                setSelectedRescheduleSlots(prev => {
+                    const next = { ...prev };
+                    pendingRows.forEach(row => {
+                        const firstAvailable = (row.proposedSlots || []).find(slot => slot.status === 'available');
+                        if (!next[row.id] && firstAvailable) next[row.id] = `${firstAvailable.date}|${firstAvailable.time}`;
+                    });
+                    return next;
+                });
+
+                const scheduleNotifs = notifs.filter(n => SCHEDULE_NOTIFICATION_TYPES.includes(n.type));
+                const unreadNotifs = scheduleNotifs.filter(n => !n.isRead && !(n.readBy || []).includes(user.id));
                 for (const n of unreadNotifs) {
                     await notificationsApi.markRead(n.id);
                 }
@@ -129,8 +237,8 @@ export default function ScheduleUpdates() {
                     window.dispatchEvent(new Event('notificationsUpdated'));
                 }
 
-                const mapped = requests
-                    .filter(r => r.status === 'approved' || r.status === 'rejected' || r.status === 'review')
+                const requestRows = requests
+                    .filter(r => r.status === 'approved' || r.status === 'rejected')
                     .map(r => ({
                         id: r.id,
                         childName: r.child?.name || 'Anak',
@@ -148,13 +256,77 @@ export default function ScheduleUpdates() {
                     }))
                     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-                setUpdates(mapped);
+                const notificationRows = scheduleNotifs.map(n => ({
+                    id: `notification-${n.id}`,
+                    childName: n.title || 'Pembaruan Jadwal',
+                    parentName: n.createdByName || n.senderName || 'Sistem',
+                    originalDate: n.createdAt ? formatDateTime(n.createdAt) : 'Notifikasi',
+                    newDate: '-',
+                    outcome: getNotificationOutcome(n.type),
+                    resolvedOn: n.createdAt ? formatDateTime(n.createdAt) : '',
+                    adminNote: n.message || n.body || n.title || 'Ada pembaruan jadwal baru.',
+                    reason: String(n.type || 'schedule_change').replace(/_/g, ' '),
+                    createdAt: n.createdAt || new Date().toISOString(),
+                    source: 'notification',
+                }));
+
+                setUpdates([...requestRows, ...notificationRows].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
             } catch (err) {
                 console.error(err);
             }
         };
-        load();
+        await load();
     }, []);
+
+    useEffect(() => {
+        loadUpdates();
+        const events = ['notificationsUpdated', 'incomingRequestsUpdated', 'sessionUpdated', 'rescheduleUpdated', 'substituteRequestsUpdated'];
+        events.forEach(eventName => window.addEventListener(eventName, loadUpdates));
+        return () => events.forEach(eventName => window.removeEventListener(eventName, loadUpdates));
+    }, [loadUpdates]);
+
+    const handleRescheduleResponse = async (request, decision, responseNote = '') => {
+        const selected = selectedRescheduleSlots[request.id] || '';
+        const [newDate, newStartTime] = selected.split('|');
+        if (decision === 'approve') {
+            const confirmed = await confirmAction({
+                tone: 'success',
+                icon: 'event_available',
+                title: 'Setujui reschedule ini?',
+                message: `Jadwal ${request.childName} akan langsung diperbarui dan orang tua akan menerima notifikasi.`,
+                details: newDate && newStartTime ? `Slot baru: ${formatDate(newDate)} ${newStartTime}` : 'Sistem akan memilih slot available pertama.',
+                confirmText: 'Setujui & update jadwal',
+                cancelText: 'Batal',
+            });
+            if (!confirmed) return;
+        }
+        setRespondingId(request.id);
+        try {
+            const res = await rescheduleApi.therapistResponse(request.id, {
+                decision,
+                newDate,
+                newStartTime,
+                reviewNote: decision === 'approve'
+                    ? 'Disetujui langsung oleh terapis utama.'
+                    : responseNote,
+            });
+            if (!res.ok) throw new Error(res.data?.error || 'Gagal merespons reschedule');
+            setPendingReschedules(prev => prev.filter(item => item.id !== request.id));
+            setDeclineReschedule(null);
+            window.dispatchEvent(new Event('incomingRequestsUpdated'));
+            window.dispatchEvent(new Event('notificationsUpdated'));
+            window.dispatchEvent(new Event('sessionUpdated'));
+        } catch (err) {
+            await notifyDialog({
+                tone: 'danger',
+                icon: 'error',
+                title: 'Respons belum terkirim',
+                message: err.message || 'Gagal merespons reschedule',
+            });
+        } finally {
+            setRespondingId('');
+        }
+    };
 
     const handleSubstituteResponse = async (request, decision, responseNote = '') => {
         if (decision === 'approve') {
@@ -264,6 +436,83 @@ export default function ScheduleUpdates() {
 
             <main className="flex-1 p-4 md:p-8">
                 <div className="max-w-4xl mx-auto flex flex-col gap-4">
+                    {pendingReschedules.length > 0 && (
+                        <section className="bg-white dark:bg-slate-800 rounded-2xl border border-blue-200 dark:border-blue-800/50 shadow-sm overflow-hidden">
+                            <div className="px-5 py-4 border-b border-blue-100 dark:border-blue-900/40 bg-blue-50 dark:bg-blue-900/10">
+                                <h2 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
+                                    <span className="material-symbols-outlined text-blue-600">event_repeat</span>
+                                    Request Reschedule Orang Tua
+                                </h2>
+                                <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mt-1">
+                                    Anda bisa menyetujui langsung ke orang tua. Admin akan menerima notifikasi sebagai audit.
+                                </p>
+                            </div>
+                            <div className="divide-y divide-slate-100 dark:divide-slate-700">
+                                {pendingReschedules.map(request => {
+                                    const availableSlots = (request.proposedSlots || []).filter(slot => slot.status === 'available');
+                                    const blockedSlots = (request.proposedSlots || []).filter(slot => slot.status !== 'available');
+                                    return (
+                                        <div key={request.id} className="p-5 flex flex-col gap-4">
+                                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                                <div>
+                                                    <p className="text-sm font-black text-slate-900 dark:text-white">{request.childName}</p>
+                                                    <p className="text-sm text-slate-600 dark:text-slate-300">{request.originalDate}</p>
+                                                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Parent: {request.parentName}</p>
+                                                    {request.reason && <p className="mt-2 text-xs font-semibold text-slate-500 dark:text-slate-400">Alasan: {request.reason}</p>}
+                                                </div>
+                                                <span className="self-start rounded-full bg-blue-100 px-3 py-1 text-[11px] font-black text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                                                    Menunggu respon terapis
+                                                </span>
+                                            </div>
+
+                                            <div className="grid gap-2">
+                                                <label className="text-xs font-black uppercase tracking-wide text-slate-500">Slot available</label>
+                                                <select
+                                                    value={selectedRescheduleSlots[request.id] || ''}
+                                                    onChange={e => setSelectedRescheduleSlots(prev => ({ ...prev, [request.id]: e.target.value }))}
+                                                    className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                                                >
+                                                    {availableSlots.length === 0 && <option value="">Tidak ada slot available</option>}
+                                                    {availableSlots.map((slot, index) => (
+                                                        <option key={`${request.id}-${slot.date}-${slot.time}-${index}`} value={`${slot.date}|${slot.time}`}>
+                                                            {formatDate(slot.date)} - {slot.time}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                                {blockedSlots.length > 0 && (
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {blockedSlots.map((slot, index) => (
+                                                            <span key={`${request.id}-blocked-${index}`} className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-700 dark:bg-amber-900/20 dark:text-amber-300" title={slot.reason || ''}>
+                                                                {formatDate(slot.date)} {slot.time} conflict
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            <div className="flex flex-col gap-2 sm:flex-row">
+                                                <button
+                                                    onClick={() => handleRescheduleResponse(request, 'approve')}
+                                                    disabled={respondingId === request.id || availableSlots.length === 0}
+                                                    className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-black text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                                >
+                                                    Setujui & Update Jadwal
+                                                </button>
+                                                <button
+                                                    onClick={() => setDeclineReschedule(request)}
+                                                    disabled={respondingId === request.id}
+                                                    className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-black text-red-700 hover:bg-red-100 disabled:opacity-50"
+                                                >
+                                                    Tolak dengan Alasan
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </section>
+                    )}
+
                     {substituteRequests.length > 0 && (
                         <section className="bg-white dark:bg-slate-800 rounded-2xl border border-amber-200 dark:border-amber-800/50 shadow-sm overflow-hidden">
                             <div className="px-5 py-4 border-b border-amber-100 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-900/10">
@@ -366,7 +615,7 @@ export default function ScheduleUpdates() {
                                     </div>
                                     <div className="flex flex-col items-start sm:items-end gap-1.5 text-sm shrink-0 bg-slate-50 dark:bg-slate-900/50 p-3 rounded-lg border border-slate-100 dark:border-slate-800">
                                         <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 line-through text-xs"><span className="material-symbols-outlined text-[14px]">event_busy</span>{update.originalDate}</div>
-                                        {update.newDate !== '—' && <div className="flex items-center gap-1.5 text-teal-600 dark:text-teal-400 font-bold text-xs"><span className="material-symbols-outlined text-[16px]">arrow_right_alt</span>{update.newDate}</div>}
+                                        {update.newDate !== '-' && update.newDate !== '—' && <div className="flex items-center gap-1.5 text-teal-600 dark:text-teal-400 font-bold text-xs"><span className="material-symbols-outlined text-[16px]">arrow_right_alt</span>{update.newDate}</div>}
                                     </div>
                                 </div>
                             );
@@ -380,6 +629,13 @@ export default function ScheduleUpdates() {
                     suggestedSubstituteId={suggestedSubstitutes[declineRequest.id] || ''}
                     onClose={() => setDeclineRequest(null)}
                     onSubmit={(reason) => handleSubstituteResponse(declineRequest, 'decline', reason)}
+                />
+            )}
+            {declineReschedule && (
+                <DeclineRescheduleModal
+                    request={declineReschedule}
+                    onClose={() => setDeclineReschedule(null)}
+                    onSubmit={(reason) => handleRescheduleResponse(declineReschedule, 'reject', reason)}
                 />
             )}
         </div>

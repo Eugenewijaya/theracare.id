@@ -1,14 +1,12 @@
 import { Router } from "express";
 import type { Request } from "express";
 import { requireAuth, requireRole } from "../middleware/auth.middleware.js";
-import { auditLogService } from "../services/audit-log.service.js";
 import { reportService } from "../services/report.service.js";
 import { therapistService } from "../services/therapist.service.js";
 import { ok, created, notFound } from "../utils/response.js";
+import { isParentVisibleReportStatus } from "../domain/workflow-status.js";
 
 const router = Router();
-const PARENT_VISIBLE_REPORT_STATUSES = ["approved", "published", "ready_for_parent"];
-const isParentVisibleReport = (status: string) => PARENT_VISIBLE_REPORT_STATUSES.includes(status);
 
 async function getOwnTherapistId(req: Request) {
   if (req.user?.role !== "therapist") return null;
@@ -20,7 +18,7 @@ async function canReadReport(req: Request, report: any) {
   if (req.user?.role === "admin") return true;
   if (req.user?.role === "parent") {
     const allowed = await reportService.canParentAccessChild(req.user.id, report.childId);
-    return allowed && isParentVisibleReport(report.status);
+    return allowed && isParentVisibleReportStatus(report.status);
   }
   if (req.user?.role === "therapist") {
     const therapistId = await getOwnTherapistId(req);
@@ -89,18 +87,8 @@ router.post("/", requireAuth, requireRole("therapist"), async (req, res, next) =
   try {
     const therapistId = await getOwnTherapistId(req);
     if (!therapistId) return res.status(403).json({ error: "Akses simpan laporan ditolak" });
-    const report = await reportService.save({ ...req.body, therapistId });
+    const report = await reportService.save({ ...req.body, therapistId }, req.user);
     if (!report) return notFound(res);
-    if (report) {
-      await auditLogService.create({
-        actor: req.user,
-        action: req.body?.id ? "report.resubmit" : "report.create",
-        entityType: "report",
-        entityId: report.id,
-        summary: `Laporan ${report.id} disimpan oleh terapis`,
-        metadata: { childId: report.childId, sessionId: report.sessionId || null, type: report.type },
-      });
-    }
     created(res, report, "Laporan berhasil disimpan");
   } catch (e) { next(e); }
 });
@@ -112,16 +100,9 @@ router.patch("/:id/status", requireAuth, requireRole("admin"), async (req, res, 
       req.body.status,
       req.body.reviewNote,
       req.user?.role,
+      req.user,
     );
     if (!result) return notFound(res);
-    await auditLogService.create({
-      actor: req.user,
-      action: "report.status.update",
-      entityType: "report",
-      entityId: req.params.id as string,
-      summary: `Status laporan diubah menjadi ${req.body.status}`,
-      metadata: { status: req.body.status, reviewNote: req.body.reviewNote || "" },
-    });
     ok(res, result);
   } catch (e) { next(e); }
 });
@@ -138,33 +119,17 @@ router.patch("/:id", requireAuth, requireRole("therapist", "admin"), async (req,
     }
     const result = await reportService.update(req.params.id as string, req.body, {
       allowStatus: req.user?.role === "admin",
+      actor: req.user,
     });
     if (!result) return notFound(res);
-    await auditLogService.create({
-      actor: req.user,
-      action: req.user?.role === "admin" ? "report.admin.update" : "report.update",
-      entityType: "report",
-      entityId: req.params.id as string,
-      summary: `Laporan ${req.params.id} diperbarui`,
-      metadata: { changedFields: Object.keys(req.body || {}) },
-    });
     ok(res, result);
   } catch (e) { next(e); }
 });
 
 router.delete("/:id", requireAuth, requireRole("admin"), async (req, res, next) => {
   try {
-    const existing = await reportService.getById(req.params.id as string);
-    const result = await reportService.delete(req.params.id as string);
+    const result = await reportService.delete(req.params.id as string, req.user);
     if (!result) return notFound(res);
-    await auditLogService.create({
-      actor: req.user,
-      action: "report.delete",
-      entityType: "report",
-      entityId: req.params.id as string,
-      summary: `Laporan ${req.params.id} dihapus`,
-      metadata: { childId: existing?.childId || null, sessionId: existing?.sessionId || null },
-    });
     ok(res, result);
   } catch (e) { next(e); }
 });

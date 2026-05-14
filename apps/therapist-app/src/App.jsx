@@ -102,7 +102,15 @@ function DashboardLayout() {
           role="therapist"
           onRefresh={() => setRefreshKey((key) => key + 1)}
         />
-        <NotificationToastHost user={user} role="therapist" onOpenNotifications={() => navigate('/announcements')} />
+        <NotificationToastHost
+          user={user}
+          role="therapist"
+          onOpenNotifications={(notification) => {
+            if (notification?.type === 'report_revision_requested') navigate('/reports');
+            else if (String(notification?.type || '').includes('schedule') || String(notification?.type || '').includes('reschedule') || String(notification?.type || '').includes('substitute')) navigate('/schedule-updates');
+            else navigate('/announcements');
+          }}
+        />
         <div className="min-h-0 flex-1 overflow-y-auto bg-background-light dark:bg-background-dark">
           <Suspense fallback={<Loading />}>
             <Routes key={refreshKey}>

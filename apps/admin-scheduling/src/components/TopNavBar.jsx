@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAdmin } from '../../../admin-app/src/context/AdminContext';
 
-const TopNavBar = () => {
+const TopNavBar = ({ onAddSingleSchedule }) => {
     const navigate = useNavigate();
     const { clinicName, brandColor, adminProfile } = useAdmin();
     const [showNewSchedule, setShowNewSchedule] = useState(false);
@@ -31,11 +31,11 @@ const TopNavBar = () => {
                         <span className="truncate">Cara Tambah Jadwal</span>
                     </button>
                     <button 
-                        onClick={() => navigate('/bulk-schedule')}
+                        onClick={onAddSingleSchedule}
                         className="flex min-w-[120px] cursor-pointer items-center justify-center overflow-hidden rounded-lg h-10 px-4 bg-slate-200 dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm font-bold leading-normal tracking-[0.015em] hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors"
                     >
                         <span className="material-symbols-outlined text-lg mr-2">library_add</span>
-                        <span className="truncate">Jadwal Massal</span>
+                        <span className="truncate">Tambah Jadwal Tunggal</span>
                     </button>
                 </div>
 

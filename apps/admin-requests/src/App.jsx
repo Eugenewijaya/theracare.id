@@ -264,12 +264,18 @@ function App() {
         refreshData();
         const refreshSilently = () => refreshData({ silent: true });
         const interval = window.setInterval(refreshSilently, 30000);
-        window.addEventListener('notificationsUpdated', refreshSilently);
-        window.addEventListener('incomingRequestsUpdated', refreshSilently);
+        const events = [
+            'notificationsUpdated',
+            'incomingRequestsUpdated',
+            'rescheduleUpdated',
+            'meetingsUpdated',
+            'sessionUpdated',
+            'scheduleUpdated',
+        ];
+        events.forEach((eventName) => window.addEventListener(eventName, refreshSilently));
         return () => {
             window.clearInterval(interval);
-            window.removeEventListener('notificationsUpdated', refreshSilently);
-            window.removeEventListener('incomingRequestsUpdated', refreshSilently);
+            events.forEach((eventName) => window.removeEventListener(eventName, refreshSilently));
         };
     }, []);
 
@@ -312,6 +318,8 @@ function App() {
             patchRequestStatus(req.id, 'rejected');
             await refreshData({ silent: true });
             window.dispatchEvent(new Event('incomingRequestsUpdated'));
+            window.dispatchEvent(new Event('rescheduleUpdated'));
+            window.dispatchEvent(new Event('meetingsUpdated'));
             setTimeout(() => showPopup(`Request from ${req.name} has been rejected.`, 'success'), 300);
         }
         else if (type === 'process') {
@@ -324,6 +332,7 @@ function App() {
             patchRequestStatus(req.id, 'review');
             await refreshData({ silent: true });
             window.dispatchEvent(new Event('incomingRequestsUpdated'));
+            window.dispatchEvent(new Event('rescheduleUpdated'));
             setTimeout(() => {
                 showPopup(`Request from ${req.name} moved to Under Review.`);
                 setActiveTab('review');
@@ -353,6 +362,8 @@ function App() {
             patchRequestStatus(req.id, 'approved');
             await refreshData({ silent: true });
             window.dispatchEvent(new Event('incomingRequestsUpdated'));
+            window.dispatchEvent(new Event('rescheduleUpdated'));
+            window.dispatchEvent(new Event('meetingsUpdated'));
             window.dispatchEvent(new Event('sessionUpdated'));
             window.dispatchEvent(new Event('notificationsUpdated'));
             setActiveTab('resolved');
@@ -396,6 +407,8 @@ function App() {
         else await rescheduleApi.delete(req.id);
         await refreshData({ silent: true });
         window.dispatchEvent(new Event('incomingRequestsUpdated'));
+        window.dispatchEvent(new Event('rescheduleUpdated'));
+        window.dispatchEvent(new Event('meetingsUpdated'));
         showPopup('Riwayat request berhasil dihapus.', 'success');
     };
 

@@ -356,10 +356,91 @@ const ScheduleCalendar = ({
   );
 };
 
+const ScheduleDetailPanel = ({ session, onClose, onRequestReschedule, onViewTracking }) => {
+  if (!session) return null;
+  const statusText = session.status === 'done'
+    ? 'Selesai'
+    : session.status === 'active'
+      ? 'Sedang berjalan'
+      : session.status === 'cancelled'
+        ? 'Dibatalkan'
+        : 'Terjadwal';
+
+  return (
+    <>
+      <div className="fixed inset-0 z-[80] bg-slate-950/40 backdrop-blur-sm lg:hidden" onClick={onClose} />
+      <aside className="fixed bottom-0 right-0 top-auto z-[90] flex max-h-[88vh] w-full flex-col overflow-hidden rounded-t-3xl border border-border-light bg-white shadow-2xl dark:border-border-dark dark:bg-surface-dark sm:right-4 sm:top-24 sm:h-auto sm:max-h-[calc(100vh-7rem)] sm:w-[420px] sm:rounded-3xl lg:top-24">
+        <div className="flex items-start justify-between gap-4 border-b border-border-light bg-surface-light px-5 py-4 dark:border-border-dark dark:bg-background-dark">
+          <div className="min-w-0">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-primary">Detail Jadwal</p>
+            <h3 className="mt-1 truncate text-lg font-black text-slate-950 dark:text-white">
+              {session.child?.name || 'Jadwal terapi anak'}
+            </h3>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl p-2 text-slate-400 transition hover:bg-white hover:text-slate-700 dark:hover:bg-slate-900 dark:hover:text-white"
+            aria-label="Tutup detail jadwal"
+          >
+            <span className="material-symbols-outlined text-[20px]">close</span>
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5">
+          <dl className="grid gap-3 text-sm">
+            {[
+              ['Tanggal', formatLongDate(session.date)],
+              ['Jam', `${session.startTime || '-'}${session.duration ? ` (${session.duration})` : ''}`],
+              ['Program', session.focus || session.programName || session.therapyPeriod?.program?.name || 'Terapi'],
+              ['Terapis', session.therapist?.name || 'Terapis belum tersedia'],
+              ['Ruangan', session.room?.name || session.roomId || 'Belum ditentukan'],
+              ['Status', statusText],
+            ].map(([label, value]) => (
+              <div key={label} className="rounded-2xl border border-border-light bg-surface-light p-3 dark:border-border-dark dark:bg-background-dark">
+                <dt className="text-[11px] font-black uppercase tracking-wide text-text-muted-light dark:text-text-muted-dark">{label}</dt>
+                <dd className="mt-1 break-words font-bold text-slate-950 dark:text-white">{value}</dd>
+              </div>
+            ))}
+          </dl>
+
+          {session.notes && (
+            <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800/50 dark:bg-amber-900/20 dark:text-amber-300">
+              <p className="font-black">Catatan sesi</p>
+              <p className="mt-1 text-xs font-semibold leading-relaxed">{session.notes}</p>
+            </div>
+          )}
+        </div>
+
+        <div className="grid gap-2 border-t border-border-light p-4 dark:border-border-dark sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={onViewTracking}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-border-light bg-surface-light px-4 py-3 text-sm font-black text-slate-700 transition hover:bg-slate-100 dark:border-border-dark dark:bg-background-dark dark:text-slate-200"
+          >
+            <span className="material-symbols-outlined text-[18px]">route</span>
+            Tracking
+          </button>
+          <button
+            type="button"
+            onClick={onRequestReschedule}
+            disabled={session.status === 'cancelled' || session.status === 'done'}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-black text-white transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-45"
+          >
+            <span className="material-symbols-outlined text-[18px]">edit_calendar</span>
+            Ajukan Reschedule
+          </button>
+        </div>
+      </aside>
+    </>
+  );
+};
+
 const RescheduleForm = () => {
   const [upcomingSessions, setUpcomingSessions] = useState([]);
   const [activeView, setActiveView] = useState('calendar');
   const [calendarMonth, setCalendarMonth] = useState(new Date());
+  const [detailSession, setDetailSession] = useState(null);
   const [requestType, setRequestType] = useState('reschedule');
   const [selectedSessionId, setSelectedSessionId] = useState('');
   const [reason, setReason] = useState('');
@@ -419,11 +500,17 @@ const RescheduleForm = () => {
 
   useEffect(() => {
     loadData();
-    window.addEventListener('parentChildSelectionChanged', loadData);
-    window.addEventListener('incomingRequestsUpdated', loadData);
+    const events = [
+      'parentChildSelectionChanged',
+      'incomingRequestsUpdated',
+      'rescheduleUpdated',
+      'sessionUpdated',
+      'scheduleUpdated',
+      'notificationsUpdated',
+    ];
+    events.forEach((eventName) => window.addEventListener(eventName, loadData));
     return () => {
-      window.removeEventListener('parentChildSelectionChanged', loadData);
-      window.removeEventListener('incomingRequestsUpdated', loadData);
+      events.forEach((eventName) => window.removeEventListener(eventName, loadData));
     };
   }, [loadData]);
 
@@ -486,6 +573,8 @@ const RescheduleForm = () => {
 
     await loadData();
     window.dispatchEvent(new Event('incomingRequestsUpdated'));
+    window.dispatchEvent(new Event('rescheduleUpdated'));
+    window.dispatchEvent(new Event('notificationsUpdated'));
     setSlots([{ date: '', time: '' }, { date: '', time: '' }, { date: '', time: '' }]);
     setReason('');
     setDetails('');
@@ -582,17 +671,32 @@ const RescheduleForm = () => {
       )}
 
       {activeView === 'calendar' && (
-        <ScheduleCalendar
-          sessions={upcomingSessions}
-          requests={requests}
-          monthDate={calendarMonth}
-          onChangeMonth={setCalendarMonth}
-          selectedSessionId={selectedSessionId}
-          onSelectSession={(session) => {
-            setSelectedSessionId(session.id);
-            setActiveView('request');
-          }}
-        />
+        <>
+          <ScheduleCalendar
+            sessions={upcomingSessions}
+            requests={requests}
+            monthDate={calendarMonth}
+            onChangeMonth={setCalendarMonth}
+            selectedSessionId={selectedSessionId}
+            onSelectSession={(session) => {
+              setSelectedSessionId(session.id);
+              setDetailSession(session);
+            }}
+          />
+          <ScheduleDetailPanel
+            session={detailSession}
+            onClose={() => setDetailSession(null)}
+            onViewTracking={() => {
+              setDetailSession(null);
+              setActiveView('tracking');
+            }}
+            onRequestReschedule={() => {
+              setSelectedSessionId(detailSession?.id || selectedSessionId);
+              setDetailSession(null);
+              setActiveView('request');
+            }}
+          />
+        </>
       )}
 
       {activeView === 'tracking' && (

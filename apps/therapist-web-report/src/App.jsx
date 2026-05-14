@@ -458,6 +458,8 @@ function DailyReportForm({ childId, sessionId, onBack, currentUser, childrenData
                 return;
             }
             onReportSaved && onReportSaved();
+            window.dispatchEvent(new CustomEvent('reportUpdated', { detail: { id: res.data?.data?.id || report.id || '', type: 'harian' } }));
+            window.dispatchEvent(new Event('notificationsUpdated'));
             setSubmitted(true);
         } catch (e) {
             console.error(e);
@@ -471,7 +473,7 @@ function DailyReportForm({ childId, sessionId, onBack, currentUser, childrenData
                 <span className="material-symbols-outlined text-5xl text-green-600 dark:text-green-400">check_circle</span>
             </div>
             <h2 className="text-2xl font-black">Laporan Berhasil Disimpan!</h2>
-            <p className="text-slate-500 text-sm max-w-sm">Laporan harian sesi terapi {child?.name} telah disimpan dan tersedia untuk orang tua setelah ditinjau Admin.</p>
+            <p className="text-slate-500 text-sm max-w-sm">Laporan harian sesi terapi {child?.name} telah disimpan dan langsung tersedia untuk orang tua. Admin ikut menerima notifikasi pemantauan.</p>
             <div className="flex gap-3 mt-4">
                 <button onClick={onBack} className="px-6 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-slate-600 hover:bg-slate-50 transition-colors">Buat Laporan Lain</button>
             </div>
@@ -700,6 +702,8 @@ function PeriodicReportForm({ childId, onBack, currentUser, childrenData, initia
                 return;
             }
             onReportSaved && onReportSaved();
+            window.dispatchEvent(new CustomEvent('reportUpdated', { detail: { id: res.data?.data?.id || report.id || '', type: 'periodik' } }));
+            window.dispatchEvent(new Event('notificationsUpdated'));
             setSubmitted(true);
         } catch (e) {
             console.error(e);
@@ -713,7 +717,7 @@ function PeriodicReportForm({ childId, onBack, currentUser, childrenData, initia
                 <span className="material-symbols-outlined text-5xl text-amber-600 dark:text-amber-400" style={{fontVariationSettings:"'FILL' 1"}}>task_alt</span>
             </div>
             <h2 className="text-2xl font-black">Laporan Periodik Tersimpan!</h2>
-            <p className="text-slate-500 text-sm max-w-sm">Laporan periodik untuk {child?.name} telah disimpan dan menunggu persetujuan Admin sebelum tampil di dasbor orang tua.</p>
+            <p className="text-slate-500 text-sm max-w-sm">Laporan periodik untuk {child?.name} telah disimpan dan langsung tersedia untuk orang tua. Admin tetap dapat meninjau dan meminta revisi bila diperlukan.</p>
             <button onClick={onBack} className="mt-4 px-6 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-slate-600 hover:bg-slate-50 transition-colors">Kembali ke Laporan Anak</button>
         </div>
     );
@@ -856,7 +860,7 @@ function PeriodicReportForm({ childId, onBack, currentUser, childrenData, initia
                 <div className="max-w-3xl mx-auto flex justify-between items-center gap-4 px-4 sm:px-8">
                     <button onClick={onBack} className="px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 transition-colors text-sm">Batal</button>
                     <button onClick={handleSubmit} className="px-8 py-2.5 rounded-xl bg-amber-500 text-white font-bold shadow-lg shadow-amber-500/20 hover:bg-amber-600 transition-all flex items-center gap-2 text-sm">
-                        <span className="material-symbols-outlined text-[18px]">send</span> Simpan & Kirim untuk Ditinjau Admin
+                        <span className="material-symbols-outlined text-[18px]">send</span> Simpan & Kirim ke Orang Tua
                     </button>
                 </div>
             </div>

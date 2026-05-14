@@ -11,7 +11,6 @@ const navGroups = [
     items: [
       { path: '/', icon: 'dashboard', label: 'Dasbor', end: true },
       { path: '/scheduling', icon: 'calendar_month', label: 'Penjadwalan Tunggal' },
-      { path: '/bulk-schedule', icon: 'event_repeat', label: 'Jadwal Massal' },
       { path: '/requests', icon: 'assignment', label: 'Permintaan Masuk', badgeKey: 'requests' },
       { path: '/parent-meetings', icon: 'groups', label: 'Parent Meeting' },
       { path: '/therapist-leave-requests', icon: 'event_busy', label: 'Cuti Terapis', badgeKey: 'leaveRequests' },

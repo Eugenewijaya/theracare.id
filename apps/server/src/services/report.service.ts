@@ -1,23 +1,25 @@
 import { db } from "../db/index.js";
-import { children, parents, reports, rooms as clinicRooms, therapySessions } from "../db/schema.js";
+import { children, parents, reports, rooms as clinicRooms, therapyPeriods, therapySessions } from "../db/schema.js";
 import { eq, and, inArray } from "drizzle-orm";
 import { generateSeqId } from "../utils/id-generators.js";
 import { notificationService } from "./notification.service.js";
+import { auditLogService } from "./audit-log.service.js";
 import { httpError } from "../utils/http-error.js";
+import {
+  COMPLETED_SESSION_STATUSES,
+  REPORT_PARENT_VISIBLE_STATUSES,
+  isParentVisibleReportStatus,
+  isReviewableReportStatus,
+} from "../domain/workflow-status.js";
 
 type ReportInsert = typeof reports.$inferInsert;
 type ReportQueryOptions = { visibleToParentOnly?: boolean; therapistId?: string };
-type ReportUpdateOptions = { allowStatus?: boolean };
+type ReportUpdateOptions = { allowStatus?: boolean; actor?: AuditActor | null };
+type DbClient = typeof db | any;
+type AuditActor = { id?: string; role?: string } | null | undefined;
 
-const PARENT_VISIBLE_REPORT_STATUSES = ["approved", "published", "ready_for_parent"];
-const REVIEWABLE_REPORT_STATUSES = ["approved", "published", "ready_for_parent", "needs_revision", "pending_review"];
-const COMPLETED_SESSION_STATUSES = ["done", "completed", "selesai"];
 const PUBLISHED_EDIT_WINDOW_HOURS = 48;
 const PUBLISHED_EDIT_WINDOW_MS = PUBLISHED_EDIT_WINDOW_HOURS * 60 * 60 * 1000;
-
-function isParentVisibleReport(status?: string | null) {
-  return !!status && PARENT_VISIBLE_REPORT_STATUSES.includes(status);
-}
 
 function normalizeDateValue(value: unknown) {
   if (!value) return "";
@@ -39,19 +41,19 @@ function getPublishedAt(report: any) {
   const reviewLog = Array.isArray(report?.reviewLog) ? report.reviewLog : [];
   for (let index = reviewLog.length - 1; index >= 0; index -= 1) {
     const entry = reviewLog[index];
-    if (isParentVisibleReport(entry?.status)) {
+    if (isParentVisibleReportStatus(entry?.status)) {
       const createdAt = toIso(entry.createdAt);
       if (createdAt) return createdAt;
     }
   }
-  return isParentVisibleReport(report?.status)
+  return isParentVisibleReportStatus(report?.status)
     ? toIso(report?.updatedAt) || toIso(report?.createdAt)
     : null;
 }
 
 function getReportEditWindow(report: any, now = new Date()) {
   const publishedAt = getPublishedAt(report);
-  if (!isParentVisibleReport(report?.status)) {
+  if (!isParentVisibleReportStatus(report?.status)) {
     return {
       isParentVisible: false,
       canEdit: true,
@@ -112,6 +114,40 @@ function appendReviewLog(existing: unknown, entry: { status: string; note?: stri
   ];
 }
 
+async function notifyReportReadyForParent(
+  report: { id: string; childId: string; therapistId?: string; type?: string },
+  client: DbClient = db,
+) {
+  const child = await client.query.children.findFirst({
+    where: eq(children.id, report.childId),
+    with: { parent: true },
+  });
+  const parentUserId = child?.parent?.userId;
+  const childName = child?.name || "anak";
+  const reportLabel = report.type === "periodik" ? "periodik" : "harian";
+
+  if (parentUserId) {
+    await notificationService.create({
+      type: "report_published",
+      icon: "description",
+      title: "Laporan terapi tersedia",
+      message: `Laporan ${reportLabel} ${childName} sudah dapat dilihat di portal orang tua.`,
+      targetRole: "parent",
+      targetUserId: parentUserId,
+      relatedId: report.id,
+    }, client);
+  }
+
+  await notificationService.create({
+    type: "report_direct_to_parent",
+    icon: "rate_review",
+    title: "Laporan dikirim langsung ke orang tua",
+    message: `Terapis mengirim laporan ${reportLabel} ${childName}. Admin tetap dapat memantau dan meminta revisi dalam jendela edit.`,
+    targetRole: "admin",
+    relatedId: report.id,
+  }, client);
+}
+
 async function filterActiveRoomNames(input: unknown) {
   const requested = cleanStringList(input);
   if (!requested?.length) return [];
@@ -120,6 +156,51 @@ async function filterActiveRoomNames(input: unknown) {
     .where(and(inArray(clinicRooms.name, requested), eq(clinicRooms.status, "active")));
   const allowed = new Set(activeRooms.map((room) => room.name));
   return requested.filter((roomName) => allowed.has(roomName));
+}
+
+async function canTherapistReportForChild(childId: string, therapistId: string) {
+  if (!childId || !therapistId) return false;
+  const assignedSession = await db.query.therapySessions.findFirst({
+    where: and(eq(therapySessions.childId, childId), eq(therapySessions.therapistId, therapistId)),
+  });
+  if (assignedSession) return true;
+
+  const periods = await db.query.therapyPeriods.findMany({
+    where: eq(therapyPeriods.childId, childId),
+  });
+  return periods.some((period: any) => Array.isArray(period.scheduleRules)
+    && period.scheduleRules.some((rule: any) => rule?.therapistId === therapistId));
+}
+
+async function getLastReportSeq(client: DbClient = db) {
+  const all = await client.select({ id: reports.id }).from(reports);
+  if (all.length === 0) return 0;
+  const nums = all.map((r: { id: string }) => parseInt(r.id.replace("REP-", ""), 10)).filter((n: number) => !Number.isNaN(n));
+  return nums.length > 0 ? Math.max(...nums) : 0;
+}
+
+async function writeReportAudit(
+  client: DbClient,
+  actor: AuditActor,
+  action: string,
+  report: any,
+  summary: string,
+  metadata: Record<string, unknown> = {},
+) {
+  if (!actor?.id) return;
+  await auditLogService.create({
+    actor,
+    action,
+    entityType: "report",
+    entityId: report?.id || null,
+    summary,
+    metadata: {
+      childId: report?.childId || null,
+      sessionId: report?.sessionId || null,
+      type: report?.type || null,
+      ...metadata,
+    },
+  }, client);
 }
 
 function formatReport(report: any) {
@@ -197,7 +278,7 @@ export const reportService = {
     const conditions = [eq(reports.childId, childId)];
     if (type) conditions.push(eq(reports.type, type));
     if (options.visibleToParentOnly) {
-      conditions.push(inArray(reports.status, PARENT_VISIBLE_REPORT_STATUSES));
+      conditions.push(inArray(reports.status, [...REPORT_PARENT_VISIBLE_STATUSES]));
     }
     if (options.therapistId) {
       conditions.push(eq(reports.therapistId, options.therapistId));
@@ -285,7 +366,7 @@ export const reportService = {
     );
   },
 
-  async save(data: any) {
+  async save(data: any, actor?: AuditActor) {
     const now = new Date();
     if (Array.isArray(data.roomsUsed)) {
       data.roomsUsed = await filterActiveRoomNames(data.roomsUsed);
@@ -305,74 +386,131 @@ export const reportService = {
         throw httpError(403, "Laporan harian hanya bisa dibuat untuk sesi terapis dan anak yang sesuai.");
       }
     }
+    const existingForAccess = data.id
+      ? await db.query.reports.findFirst({ where: eq(reports.id, data.id) })
+      : null;
+    if (data.id && !existingForAccess) return null;
+    const targetChildId = data.childId || linkedSession?.childId || existingForAccess?.childId || "";
+    if (!(await canTherapistReportForChild(targetChildId, data.therapistId))) {
+      throw httpError(403, "Terapis tidak terhubung dengan anak ini.");
+    }
     await this.assertNoPriorMissingDailyReports(data);
 
-    // Check if updating existing report
-    if (data.id) {
-      const existing = await db.query.reports.findFirst({ where: eq(reports.id, data.id) });
-      if (!existing) return null;
-      if (existing.therapistId !== data.therapistId) {
-        throw httpError(403, "Akses ubah laporan ditolak.");
-      }
-      assertReportEditable(existing);
-      const logUpdate = existing?.status === "needs_revision"
-        ? { reviewLog: appendReviewLog(existing.reviewLog, { status: "resubmitted", note: "Terapis mengirim revisi laporan.", actorRole: "therapist" }) }
-        : {};
-      const [updated] = await db.update(reports)
-        .set({ ...pickReportValues({ ...data, therapyPeriodId }, { allowStatus: false }), ...logUpdate, status: "pending_review", updatedAt: now })
-        .where(eq(reports.id, data.id))
-        .returning();
-      return formatReport(updated);
-    }
-
-    // Check for existing daily report for same session
-    if (data.type === "harian" && data.sessionId) {
-      const existing = await db.query.reports.findFirst({
-        where: and(eq(reports.type, "harian"), eq(reports.sessionId, data.sessionId)),
-      });
-      if (existing) {
+    return db.transaction(async (tx) => {
+      // Check if updating existing report
+      if (data.id) {
+        const existing = await tx.query.reports.findFirst({ where: eq(reports.id, data.id) });
+        if (!existing) return null;
         if (existing.therapistId !== data.therapistId) {
           throw httpError(403, "Akses ubah laporan ditolak.");
         }
+        if (data.childId && existing.childId !== data.childId) {
+          throw httpError(400, "Anak pada laporan tidak boleh diubah.");
+        }
         assertReportEditable(existing);
-        const logUpdate = existing.status === "needs_revision"
+        const logUpdate = existing?.status === "needs_revision"
           ? { reviewLog: appendReviewLog(existing.reviewLog, { status: "resubmitted", note: "Terapis mengirim revisi laporan.", actorRole: "therapist" }) }
           : {};
-        const [updated] = await db.update(reports)
-          .set({ ...pickReportValues({ ...data, therapyPeriodId }, { allowStatus: false }), ...logUpdate, status: "pending_review", updatedAt: now })
-          .where(eq(reports.id, existing.id))
+        const [updated] = await tx.update(reports)
+          .set({
+            ...pickReportValues({ ...data, therapyPeriodId }, { allowStatus: false }),
+            ...logUpdate,
+            status: "ready_for_parent",
+            reviewLog: appendReviewLog(
+              (logUpdate as any).reviewLog || existing.reviewLog,
+              { status: "ready_for_parent", note: "Terapis mengirim laporan langsung ke orang tua.", actorRole: "therapist" },
+            ),
+            updatedAt: now,
+          })
+          .where(eq(reports.id, data.id))
           .returning();
+        await notifyReportReadyForParent(updated, tx);
+        await writeReportAudit(
+          tx,
+          actor,
+          existing.status === "needs_revision" ? "report.resubmit" : "report.update",
+          updated,
+          `Laporan ${updated.id} disimpan oleh terapis`,
+        );
         return formatReport(updated);
       }
-    }
 
-    // Create new report
-    const lastId = await this.getLastId();
-    const id = generateSeqId("REP", lastId + 1);
-    const values: ReportInsert = {
-      id,
-      type: data.type,
-      childId: data.childId,
-      therapistId: data.therapistId,
-      ...pickReportValues({ ...data, therapyPeriodId }),
-      status: "pending_review",
-      createdAt: now,
-      updatedAt: now,
-    };
-    const [report] = await db.insert(reports).values(values).returning();
+      // Check for existing daily report for same session
+      if (data.type === "harian" && data.sessionId) {
+        const existing = await tx.query.reports.findFirst({
+          where: and(eq(reports.type, "harian"), eq(reports.sessionId, data.sessionId)),
+        });
+        if (existing) {
+          if (existing.therapistId !== data.therapistId) {
+            throw httpError(403, "Akses ubah laporan ditolak.");
+          }
+          if (data.childId && existing.childId !== data.childId) {
+            throw httpError(400, "Anak pada laporan tidak boleh diubah.");
+          }
+          assertReportEditable(existing);
+          const logUpdate = existing.status === "needs_revision"
+            ? { reviewLog: appendReviewLog(existing.reviewLog, { status: "resubmitted", note: "Terapis mengirim revisi laporan.", actorRole: "therapist" }) }
+            : {};
+          const [updated] = await tx.update(reports)
+            .set({
+              ...pickReportValues({ ...data, therapyPeriodId }, { allowStatus: false }),
+              ...logUpdate,
+              status: "ready_for_parent",
+              reviewLog: appendReviewLog(
+                (logUpdate as any).reviewLog || existing.reviewLog,
+                { status: "ready_for_parent", note: "Terapis memperbarui laporan langsung ke orang tua.", actorRole: "therapist" },
+              ),
+              updatedAt: now,
+            })
+            .where(eq(reports.id, existing.id))
+            .returning();
+          await notifyReportReadyForParent(updated, tx);
+          await writeReportAudit(
+            tx,
+            actor,
+            existing.status === "needs_revision" ? "report.resubmit" : "report.update",
+            updated,
+            `Laporan ${updated.id} diperbarui oleh terapis`,
+          );
+          return formatReport(updated);
+        }
+      }
 
-    // Update session notes if daily report
-    if (data.type === "harian" && data.sessionId && data.description) {
-      await db.update(therapySessions)
-        .set({ notes: data.description })
-        .where(eq(therapySessions.id, data.sessionId));
-    }
+      // Create new report
+      const lastId = await getLastReportSeq(tx);
+      const id = generateSeqId("REP", lastId + 1);
+      const values: ReportInsert = {
+        id,
+        type: data.type,
+        childId: data.childId,
+        therapistId: data.therapistId,
+        ...pickReportValues({ ...data, therapyPeriodId }),
+        status: "ready_for_parent",
+        reviewLog: appendReviewLog([], {
+          status: "ready_for_parent",
+          note: "Terapis mengirim laporan langsung ke orang tua.",
+          actorRole: "therapist",
+        }),
+        createdAt: now,
+        updatedAt: now,
+      };
+      const [report] = await tx.insert(reports).values(values).returning();
 
-    return formatReport(report);
+      // Update session notes if daily report
+      if (data.type === "harian" && data.sessionId && data.description) {
+        await tx.update(therapySessions)
+          .set({ notes: data.description })
+          .where(eq(therapySessions.id, data.sessionId));
+      }
+
+      await notifyReportReadyForParent(report, tx);
+      await writeReportAudit(tx, actor, "report.create", report, `Laporan ${report.id} disimpan oleh terapis`);
+      return formatReport(report);
+    });
   },
 
-  async updateStatus(id: string, status: string, reviewNote?: string, actorRole?: string) {
-    if (!REVIEWABLE_REPORT_STATUSES.includes(status)) {
+  async updateStatus(id: string, status: string, reviewNote?: string, actorRole?: string, actor?: AuditActor) {
+    if (!isReviewableReportStatus(status)) {
       throw httpError(400, "Status laporan tidak valid.");
     }
     const existing = await db.query.reports.findFirst({
@@ -385,45 +523,55 @@ export const reportService = {
     if (status === "needs_revision" && note.length < 8) {
       throw httpError(400, "Alasan revisi wajib diisi sebelum laporan dikembalikan ke terapis.");
     }
-    if (isParentVisibleReport(existing.status) && status === "needs_revision") {
+    if (isParentVisibleReportStatus(existing.status) && status === "needs_revision") {
       assertReportEditable(existing);
     }
 
-    const [updated] = await db.update(reports)
-      .set({
-        status,
-        reviewLog: appendReviewLog(existing.reviewLog, { status, note, actorRole }),
-        updatedAt: new Date(),
-      })
-      .where(eq(reports.id, id))
-      .returning();
-    if (updated && ["approved", "published", "ready_for_parent"].includes(status)) {
-      const child = await db.query.children.findFirst({ where: eq(children.id, updated.childId) });
-      const parent = child ? await db.query.parents.findFirst({ where: eq(parents.id, child.parentId) }) : null;
-      if (parent?.userId) {
-        await notificationService.create({
-          type: "report_published",
-          icon: "description",
-          title: "Laporan terapi tersedia",
-          message: "Laporan perkembangan anak sudah dapat dilihat di portal orang tua.",
-          targetRole: "parent",
-          targetUserId: parent.userId,
-          relatedId: id,
-        });
+    return db.transaction(async (tx) => {
+      const [updated] = await tx.update(reports)
+        .set({
+          status,
+          reviewLog: appendReviewLog(existing.reviewLog, { status, note, actorRole }),
+          updatedAt: new Date(),
+        })
+        .where(eq(reports.id, id))
+        .returning();
+      if (updated && isParentVisibleReportStatus(status)) {
+        const child = await tx.query.children.findFirst({ where: eq(children.id, updated.childId) });
+        const parent = child ? await tx.query.parents.findFirst({ where: eq(parents.id, child.parentId) }) : null;
+        if (parent?.userId) {
+          await notificationService.create({
+            type: "report_published",
+            icon: "description",
+            title: "Laporan terapi tersedia",
+            message: "Laporan perkembangan anak sudah dapat dilihat di portal orang tua.",
+            targetRole: "parent",
+            targetUserId: parent.userId,
+            relatedId: id,
+          }, tx);
+        }
       }
-    }
-    if (updated && status === "needs_revision" && existing.therapist?.userId) {
-      await notificationService.create({
-        type: "report_revision_requested",
-        icon: "rate_review",
-        title: "Laporan perlu revisi",
-        message: note || `Admin meminta revisi laporan ${existing.child?.name || "anak"}.`,
-        targetRole: "therapist",
-        targetUserId: existing.therapist.userId,
-        relatedId: id,
-      });
-    }
-    return formatReport(updated);
+      if (updated && status === "needs_revision" && existing.therapist?.userId) {
+        await notificationService.create({
+          type: "report_revision_requested",
+          icon: "rate_review",
+          title: "Laporan perlu revisi",
+          message: note || `Admin meminta revisi laporan ${existing.child?.name || "anak"}.`,
+          targetRole: "therapist",
+          targetUserId: existing.therapist.userId,
+          relatedId: id,
+        }, tx);
+      }
+      await writeReportAudit(
+        tx,
+        actor,
+        "report.status.update",
+        updated,
+        `Status laporan diubah menjadi ${status}`,
+        { status, reviewNote: note },
+      );
+      return formatReport(updated);
+    });
   },
 
   async update(id: string, updates: any, options: ReportUpdateOptions = {}) {
@@ -436,24 +584,41 @@ export const reportService = {
     const values: any = pickReportValues(updates, options);
     if (Object.keys(values).length === 0) return this.getById(id);
 
-    const [updated] = await db.update(reports)
-      .set({ ...values, updatedAt: new Date() })
-      .where(eq(reports.id, id))
-      .returning();
-    return formatReport(updated);
+    return db.transaction(async (tx) => {
+      const [updated] = await tx.update(reports)
+        .set({ ...values, updatedAt: new Date() })
+        .where(eq(reports.id, id))
+        .returning();
+      await writeReportAudit(
+        tx,
+        options.actor,
+        options.actor?.role === "admin" ? "report.admin.update" : "report.update",
+        updated,
+        `Laporan ${id} diperbarui`,
+        { changedFields: Object.keys(updates || {}) },
+      );
+      return formatReport(updated);
+    });
   },
 
-  async delete(id: string) {
+  async delete(id: string, actor?: AuditActor) {
     const report = await db.query.reports.findFirst({ where: eq(reports.id, id) });
     if (!report) return null;
-    await db.delete(reports).where(eq(reports.id, id));
-    return { deleted: true, id };
+    return db.transaction(async (tx) => {
+      await tx.delete(reports).where(eq(reports.id, id));
+      await writeReportAudit(
+        tx,
+        actor,
+        "report.delete",
+        report,
+        `Laporan ${id} dihapus`,
+        { childId: report.childId || null, sessionId: report.sessionId || null },
+      );
+      return { deleted: true, id };
+    });
   },
 
   async getLastId() {
-    const all = await db.select({ id: reports.id }).from(reports);
-    if (all.length === 0) return 0;
-    const nums = all.map((r) => parseInt(r.id.replace("REP-", ""), 10)).filter(n => !isNaN(n));
-    return nums.length > 0 ? Math.max(...nums) : 0;
+    return getLastReportSeq();
   },
 };

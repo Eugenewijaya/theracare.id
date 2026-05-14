@@ -51,6 +51,9 @@ export function getRefreshEventsForPath(path = '') {
   if (source.includes('/leave-requests')) {
     events.add('leaveRequestsUpdated');
   }
+  if (source.includes('/substitute-requests')) {
+    events.add('substituteRequestsUpdated');
+  }
   if (source.includes('/meetings')) {
     events.add('meetingsUpdated');
   }

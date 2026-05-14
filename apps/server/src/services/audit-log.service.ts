@@ -3,6 +3,8 @@ import { db } from "../db/index.js";
 import { auditLogs } from "../db/schema.js";
 import { generateId } from "../utils/id-generators.js";
 
+type DbClient = typeof db | any;
+
 type Actor = {
   id?: string;
   role?: string;
@@ -18,8 +20,8 @@ type AuditInput = {
 };
 
 export const auditLogService = {
-  async create(input: AuditInput) {
-    const [row] = await db.insert(auditLogs).values({
+  async create(input: AuditInput, client: DbClient = db) {
+    const [row] = await client.insert(auditLogs).values({
       id: generateId("AUD"),
       actorUserId: input.actor?.id || null,
       actorRole: input.actor?.role || null,

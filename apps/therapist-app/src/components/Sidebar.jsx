@@ -18,6 +18,19 @@ const navItems = [
   { path: '/announcements', icon: 'notifications', label: 'Notifikasi', badgeType: 'notification' },
 ];
 
+const SCHEDULE_NOTIFICATION_TYPES = [
+  'schedule_change',
+  'schedule_change_confirmation',
+  'schedule_change_result',
+  'program_change_confirmation',
+  'program_enrollment',
+  'new_session',
+  'reschedule_request',
+  'reschedule_result',
+  'substitute_confirmation',
+  'substitute_result',
+];
+
 export default function Sidebar({ isOpen, onClose }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -37,7 +50,7 @@ export default function Sidebar({ isOpen, onClose }) {
         const unread = allNotifs.filter(n => !n.isRead && !(n.readBy || []).includes(user.id));
         setTotalUnread(unread.length);
         
-        const scheduleCount = unread.filter(n => ['schedule_change', 'schedule_change_confirmation', 'program_change_confirmation', 'new_session', 'program_enrollment', 'substitute_confirmation', 'substitute_result'].includes(n.type)).length;
+        const scheduleCount = unread.filter(n => SCHEDULE_NOTIFICATION_TYPES.includes(n.type)).length;
         const notifCount = unread.length - scheduleCount;
         setBadgeCounts({ schedule: scheduleCount, notification: notifCount });
       } catch (err) {

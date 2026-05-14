@@ -254,7 +254,7 @@ function App() {
             return;
         }
         if (status === 'approved' && report.status === 'needs_revision') {
-            showToast('Tunggu terapis mengirim revisi dulu. Setelah disubmit ulang, status akan kembali menunggu review.', 'info');
+            showToast('Tunggu terapis mengirim revisi dulu. Setelah disubmit ulang, laporan akan langsung tersedia kembali untuk orang tua.', 'info');
             return;
         }
         const confirmed = await confirmAction({
@@ -421,8 +421,8 @@ function App() {
             <section className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-6">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
                     <div>
-                        <h3 className="font-bold text-slate-900 dark:text-white text-lg">Review Laporan Terapis</h3>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Laporan pending harus disetujui sebelum tampil di portal orang tua.</p>
+                        <h3 className="font-bold text-slate-900 dark:text-white text-lg">Pemantauan Laporan Terapis</h3>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Laporan terapis langsung tampil di portal orang tua. Admin tetap bisa preview dan meminta revisi dalam jendela edit.</p>
                     </div>
                     <button
                         type="button"
@@ -458,7 +458,7 @@ function App() {
                                                 ? 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-300'
                                                 : 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300'
                                     }`}>
-                                        {report.status === 'pending_review' ? 'Pending' : report.status === 'needs_revision' ? 'Revisi' : 'Disetujui'}
+                                        {report.status === 'pending_review' ? 'Pending' : report.status === 'needs_revision' ? 'Revisi' : 'Siap Dibaca'}
                                     </span>
                                 </div>
                                 <p className="text-xs text-slate-600 dark:text-slate-300 line-clamp-2">
@@ -499,7 +499,7 @@ function App() {
                                         disabled={isApproved || isBusy}
                                         className="flex-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-100 disabled:text-emerald-700"
                                     >
-                                        {approveBusy ? 'Menyetujui...' : isApproved ? 'Sudah Disetujui' : 'Setujui'}
+                                        {approveBusy ? 'Menyetujui...' : isApproved ? 'Sudah Tampil' : 'Setujui'}
                                     </button>
                                     <button
                                         type="button"
@@ -516,7 +516,7 @@ function App() {
                     </div>
                 ) : (
                     <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-700 p-8 text-center text-sm font-semibold text-slate-400">
-                        Tidak ada laporan yang menunggu review.
+                        Belum ada laporan terapis untuk dipantau.
                     </div>
                 )}
             </section>

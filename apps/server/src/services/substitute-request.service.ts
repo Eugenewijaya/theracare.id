@@ -3,11 +3,15 @@ import { db } from "../db/index.js";
 import { clinicSettings, therapists, therapySessions } from "../db/schema.js";
 import { generateId } from "../utils/id-generators.js";
 import { notificationService } from "./notification.service.js";
+import { auditLogService } from "./audit-log.service.js";
 import { evaluateSessionSlot, evaluateTherapistSlot, getAvailableTherapistsForSlot } from "./scheduling-availability.service.js";
+import { httpError } from "../utils/http-error.js";
 
 const SUBSTITUTE_REQUESTS_KEY = "substituteTherapistRequests";
 
 type SubstituteRequestStatus = "pending_primary" | "approved" | "declined";
+type DbClient = typeof db | any;
+type AuditActor = { id?: string; role?: string } | null | undefined;
 
 type SubstituteRequest = {
   id: string;
@@ -51,8 +55,8 @@ async function readRequests() {
   return parseRequests(row?.value);
 }
 
-async function writeRequests(requests: SubstituteRequest[]) {
-  await db.insert(clinicSettings)
+async function writeRequests(requests: SubstituteRequest[], client: DbClient = db) {
+  await client.insert(clinicSettings)
     .values({
       key: SUBSTITUTE_REQUESTS_KEY,
       value: JSON.stringify(requests),
@@ -78,8 +82,8 @@ async function enrichRequest(request: SubstituteRequest) {
   };
 }
 
-async function notifyParentIfAvailable(sessionId: string, title: string, message: string, relatedId: string) {
-  const session = await db.query.therapySessions.findFirst({
+async function notifyParentIfAvailable(sessionId: string, title: string, message: string, relatedId: string, client: DbClient = db) {
+  const session = await client.query.therapySessions.findFirst({
     where: eq(therapySessions.id, sessionId),
     with: { child: { with: { parent: { with: { user: true } } } } },
   });
@@ -93,7 +97,7 @@ async function notifyParentIfAvailable(sessionId: string, title: string, message
     targetRole: "parent",
     targetUserId: parentUserId,
     relatedId,
-  });
+  }, client);
 }
 
 export const substituteRequestService = {
@@ -111,7 +115,11 @@ export const substituteRequestService = {
     return Promise.all(requests.map(enrichRequest));
   },
 
-  async createByAdmin(data: { sessionId: string; substituteTherapistId: string; leaveType: string; note?: string }, adminUserId?: string) {
+  async createByAdmin(
+    data: { sessionId: string; substituteTherapistId: string; leaveType: string; note?: string },
+    adminUserId?: string,
+    actor?: AuditActor,
+  ) {
     const session = await db.query.therapySessions.findFirst({
       where: eq(therapySessions.id, data.sessionId),
       with: {
@@ -119,23 +127,23 @@ export const substituteRequestService = {
         child: true,
       },
     });
-    if (!session) throw new Error("Sesi tidak ditemukan");
+    if (!session) throw httpError(404, "Sesi tidak ditemukan");
     if (session.therapistId === data.substituteTherapistId) {
-      throw new Error("Terapis pengganti tidak boleh sama dengan terapis utama");
+      throw httpError(400, "Terapis pengganti tidak boleh sama dengan terapis utama");
     }
 
     const substitute = await db.query.therapists.findFirst({
       where: eq(therapists.id, data.substituteTherapistId),
       with: { user: true },
     });
-    if (!substitute) throw new Error("Terapis pengganti tidak ditemukan");
+    if (!substitute) throw httpError(404, "Terapis pengganti tidak ditemukan");
 
     const availability = await evaluateTherapistSlot(data.substituteTherapistId, {
       date: session.date,
       time: session.startTime,
     }, session.id);
     if (availability.status !== "available") {
-      throw new Error(availability.reason || "Terapis pengganti bentrok pada slot tersebut");
+      throw httpError(409, availability.reason || "Terapis pengganti bentrok pada slot tersebut", availability);
     }
 
     const request: SubstituteRequest = {
@@ -161,24 +169,38 @@ export const substituteRequestService = {
     };
 
     const requests = await readRequests();
-    await writeRequests([request, ...requests]);
+    await db.transaction(async (tx) => {
+      await writeRequests([request, ...requests], tx);
 
-    if (request.originalTherapistUserId) {
-      await notificationService.create({
-        type: "substitute_confirmation",
-        icon: "assignment_ind",
-        title: "Konfirmasi terapis pengganti",
-        message: `Admin meminta konfirmasi pergantian sesi ${request.childName} pada ${request.date} ${request.startTime} ke ${request.substituteTherapistName}.`,
-        targetRole: "therapist",
-        targetUserId: request.originalTherapistUserId,
-        relatedId: request.id,
-      });
-    }
+      if (request.originalTherapistUserId) {
+        await notificationService.create({
+          type: "substitute_confirmation",
+          icon: "assignment_ind",
+          title: "Konfirmasi terapis pengganti",
+          message: `Admin meminta konfirmasi pergantian sesi ${request.childName} pada ${request.date} ${request.startTime} ke ${request.substituteTherapistName}.`,
+          targetRole: "therapist",
+          targetUserId: request.originalTherapistUserId,
+          relatedId: request.id,
+        }, tx);
+      }
+      await auditLogService.create({
+        actor,
+        action: "substitute.create",
+        entityType: "substitute_request",
+        entityId: request.id,
+        summary: `Admin meminta konfirmasi terapis pengganti untuk sesi ${request.sessionId}`,
+        metadata: { sessionId: request.sessionId, substituteTherapistId: request.substituteTherapistId },
+      }, tx);
+    });
 
     return enrichRequest(request);
   },
 
-  async createSessionUpdateByAdmin(data: { sessionId: string; updates: Record<string, unknown>; note?: string }, adminUserId?: string) {
+  async createSessionUpdateByAdmin(
+    data: { sessionId: string; updates: Record<string, unknown>; note?: string },
+    adminUserId?: string,
+    actor?: AuditActor,
+  ) {
     const session = await db.query.therapySessions.findFirst({
       where: eq(therapySessions.id, data.sessionId),
       with: {
@@ -186,13 +208,13 @@ export const substituteRequestService = {
         child: true,
       },
     });
-    if (!session) throw new Error("Sesi tidak ditemukan");
+    if (!session) throw httpError(404, "Sesi tidak ditemukan");
     const allowedUpdates = Object.fromEntries(
       Object.entries(data.updates || {}).filter(([key, value]) => (
         ["date", "startTime", "duration", "focus", "roomId"].includes(key) && value !== undefined
       ))
     );
-    if (Object.keys(allowedUpdates).length === 0) throw new Error("Tidak ada perubahan jadwal/program yang valid");
+    if (Object.keys(allowedUpdates).length === 0) throw httpError(400, "Tidak ada perubahan jadwal/program yang valid");
 
     const request: SubstituteRequest = {
       id: generateId("SCH"),
@@ -218,19 +240,29 @@ export const substituteRequestService = {
     };
 
     const requests = await readRequests();
-    await writeRequests([request, ...requests]);
+    await db.transaction(async (tx) => {
+      await writeRequests([request, ...requests], tx);
 
-    if (request.originalTherapistUserId) {
-      await notificationService.create({
-        type: "schedule_change_confirmation",
-        icon: "rule",
-        title: "Konfirmasi perubahan jadwal/program",
-        message: `Admin meminta persetujuan perubahan sesi ${request.childName} pada ${request.date} ${request.startTime}.`,
-        targetRole: "therapist",
-        targetUserId: request.originalTherapistUserId,
-        relatedId: request.id,
-      });
-    }
+      if (request.originalTherapistUserId) {
+        await notificationService.create({
+          type: "schedule_change_confirmation",
+          icon: "rule",
+          title: "Konfirmasi perubahan jadwal/program",
+          message: `Admin meminta persetujuan perubahan sesi ${request.childName} pada ${request.date} ${request.startTime}.`,
+          targetRole: "therapist",
+          targetUserId: request.originalTherapistUserId,
+          relatedId: request.id,
+        }, tx);
+      }
+      await auditLogService.create({
+        actor,
+        action: "session_update_confirmation.create",
+        entityType: "substitute_request",
+        entityId: request.id,
+        summary: `Admin meminta konfirmasi perubahan sesi ${request.sessionId}`,
+        metadata: { sessionId: request.sessionId, updates: allowedUpdates },
+      }, tx);
+    });
 
     return enrichRequest(request);
   },
@@ -239,13 +271,13 @@ export const substituteRequestService = {
     decision: "approve" | "decline";
     suggestedSubstituteId?: string;
     responseNote?: string;
-  }) {
+  }, actor?: AuditActor) {
     const requests = await readRequests();
     const index = requests.findIndex((request) => request.id === id);
     if (index === -1) return null;
     const current = requests[index];
     if (current.originalTherapistId !== therapistId) {
-      throw new Error("Hanya terapis utama yang dapat merespons konfirmasi ini");
+      throw httpError(403, "Hanya terapis utama yang dapat merespons konfirmasi ini");
     }
     if (current.status !== "pending_primary") {
       return enrichRequest(current);
@@ -257,7 +289,7 @@ export const substituteRequestService = {
     if (data.decision === "approve") {
       if (current.requestKind === "session_update") {
         const session = await db.query.therapySessions.findFirst({ where: eq(therapySessions.id, current.sessionId) });
-        if (!session) throw new Error("Sesi tidak ditemukan");
+        if (!session) throw httpError(404, "Sesi tidak ditemukan");
         const updates = current.proposedUpdates || {};
         const next = {
           ...session,
@@ -275,41 +307,52 @@ export const substituteRequestService = {
             duration: next.duration || undefined,
           }, current.sessionId);
           if (availability.status !== "available") {
-            throw new Error(availability.reason || "Perubahan jadwal bentrok atau di luar jam operasional");
+            throw httpError(409, availability.reason || "Perubahan jadwal bentrok atau di luar jam operasional", availability);
           }
         }
         const existingNotes = String(session.notes || "").trim();
         const approvalLine = `[${now}] Terapis utama menyetujui perubahan jadwal/program. ${responseNote}`.trim();
-        await db.update(therapySessions)
-          .set({
-            ...(typeof updates.date === "string" ? { date: updates.date } : {}),
-            ...(typeof updates.startTime === "string" ? { startTime: updates.startTime } : {}),
-            ...(typeof updates.duration === "string" ? { duration: updates.duration } : {}),
-            ...(typeof updates.focus === "string" ? { focus: updates.focus } : {}),
-            ...(typeof updates.roomId === "string" ? { roomId: updates.roomId } : {}),
-            status: "upcoming",
-            notes: existingNotes ? `${existingNotes}\n${approvalLine}` : approvalLine,
-          })
-          .where(eq(therapySessions.id, current.sessionId));
-
         const approvedRequest = { ...current, status: "approved" as const, responseNote, respondedAt: now };
         requests[index] = approvedRequest;
-        await writeRequests(requests);
+        await db.transaction(async (tx) => {
+          await tx.update(therapySessions)
+            .set({
+              ...(typeof updates.date === "string" ? { date: updates.date } : {}),
+              ...(typeof updates.startTime === "string" ? { startTime: updates.startTime } : {}),
+              ...(typeof updates.duration === "string" ? { duration: updates.duration } : {}),
+              ...(typeof updates.focus === "string" ? { focus: updates.focus } : {}),
+              ...(typeof updates.roomId === "string" ? { roomId: updates.roomId } : {}),
+              status: "upcoming",
+              notes: existingNotes ? `${existingNotes}\n${approvalLine}` : approvalLine,
+            })
+            .where(eq(therapySessions.id, current.sessionId));
 
-        await notificationService.create({
-          type: "schedule_change_result",
-          icon: "rule",
-          title: "Perubahan jadwal/program disetujui",
-          message: `${current.originalTherapistName} menyetujui perubahan sesi ${current.childName}.`,
-          targetRole: "admin",
-          relatedId: current.id,
+          await writeRequests(requests, tx);
+
+          await notificationService.create({
+            type: "schedule_change_result",
+            icon: "rule",
+            title: "Perubahan jadwal/program disetujui",
+            message: `${current.originalTherapistName} menyetujui perubahan sesi ${current.childName}.`,
+            targetRole: "admin",
+            relatedId: current.id,
+          }, tx);
+          await notifyParentIfAvailable(
+            current.sessionId,
+            "Jadwal terapi diperbarui",
+            `Jadwal/program sesi ${current.childName} pada ${current.date} ${current.startTime} sudah diperbarui setelah konfirmasi terapis.`,
+            current.id,
+            tx,
+          );
+          await auditLogService.create({
+            actor,
+            action: "session_update_confirmation.approve",
+            entityType: "substitute_request",
+            entityId: current.id,
+            summary: `Terapis utama menyetujui perubahan sesi ${current.sessionId}`,
+            metadata: { sessionId: current.sessionId, updates },
+          }, tx);
         });
-        await notifyParentIfAvailable(
-          current.sessionId,
-          "Jadwal terapi diperbarui",
-          `Jadwal/program sesi ${current.childName} pada ${current.date} ${current.startTime} sudah diperbarui setelah konfirmasi terapis.`,
-          current.id,
-        );
 
         return enrichRequest(approvedRequest);
       }
@@ -317,44 +360,55 @@ export const substituteRequestService = {
       const replacementLine = `[${now}] Terapis utama menyetujui pergantian ke ${current.substituteTherapistName}. ${responseNote}`.trim();
       const session = await db.query.therapySessions.findFirst({ where: eq(therapySessions.id, current.sessionId) });
       const existingNotes = String(session?.notes || "").trim();
-      await db.update(therapySessions)
-        .set({
-          therapistId: current.substituteTherapistId,
-          status: "upcoming",
-          notes: existingNotes ? `${existingNotes}\n${replacementLine}` : replacementLine,
-          cancelReason: `Terapis utama ${current.originalTherapistName} menyetujui pengganti ${current.substituteTherapistName}.`,
-        })
-        .where(eq(therapySessions.id, current.sessionId));
-
       const next = { ...current, status: "approved" as const, responseNote, respondedAt: now };
       requests[index] = next;
-      await writeRequests(requests);
+      await db.transaction(async (tx) => {
+        await tx.update(therapySessions)
+          .set({
+            therapistId: current.substituteTherapistId,
+            status: "upcoming",
+            notes: existingNotes ? `${existingNotes}\n${replacementLine}` : replacementLine,
+            cancelReason: `Terapis utama ${current.originalTherapistName} menyetujui pengganti ${current.substituteTherapistName}.`,
+          })
+          .where(eq(therapySessions.id, current.sessionId));
 
-      await notificationService.create({
-        type: "substitute_result",
-        icon: "assignment_turned_in",
-        title: "Pergantian terapis disetujui",
-        message: `${current.originalTherapistName} menyetujui ${current.substituteTherapistName} untuk sesi ${current.childName}.`,
-        targetRole: "admin",
-        relatedId: current.id,
-      });
-      if (current.substituteTherapistUserId) {
+        await writeRequests(requests, tx);
+
         await notificationService.create({
-          type: "new_session",
-          icon: "event_available",
-          title: "Sesi pengganti ditugaskan",
-          message: `Anda menjadi terapis bertugas untuk ${current.childName} pada ${current.date} ${current.startTime}.`,
-          targetRole: "therapist",
-          targetUserId: current.substituteTherapistUserId,
+          type: "substitute_result",
+          icon: "assignment_turned_in",
+          title: "Pergantian terapis disetujui",
+          message: `${current.originalTherapistName} menyetujui ${current.substituteTherapistName} untuk sesi ${current.childName}.`,
+          targetRole: "admin",
           relatedId: current.id,
-        });
-      }
-      await notifyParentIfAvailable(
-        current.sessionId,
-        "Jadwal terapis diperbarui",
-        `Terapis bertugas untuk sesi ${current.childName} pada ${current.date} ${current.startTime} diperbarui ke ${current.substituteTherapistName}.`,
-        current.id,
-      );
+        }, tx);
+        if (current.substituteTherapistUserId) {
+          await notificationService.create({
+            type: "new_session",
+            icon: "event_available",
+            title: "Sesi pengganti ditugaskan",
+            message: `Anda menjadi terapis bertugas untuk ${current.childName} pada ${current.date} ${current.startTime}.`,
+            targetRole: "therapist",
+            targetUserId: current.substituteTherapistUserId,
+            relatedId: current.id,
+          }, tx);
+        }
+        await notifyParentIfAvailable(
+          current.sessionId,
+          "Jadwal terapis diperbarui",
+          `Terapis bertugas untuk sesi ${current.childName} pada ${current.date} ${current.startTime} diperbarui ke ${current.substituteTherapistName}.`,
+          current.id,
+          tx,
+        );
+        await auditLogService.create({
+          actor,
+          action: "substitute.approve",
+          entityType: "substitute_request",
+          entityId: current.id,
+          summary: `Terapis utama menyetujui pengganti untuk sesi ${current.sessionId}`,
+          metadata: { sessionId: current.sessionId, substituteTherapistId: current.substituteTherapistId },
+        }, tx);
+      });
 
       return enrichRequest(next);
     }
@@ -370,15 +424,25 @@ export const substituteRequestService = {
       respondedAt: now,
     };
     requests[index] = next;
-    await writeRequests(requests);
+    await db.transaction(async (tx) => {
+      await writeRequests(requests, tx);
 
-    await notificationService.create({
-      type: "substitute_result",
-      icon: "assignment_late",
-      title: "Pergantian terapis belum disetujui",
-      message: `${current.originalTherapistName} belum menyetujui pergantian. ${suggested ? `Saran pengganti: ${suggested.user?.name || suggested.nit}.` : ""} ${responseNote}`,
-      targetRole: "admin",
-      relatedId: current.id,
+      await notificationService.create({
+        type: "substitute_result",
+        icon: "assignment_late",
+        title: "Pergantian terapis belum disetujui",
+        message: `${current.originalTherapistName} belum menyetujui pergantian. ${suggested ? `Saran pengganti: ${suggested.user?.name || suggested.nit}.` : ""} ${responseNote}`,
+        targetRole: "admin",
+        relatedId: current.id,
+      }, tx);
+      await auditLogService.create({
+        actor,
+        action: current.requestKind === "session_update" ? "session_update_confirmation.decline" : "substitute.decline",
+        entityType: "substitute_request",
+        entityId: current.id,
+        summary: `Terapis utama menolak konfirmasi untuk sesi ${current.sessionId}`,
+        metadata: { suggestedSubstituteId: suggested?.id || null, responseNote },
+      }, tx);
     });
 
     return enrichRequest(next);

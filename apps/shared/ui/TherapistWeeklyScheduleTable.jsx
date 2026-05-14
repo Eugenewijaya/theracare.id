@@ -232,19 +232,19 @@ function hasRecognizedSchedule(schedule) {
 
 function isInsideWorkWindow(therapist, day, slot) {
   const schedule = therapist?.schedule;
-  if (!hasRecognizedSchedule(schedule)) return { available: true };
+  if (!hasRecognizedSchedule(schedule)) return { available: true, severity: 'unknown' };
   const daySchedule = getScheduleForDay(schedule, day);
-  if (!daySchedule) return { available: false, label: 'OFF' };
+  if (!daySchedule) return { available: false, label: 'OFF', severity: 'day_off' };
 
   const start = parseMinutes(daySchedule.start);
   const end = parseMinutes(daySchedule.end);
   const slotStart = parseMinutes(slot.start);
-  if (start === null || end === null || slotStart === null) return { available: true };
+  if (start === null || end === null || slotStart === null) return { available: true, severity: 'unknown' };
   const slotEnd = slotStart + slot.duration;
   if (slotStart < start || slotEnd > end) {
-    return { available: false, label: 'OFF' };
+    return { available: false, label: 'Di luar jam', severity: 'outside_hours' };
   }
-  return { available: true };
+  return { available: true, severity: 'work_hours' };
 }
 
 function getClosureForDate(centerClosures, dateKey) {
@@ -417,9 +417,12 @@ function TherapistWeeklyScheduleTable({
                       ? 'CENTER OFF'
                       : leave
                         ? getLeaveLabel(leave.type)
-                        : workWindow.available
-                          ? ''
-                          : (workWindow.label || 'OFF');
+                        : workWindow.severity === 'day_off'
+                          ? 'OFF'
+                          : '';
+                    const outsideHoursLabel = !offLabel && workWindow.severity === 'outside_hours'
+                      ? workWindow.label
+                      : '';
                     const isOff = Boolean(offLabel);
                     const cellClass = isOff ? OFF_CELL_CLASS : palette.cell;
 
@@ -432,6 +435,11 @@ function TherapistWeeklyScheduleTable({
                           {offLabel && (
                             <span className={`rounded px-1.5 py-0.5 text-[9px] font-black ${dateSessions.length > 0 ? OFF_CHIP_CLASS : 'text-white'}`}>
                               {offLabel}
+                            </span>
+                          )}
+                          {outsideHoursLabel && dateSessions.length > 0 && (
+                            <span className="rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9px] font-black text-amber-700">
+                              {outsideHoursLabel}
                             </span>
                           )}
                           {dateSessions.length === 0 && !offLabel && (

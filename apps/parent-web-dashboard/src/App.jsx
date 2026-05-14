@@ -88,8 +88,17 @@ function App({ onLogout }) {
 
     useEffect(() => {
         fetchData();
-        window.addEventListener('parentChildSelectionChanged', fetchData);
-        return () => window.removeEventListener('parentChildSelectionChanged', fetchData);
+        const events = [
+            'parentChildSelectionChanged',
+            'sessionUpdated',
+            'scheduleUpdated',
+            'rescheduleUpdated',
+            'reportUpdated',
+            'childUpdated',
+            'theracareDataUpdated',
+        ];
+        events.forEach((eventName) => window.addEventListener(eventName, fetchData));
+        return () => events.forEach((eventName) => window.removeEventListener(eventName, fetchData));
     }, [fetchData]);
 
     const nextSession    = upcomingSessions[0] || null;

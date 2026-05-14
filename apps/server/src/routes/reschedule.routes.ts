@@ -1,6 +1,5 @@
 import { Router } from "express";
 import { requireAuth, requireRole } from "../middleware/auth.middleware.js";
-import { auditLogService } from "../services/audit-log.service.js";
 import { childService } from "../services/child.service.js";
 import { parentService } from "../services/parent.service.js";
 import { rescheduleService } from "../services/reschedule.service.js";
@@ -57,52 +56,44 @@ router.post("/", requireAuth, requireRole("parent"), async (req, res, next) => {
     if (!child || child.parentId !== parent.id) {
       return res.status(403).json({ success: false, error: "Data anak tidak sesuai dengan akun orang tua" });
     }
-    const request = await rescheduleService.create({ ...req.body, parentId: parent.id });
-    await auditLogService.create({
-      actor: req.user,
-      action: "reschedule.create",
-      entityType: "reschedule_request",
-      entityId: request.id,
-      summary: `Orang tua mengajukan reschedule sesi ${sessionId}`,
-      metadata: { childId, sessionId, proposedSlots: request.proposedSlots || [] },
-    });
+    const request = await rescheduleService.create({ ...req.body, parentId: parent.id }, req.user);
     created(res, request, "Permintaan reschedule berhasil dikirim");
   } catch (e) {
-    return badRequest(res, e instanceof Error ? e.message : "Gagal mengirim permintaan reschedule");
+    next(e);
+  }
+});
+
+router.patch("/:id/therapist-response", requireAuth, requireRole("therapist"), async (req, res, next) => {
+  try {
+    const therapist = await therapistService.getByUserId(req.user!.id);
+    if (!therapist) return notFound(res, "Profil terapis tidak ditemukan");
+    const { decision } = req.body || {};
+    if (decision !== "approve" && decision !== "reject") {
+      return badRequest(res, "decision harus approve atau reject");
+    }
+    const result = await rescheduleService.respondAsTherapist(req.params.id as string, therapist.id, req.body, req.user);
+    if (!result) return notFound(res);
+    ok(res, result);
+  } catch (e) {
+    next(e);
   }
 });
 
 router.patch("/:id", requireAuth, requireRole("admin"), async (req, res, next) => {
   try {
     const { status, ...updates } = req.body;
-    const result = await rescheduleService.updateStatus(req.params.id as string, status, updates);
+    const result = await rescheduleService.updateStatus(req.params.id as string, status, updates, req.user);
     if (!result) return notFound(res);
-    await auditLogService.create({
-      actor: req.user,
-      action: "reschedule.status.update",
-      entityType: "reschedule_request",
-      entityId: req.params.id as string,
-      summary: `Status reschedule diubah menjadi ${status}`,
-      metadata: { status, ...updates },
-    });
     ok(res, result);
   } catch (e) {
-    return badRequest(res, e instanceof Error ? e.message : "Gagal memperbarui permintaan reschedule");
+    next(e);
   }
 });
 
 router.delete("/:id", requireAuth, requireRole("admin"), async (req, res, next) => {
   try {
-    const result = await rescheduleService.delete(req.params.id as string);
+    const result = await rescheduleService.delete(req.params.id as string, req.user);
     if (!result) return notFound(res);
-    await auditLogService.create({
-      actor: req.user,
-      action: "reschedule.delete",
-      entityType: "reschedule_request",
-      entityId: req.params.id as string,
-      summary: `Permintaan reschedule ${req.params.id} dihapus`,
-      metadata: {},
-    });
     ok(res, result);
   } catch (e) { next(e); }
 });
