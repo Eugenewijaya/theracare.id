@@ -39,6 +39,12 @@ const OPERATIONAL_SETTING_KEYS = [
   "system_revision",
 ] as const;
 
+const BRANDING_ASSET_SETTING_KEYS = [
+  "logoUrl",
+  "faviconUrl",
+  "centerPhotoUrl",
+] as const;
+
 function quoteIdent(value: string) {
   return `"${value.replace(/"/g, '""')}"`;
 }
@@ -55,6 +61,21 @@ async function getExistingTables(client: PoolClient) {
     [DATA_TABLES]
   );
   return new Set(result.rows.map((row) => row.table_name));
+}
+
+async function tableExists(client: PoolClient, table: string) {
+  const result = await client.query<{ exists: boolean }>(
+    `
+      SELECT EXISTS (
+        SELECT 1
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_name = $1
+      ) AS exists
+    `,
+    [table]
+  );
+  return Boolean(result.rows[0]?.exists);
 }
 
 async function getCounts(client: PoolClient, tables: string[]) {
@@ -114,7 +135,7 @@ async function main() {
       await client.query(`TRUNCATE TABLE ${tables.map(quoteIdent).join(", ")} RESTART IDENTITY CASCADE`);
     }
 
-    if (existingTables.has("clinic_settings")) {
+    if (await tableExists(client, "clinic_settings")) {
       if (resetSettings) {
         await client.query(`TRUNCATE TABLE ${quoteIdent("clinic_settings")} RESTART IDENTITY CASCADE`);
       } else {
@@ -122,6 +143,18 @@ async function main() {
           `DELETE FROM ${quoteIdent("clinic_settings")} WHERE key = ANY($1::text[])`,
           [OPERATIONAL_SETTING_KEYS]
         );
+        if (process.env.RESET_BRANDING_ASSETS === "true") {
+          await client.query(
+            `
+              INSERT INTO ${quoteIdent("clinic_settings")} (key, value, updated_at)
+              SELECT unnest($1::text[]), '', now()
+              ON CONFLICT (key) DO UPDATE
+              SET value = excluded.value,
+                  updated_at = excluded.updated_at
+            `,
+            [BRANDING_ASSET_SETTING_KEYS]
+          );
+        }
       }
     }
 

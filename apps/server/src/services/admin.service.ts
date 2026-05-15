@@ -124,7 +124,7 @@ export const adminService = {
       "centerClosures",
     ];
     const settings = await this.getSettings();
-    return Object.fromEntries(safeKeys.map((key) => [key, settings[key]]).filter(([, value]) => value));
+    return Object.fromEntries(safeKeys.map((key) => [key, settings[key] ?? ""]));
   },
   async updateSettings(updates: Record<string, string>) {
     for (const [key, value] of Object.entries(updates)) {
