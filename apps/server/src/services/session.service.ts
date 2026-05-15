@@ -47,6 +47,40 @@ async function enrichSessionDetails<T extends { child?: any; therapist?: any }>(
   }));
 }
 
+function parseDurationMinutes(value?: string | null) {
+  const parsed = Number.parseInt(String(value || ""), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 45;
+}
+
+function getSessionEndAt(session: Pick<TherapySessionInsert, "date" | "startTime" | "duration" | "startedAt">) {
+  const startedAt = session.startedAt ? new Date(session.startedAt) : null;
+  const start = startedAt && !Number.isNaN(startedAt.getTime())
+    ? startedAt
+    : new Date(`${session.date}T${session.startTime || "00:00"}`);
+  if (Number.isNaN(start.getTime())) return null;
+  return new Date(start.getTime() + parseDurationMinutes(session.duration) * 60_000);
+}
+
+async function autoCompleteExpiredActiveSessions() {
+  const activeSessions = await db.query.therapySessions.findMany({
+    where: eq(therapySessions.status, "active"),
+    columns: {
+      id: true,
+      date: true,
+      startTime: true,
+      duration: true,
+      startedAt: true,
+    },
+  });
+  const now = new Date();
+  for (const session of activeSessions) {
+    const endAt = getSessionEndAt(session);
+    if (endAt && now >= endAt) {
+      await sessionService.updateStatus(session.id, "done");
+    }
+  }
+}
+
 async function assertSessionAvailable(
   values: Pick<TherapySessionInsert, "therapistId" | "childId" | "date" | "startTime"> & Partial<Pick<TherapySessionInsert, "roomId" | "duration">>,
   excludeSessionId?: string,
@@ -67,6 +101,7 @@ async function assertSessionAvailable(
 
 export const sessionService = {
   async getAllWithDetails() {
+    await autoCompleteExpiredActiveSessions();
     const sessions = await db.query.therapySessions.findMany({
       with: { therapist: { with: { user: true } }, child: { with: { parent: true, therapyPeriods: { with: { program: true, therapyProgram: true, sessions: true } } } }, room: true, therapyPeriod: { with: { program: true } } },
       orderBy: (s, { desc }) => [desc(s.date), desc(s.startTime)],
@@ -75,6 +110,7 @@ export const sessionService = {
   },
 
   async getById(id: string) {
+    await autoCompleteExpiredActiveSessions();
     const session = await db.query.therapySessions.findFirst({
       where: eq(therapySessions.id, id),
       with: { therapist: { with: { user: true } }, child: { with: { parent: true, therapyPeriods: { with: { program: true, therapyProgram: true, sessions: true } } } }, room: true, therapyPeriod: { with: { program: true } } },
@@ -85,6 +121,7 @@ export const sessionService = {
   },
 
   async getForTherapist(therapistId: string, dateStr?: string) {
+    await autoCompleteExpiredActiveSessions();
     const conditions = [eq(therapySessions.therapistId, therapistId)];
     if (dateStr) conditions.push(eq(therapySessions.date, dateStr));
 
@@ -97,6 +134,7 @@ export const sessionService = {
   },
 
   async getUpcomingForChild(childId: string) {
+    await autoCompleteExpiredActiveSessions();
     const today = new Date().toISOString().split("T")[0];
     const sessions = await db.query.therapySessions.findMany({
       where: and(
@@ -111,6 +149,7 @@ export const sessionService = {
   },
 
   async getCompletedForChild(childId: string) {
+    await autoCompleteExpiredActiveSessions();
     const sessions = await db.query.therapySessions.findMany({
       where: and(eq(therapySessions.childId, childId), inArray(therapySessions.status, ["done", "completed"])),
       with: { therapist: { with: { user: true } }, therapyPeriod: { with: { program: true } } },

@@ -7,6 +7,7 @@ import { findOldestMissingDailyReportSession, hasPriorMissingDailyReport } from 
 import {
     formatSessionClock,
     getLiveSessionState,
+    shouldAutoFinishSession,
     shouldAutoStartSession,
 } from '../../../shared/sessionLiveState';
 
@@ -35,6 +36,7 @@ const TimelineList = () => {
     const [reports, setReports] = useState([]);
     const [actionError, setActionError] = useState('');
     const autoStartedIds = useRef(new Set());
+    const autoFinishedIds = useRef(new Set());
 
     const fetchSessions = async () => {
         const user = getStoredTherapist();
@@ -116,6 +118,22 @@ const TimelineList = () => {
         if (!candidate) return;
         autoStartedIds.current.add(candidate.id);
         startSession(candidate.id, { auto: true });
+    }, [sessions, nowTick]);
+
+    useEffect(() => {
+        const candidate = sessions.find(session => (
+            shouldAutoFinishSession(session, nowTick)
+            && !autoFinishedIds.current.has(session.id)
+        ));
+        if (!candidate) return;
+        autoFinishedIds.current.add(candidate.id);
+        sessionsApi.updateStatus(candidate.id, 'done').then(() => {
+            fetchSessions();
+            window.dispatchEvent(new Event('sessionUpdated'));
+        }).catch((e) => {
+            console.error('Failed to auto-finish session', e);
+            autoFinishedIds.current.delete(candidate.id);
+        });
     }, [sessions, nowTick]);
 
     return (

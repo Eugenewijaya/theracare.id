@@ -286,7 +286,7 @@ export default function Announcements() {
           </div>
         </div>
 
-        <div className="mt-6 flex gap-2 overflow-x-auto pb-2">
+        <div className="mt-6 flex flex-wrap gap-2">
           {FILTERS.map((filterId) => {
             const meta = CATEGORY_META[filterId];
             const count = getFilterCount(items, filterId);

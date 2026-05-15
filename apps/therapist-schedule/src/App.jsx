@@ -8,6 +8,7 @@ import {
     formatSessionClock,
     getLiveSessionState,
     isAttendanceConfirmed,
+    shouldAutoFinishSession,
     shouldAutoStartSession,
 } from '../../shared/sessionLiveState';
 
@@ -71,6 +72,7 @@ function App({ onLogout }) {
     const [startModal, setStartModal] = useState(null);
     const [nowTick, setNowTick] = useState(() => new Date());
     const autoStartedIds = useRef(new Set());
+    const autoFinishedIds = useRef(new Set());
 
     const loadSessions = async () => {
         if (!currentUser?.id) {
@@ -147,6 +149,22 @@ function App({ onLogout }) {
             window.dispatchEvent(new Event('sessionUpdated'));
         }).catch((e) => {
             console.error('Failed to auto-start session', e);
+        });
+    }, [sessions, nowTick]);
+
+    useEffect(() => {
+        const candidate = sessions.find(session => (
+            shouldAutoFinishSession(session.raw || session, nowTick)
+            && !autoFinishedIds.current.has(session.id)
+        ));
+        if (!candidate) return;
+        autoFinishedIds.current.add(candidate.id);
+        sessionsApi.updateStatus(candidate.id, 'done').then(() => {
+            loadSessions();
+            window.dispatchEvent(new Event('sessionUpdated'));
+        }).catch((e) => {
+            console.error('Failed to auto-finish session', e);
+            autoFinishedIds.current.delete(candidate.id);
         });
     }, [sessions, nowTick]);
 
