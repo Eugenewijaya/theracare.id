@@ -338,16 +338,47 @@ const ProgramForm = ({ data, onChange, errors }) => {
                 </label>
                 <select
                     value={data.therapistId || ''}
-                    onChange={(e) => onChange({ ...data, therapistId: e.target.value })}
+                    onChange={(e) => {
+                        const therapistId = e.target.value;
+                        onChange({
+                            ...data,
+                            therapistId,
+                            assistantTherapistId: data.assistantTherapistId === therapistId ? '' : data.assistantTherapistId,
+                        });
+                    }}
                     className={`w-full h-11 px-3 rounded-lg border ${errors?.therapistId ? 'border-red-500 focus:ring-red-500' : 'border-slate-300 dark:border-slate-700 focus:ring-primary focus:border-primary'} bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-opacity-50 appearance-none cursor-pointer`}
                 >
                     <option value="">Pilih Terapis Utama...</option>
                     {therapists.map(t => (
-                        <option key={t.id} value={t.id}>{t.name} ({t.specialty})</option>
+                        <option key={t.id} value={t.id}>{t.name} ({t.specialty || 'Terapis'})</option>
                     ))}
                 </select>
                 {errors?.therapistId && <p className="text-xs text-red-500 mt-1">{errors.therapistId}</p>}
                 <p className="text-xs text-slate-500 mt-2">Terapis utama akan ditetapkan sebagai terapis default untuk sesi anak ini, namun dapat diubah secara spesifik setiap sesinya.</p>
+            </div>
+
+            <div className="pt-1">
+                <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">
+                    Terapis Pendamping
+                </label>
+                <select
+                    value={data.assistantTherapistId || ''}
+                    onChange={(e) => onChange({
+                        ...data,
+                        assistantTherapistId: e.target.value,
+                        assistantTherapistIds: e.target.value ? [e.target.value] : [],
+                    })}
+                    className={`w-full h-11 px-3 rounded-lg border ${errors?.assistantTherapistId ? 'border-red-500 focus:ring-red-500' : 'border-slate-300 dark:border-slate-700 focus:ring-primary focus:border-primary'} bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-opacity-50 appearance-none cursor-pointer`}
+                >
+                    <option value="">Tidak ada pendamping tetap</option>
+                    {therapists
+                        .filter(t => t.id !== data.therapistId)
+                        .map(t => (
+                            <option key={t.id} value={t.id}>{t.name} ({t.specialty || 'Terapis'})</option>
+                        ))}
+                </select>
+                {errors?.assistantTherapistId && <p className="text-xs text-red-500 mt-1">{errors.assistantTherapistId}</p>}
+                <p className="text-xs text-slate-500 mt-2">Pendamping diprioritaskan sebagai saran terapis pengganti saat terapis utama berhalangan. Laporan periodik tetap menjadi tanggung jawab terapis utama.</p>
             </div>
         </div>
     );

@@ -9,7 +9,7 @@ import { httpError } from "../utils/http-error.js";
 import { isOpenRescheduleStatus } from "../domain/workflow-status.js";
 
 type ProposedSlot = { date: string; time: string; status?: string; reason?: string; kind?: string };
-type AuditActor = { id?: string; role?: string } | null | undefined;
+type AuditActor = { id?: string; role?: string; name?: string; email?: string } | null | undefined;
 
 const sessionTrackingDetails = {
   therapist: { with: { user: true } },
@@ -62,6 +62,21 @@ function assertFutureSession(session: { date?: string | Date | null; status?: st
   if (sessionDate && sessionDate < today) {
     throw httpError(409, "Sesi lampau tidak bisa diajukan reschedule.");
   }
+}
+
+function roleLabel(role?: string | null) {
+  if (role === "therapist") return "Terapis";
+  if (role === "admin") return "Admin";
+  if (role === "parent") return "Orang Tua";
+  return "Sistem";
+}
+
+function reviewerValues(actor: AuditActor) {
+  return {
+    reviewedBy: actor?.id || null,
+    reviewedByRole: actor?.role || null,
+    reviewedByName: actor?.name || actor?.email || roleLabel(actor?.role),
+  };
 }
 
 function removeCurrentSessionSlot(
@@ -273,6 +288,7 @@ export const rescheduleService = {
         status,
         resolvedAt: new Date(),
         ...(updates.reviewNote ? { reviewNote: updates.reviewNote } : {}),
+        ...reviewerValues(actor),
         ...(updates.newDate ? { newDate: updates.newDate } : {}),
         ...(updates.newStartTime ? { newStartTime: updates.newStartTime } : {}),
       }).where(eq(rescheduleRequests.id, id));
@@ -356,6 +372,7 @@ export const rescheduleService = {
             status: "rejected",
             reviewNote: note,
             resolvedAt: new Date(),
+            ...reviewerValues(actor),
           })
           .where(eq(rescheduleRequests.id, id));
 
@@ -430,6 +447,7 @@ export const rescheduleService = {
           newDate: chosen.date,
           newStartTime: chosen.time,
           resolvedAt: new Date(),
+          ...reviewerValues(actor),
         })
         .where(eq(rescheduleRequests.id, id));
 

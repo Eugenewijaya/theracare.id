@@ -4,6 +4,13 @@ import RequestCard from './components/RequestCard';
 import { meetingsApi, rescheduleApi } from '../../shared/api/client';
 import { confirmAction as confirmDialog } from '../../shared/ui/confirmDialog';
 
+const getReviewerLabel = (request) => {
+    if (request?.reviewedByName) return request.reviewedByName;
+    if (request?.reviewedByRole === 'therapist') return 'Terapis utama';
+    if (request?.reviewedByRole === 'admin') return 'Admin';
+    return 'Belum ada reviewer';
+};
+
 // ── Notification Popup Component ──────────────────────────────────
 function NotificationPopup({ isOpen, message, type, onClose, onConfirm, showConfirmButtons }) {
     if (!isOpen) return null;
@@ -210,7 +217,7 @@ function App() {
                     })),
                     status: r.status || 'pending',
                     reviewNote: r.reviewNote || '',
-                    reviewedBy: 'Admin',
+                    reviewedBy: getReviewerLabel(r),
                     originalDate: session.date ? `${session.date} • ${session.startTime}` : 'TBD',
                     newDate: r.newDate ? `${r.newDate} • ${r.newStartTime || session.startTime}` : '—',
                     resolvedOn: r.resolvedAt ? new Date(r.resolvedAt).toLocaleDateString() : '',

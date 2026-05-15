@@ -96,6 +96,13 @@ const getSubstituteHistoryNote = (request) => {
     return request.note || 'Menunggu respons terapis utama.';
 };
 
+const getReviewerLabel = (request) => {
+    if (request?.reviewedByName) return request.reviewedByName;
+    if (request?.reviewedByRole === 'therapist') return 'Terapis utama';
+    if (request?.reviewedByRole === 'admin') return 'Admin';
+    return 'Admin';
+};
+
 function DeclineSubstituteModal({ request, suggestedSubstituteId, onSubmit, onClose }) {
     const [reason, setReason] = useState('');
     const canSubmit = reason.trim().length >= 8;
@@ -289,7 +296,7 @@ export default function ScheduleUpdates() {
                         newDate: r.newDate ? `${formatDate(r.newDate)}${r.newStartTime ? ` • ${r.newStartTime}` : ''}` : '—',
                         outcome: r.status,
                         resolvedOn: r.resolvedAt ? formatDateTime(r.resolvedAt) : '',
-                        adminNote: r.reviewNote || (r.status === 'approved' ? 'Disetujui oleh Admin' : r.status === 'rejected' ? 'Ditolak oleh Admin' : 'Sedang direview'),
+                        adminNote: r.reviewNote || (r.status === 'approved' ? `Disetujui oleh ${getReviewerLabel(r)}` : r.status === 'rejected' ? `Ditolak oleh ${getReviewerLabel(r)}` : 'Sedang direview'),
                         reason: r.reason || r.details || '',
                         createdAt: r.createdAt,
                     }))

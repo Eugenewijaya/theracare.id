@@ -40,6 +40,7 @@ const EMPTY_CHILD  = {
     sessionDuration: '60',
     billingMode: 'per_session',
     totalPrice: 0,
+    assistantTherapistId: '',
 };
 
 const STEP_META = {
@@ -86,6 +87,9 @@ function App() {
             const e = {};
             if (!currentChild.program) e.program = 'Please select a therapy program.';
             if (!currentChild.therapistId) e.therapistId = 'Silakan pilih terapis utama.';
+            if (currentChild.assistantTherapistId && currentChild.assistantTherapistId === currentChild.therapistId) {
+                e.assistantTherapistId = 'Terapis pendamping harus berbeda dari terapis utama.';
+            }
             if (!currentChild.periodStartDate) e.periodStartDate = 'Tanggal mulai periode wajib diisi.';
             if (!Number(currentChild.totalSessions || 0)) e.totalSessions = 'Jumlah sesi wajib diisi.';
             setErrors(e);
@@ -192,6 +196,7 @@ function App() {
                     totalPrice: Number(child.totalPrice || 0),
                     billingMode: child.billingMode || 'per_session',
                     scheduleRules,
+                    assistantTherapistIds: child.assistantTherapistId ? [child.assistantTherapistId] : [],
                     generateSessions: scheduleRules.length > 0,
                 }] : [];
                 const childRes = await childrenApi.create({ ...child, parentId, therapyProgramsList });

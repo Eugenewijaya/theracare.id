@@ -20,6 +20,7 @@ const initialForm = (child = null) => ({
   programCode: '',
   programGoal: '',
   therapistId: child?.therapistId || '',
+  assistantTherapistId: child?.activePeriod?.assistantTherapistIds?.[0] || '',
   periodStartDate: todayString(),
   periodEndDate: '',
   totalSessions: 12,
@@ -133,6 +134,9 @@ export default function ProgramEnrollmentPage() {
     if (!selectedChild) next.childId = 'Pilih anak terlebih dahulu.';
     if (!form.program) next.program = 'Pilih program layanan.';
     if (!form.therapistId) next.therapistId = 'Pilih terapis utama.';
+    if (form.assistantTherapistId && form.assistantTherapistId === form.therapistId) {
+      next.assistantTherapistId = 'Terapis pendamping harus berbeda dari terapis utama.';
+    }
     if (!form.periodStartDate) next.periodStartDate = 'Tanggal mulai periode wajib diisi.';
     if (!Number(form.totalSessions || 0)) next.totalSessions = 'Jumlah sesi wajib diisi.';
     if (form.periodStartDate && form.periodEndDate && form.periodEndDate < form.periodStartDate) {
@@ -170,6 +174,7 @@ export default function ProgramEnrollmentPage() {
       totalPrice: calculateFormTotal(form),
       billingMode: form.billingMode || 'per_session',
       scheduleRules,
+      assistantTherapistIds: form.assistantTherapistId ? [form.assistantTherapistId] : [],
       generateSessions: scheduleRules.length > 0,
     };
   };

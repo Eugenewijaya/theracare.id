@@ -20,6 +20,7 @@ export async function ensureProductionSchema() {
       total_price integer NOT NULL DEFAULT 0,
       billing_mode text NOT NULL DEFAULT 'per_session',
       schedule_rules jsonb,
+      assistant_therapist_ids jsonb,
       goals jsonb,
       notes text,
       renewal_of text,
@@ -76,6 +77,9 @@ export async function ensureProductionSchema() {
     ALTER TABLE reports
       ADD COLUMN IF NOT EXISTS therapy_period_id text;
 
+    ALTER TABLE therapy_periods
+      ADD COLUMN IF NOT EXISTS assistant_therapist_ids jsonb;
+
     ALTER TABLE reports
       ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'pending_review',
       ADD COLUMN IF NOT EXISTS date date,
@@ -108,6 +112,9 @@ export async function ensureProductionSchema() {
       ADD COLUMN IF NOT EXISTS details text,
       ADD COLUMN IF NOT EXISTS proposed_slots jsonb,
       ADD COLUMN IF NOT EXISTS review_note text,
+      ADD COLUMN IF NOT EXISTS reviewed_by text,
+      ADD COLUMN IF NOT EXISTS reviewed_by_role text,
+      ADD COLUMN IF NOT EXISTS reviewed_by_name text,
       ADD COLUMN IF NOT EXISTS new_date date,
       ADD COLUMN IF NOT EXISTS new_start_time varchar(5),
       ADD COLUMN IF NOT EXISTS resolved_at timestamp;

@@ -14,13 +14,21 @@ import {
 
 // ── Shared data store helpers ──────────
 
-const getChildrenFromSessions = (sessions) => {
+const isTherapistAssignedToPeriod = (period, therapistId) => {
+    if (!therapistId || !period || !Array.isArray(period.scheduleRules)) return false;
+    return period.scheduleRules.some(rule => rule?.therapistId === therapistId);
+};
+
+const getChildrenFromSessions = (sessions, options = {}) => {
+    const therapistId = options.therapistId || '';
+    const programOnly = Boolean(options.programOnly);
     try {
         const childMap = new Map();
         sessions.forEach(s => {
             if (s.child && !childMap.has(s.child.id)) {
                 const childSessions = sessions.filter(sess => sess.childId === s.child.id);
                 const activePeriod = (s.child.therapyPeriods || []).find(period => period.status === 'active') || (s.child.therapyPeriods || [])[0] || null;
+                if (programOnly && !isTherapistAssignedToPeriod(activePeriod, therapistId)) return;
                 const periodSessions = activePeriod?.id
                     ? childSessions.filter(sess => sess.therapyPeriodId === activePeriod.id)
                     : childSessions;
@@ -1476,7 +1484,14 @@ function App() {
         setScreen('daily-form');
     };
 
-    const childrenData = getChildrenFromSessions(sessions);
+    const dailyChildrenData = getChildrenFromSessions(sessions);
+    const programChildrenData = getChildrenFromSessions(sessions, { therapistId: currentUser?.id, programOnly: true });
+    const editingProgramChild = editingReport && editingReport.type !== 'harian' && !programChildrenData.some(child => child.id === editingReport.childId)
+        ? dailyChildrenData.find(child => child.id === editingReport.childId)
+        : null;
+    const programReportChildrenData = editingProgramChild
+        ? [editingProgramChild, ...programChildrenData]
+        : programChildrenData;
     const dailyReportQueue = buildDailyReportQueue(sessions, reports);
 
     return (
@@ -1501,7 +1516,7 @@ function App() {
                             {screen === 'daily-gate' && (
                                 <DailyReportGate
                                     onBack={goBack}
-                                    childrenData={childrenData}
+                                    childrenData={dailyChildrenData}
                                     sessions={sessions}
                                     reports={reports}
                                     initialChildId={selectedChildId}
@@ -1509,27 +1524,27 @@ function App() {
                                 />
                             )}
                             {screen === 'daily-form' && (
-                                <DailyReportForm childId={selectedChildId} sessionId={selectedSessionId} onBack={goBack} currentUser={currentUser} childrenData={childrenData} sessions={sessions} reports={reports} initialReport={editingReport} onReportSaved={loadData} />
+                                <DailyReportForm childId={selectedChildId} sessionId={selectedSessionId} onBack={goBack} currentUser={currentUser} childrenData={dailyChildrenData} sessions={sessions} reports={reports} initialReport={editingReport} onReportSaved={loadData} />
                             )}
                             {screen === 'periodic-gate' && (
                                 <PeriodicReportGate
                                     onBack={goBack}
-                                    childrenData={childrenData}
+                                    childrenData={programReportChildrenData}
                                     onConfirm={(id) => { setEditingReport(null); setSelectedChildId(id); setSelectedSessionId(''); setScreen('periodic-form'); }}
                                 />
                             )}
                             {screen === 'periodic-form' && (
-                                <PeriodicReportForm childId={selectedChildId} onBack={goBack} currentUser={currentUser} childrenData={childrenData} reports={reports} initialReport={editingReport} onReportSaved={loadData} />
+                                <PeriodicReportForm childId={selectedChildId} onBack={goBack} currentUser={currentUser} childrenData={programReportChildrenData} reports={reports} initialReport={editingReport} onReportSaved={loadData} />
                             )}
                             {screen === 'observation-gate' && (
                                 <ObservationReportGate
                                     onBack={goBack}
-                                    childrenData={childrenData}
+                                    childrenData={programReportChildrenData}
                                     onConfirm={(id) => { setEditingReport(null); setSelectedChildId(id); setSelectedSessionId(''); setScreen('observation-form'); }}
                                 />
                             )}
                             {screen === 'observation-form' && (
-                                <ObservationReportForm childId={selectedChildId} onBack={goBack} currentUser={currentUser} childrenData={childrenData} reports={reports} initialReport={editingReport} onReportSaved={loadData} />
+                                <ObservationReportForm childId={selectedChildId} onBack={goBack} currentUser={currentUser} childrenData={programReportChildrenData} reports={reports} initialReport={editingReport} onReportSaved={loadData} />
                             )}
                             {screen === 'report-detail' && selectedReport && (
                                 <ReportDetail report={selectedReport} onBack={goBack} onEdit={handleEditReport} />

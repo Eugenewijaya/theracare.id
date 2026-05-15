@@ -194,6 +194,7 @@ export const therapyPeriods = pgTable("therapy_periods", {
     therapistId?: string;
     roomId?: string;
   }>>(),
+  assistantTherapistIds: jsonb("assistant_therapist_ids").$type<string[]>(),
   goals: jsonb("goals").$type<string[]>(),
   notes: text("notes"),
   renewalOf: text("renewal_of"),
@@ -304,6 +305,9 @@ export const rescheduleRequests = pgTable("reschedule_requests", {
   >(),
   status: text("status").notNull().default("pending"),
   reviewNote: text("review_note"),
+  reviewedBy: text("reviewed_by").references(() => user.id),
+  reviewedByRole: text("reviewed_by_role"),
+  reviewedByName: text("reviewed_by_name"),
   newDate: date("new_date"),
   newStartTime: varchar("new_start_time", { length: 5 }),
   resolvedAt: timestamp("resolved_at"),

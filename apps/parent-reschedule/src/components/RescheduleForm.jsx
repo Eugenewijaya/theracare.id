@@ -125,6 +125,13 @@ const getTherapistName = (request) => (
   || 'Terapis'
 );
 
+const getReviewerLabel = (request) => {
+  if (request?.reviewedByName) return request.reviewedByName;
+  if (request?.reviewedByRole === 'therapist') return 'Terapis utama';
+  if (request?.reviewedByRole === 'admin') return 'Admin';
+  return 'Admin/terapis';
+};
+
 const getSessionProgram = (session = {}) => (
   session.focus
   || session.programName
@@ -404,7 +411,7 @@ const RequestHistory = ({ requests, loading, onRefresh }) => {
               )}
               {request.reviewNote && (
                 <p className="rounded-2xl border border-slate-100 bg-slate-50 p-3 text-xs font-semibold text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
-                  Catatan admin/terapis: {request.reviewNote}
+                  Catatan {getReviewerLabel(request)}: {request.reviewNote}
                 </p>
               )}
 

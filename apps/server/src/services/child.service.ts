@@ -257,7 +257,7 @@ export const childService = {
     therapyProgramsList?: Array<{
       type: string; totalSessions: number; goal?: string; icon?: string; colorClass?: string; colorHex?: string; programId?: string;
       startDate?: string; endDate?: string; pricePerSession?: number; pricePerMonth?: number; totalPrice?: number; billingMode?: string;
-      scheduleRules?: Array<Record<string, unknown>>; generateSessions?: boolean; createInitialPeriod?: boolean;
+      scheduleRules?: Array<Record<string, unknown>>; assistantTherapistIds?: string[]; generateSessions?: boolean; createInitialPeriod?: boolean;
     }>;
   }) {
     const lastSeq = await this.getLastSequence();
@@ -308,6 +308,7 @@ export const childService = {
           totalPrice: source?.totalPrice,
           billingMode: source?.billingMode,
           scheduleRules: source?.scheduleRules,
+          assistantTherapistIds: source?.assistantTherapistIds,
           generateSessions: source?.generateSessions,
         });
       }

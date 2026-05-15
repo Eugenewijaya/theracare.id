@@ -239,8 +239,18 @@ function SubstituteTherapistModal({ session, childrenList, therapistsList, allSe
     const [note, setNote] = useState('');
     const [confirmedContact, setConfirmedContact] = useState(false);
 
+    const child = childrenList.find(item => item.id === session.childId || item.nita === session.childId);
     const childName = getChildName(childrenList, session.childId);
     const originalTherapistName = getTherapistName(therapistsList, session.therapistId);
+    const childPeriods = Array.isArray(child?.periods) ? child.periods : [];
+    const matchingPeriod = childPeriods.find(period => period.id && period.id === session.therapyPeriodId)
+        || child?.activePeriod
+        || childPeriods.find(period => ['active', 'planned'].includes(String(period.status || '').toLowerCase()))
+        || childPeriods[0]
+        || null;
+    const assistantTherapistIds = Array.isArray(matchingPeriod?.assistantTherapistIds)
+        ? matchingPeriod.assistantTherapistIds
+        : [];
     const isTherapistBusy = (therapistId) => (allSessions || []).some(item => (
         item.id !== session.id
         && item.therapistId === therapistId
@@ -253,9 +263,17 @@ function SubstituteTherapistModal({ session, childrenList, therapistsList, allSe
         .map(t => ({
             ...t,
             hasConflict: isTherapistBusy(t.id),
-        }));
+            isAssistant: assistantTherapistIds.includes(t.id),
+        }))
+        .sort((a, b) => Number(b.isAssistant) - Number(a.isAssistant) || String(a.name || '').localeCompare(String(b.name || '')));
     const selectedSubstitute = substituteOptions.find(t => t.id === substituteTherapistId);
     const canSubmit = leaveType && substituteTherapistId && confirmedContact && !selectedSubstitute?.hasConflict;
+
+    useEffect(() => {
+        if (substituteTherapistId) return;
+        const preferred = substituteOptions.find(t => t.isAssistant && !t.hasConflict);
+        if (preferred) setSubstituteTherapistId(preferred.id);
+    }, [substituteTherapistId, substituteOptions]);
 
     const handleSubmit = (e) => {
         e.preventDefault();
@@ -315,10 +333,13 @@ function SubstituteTherapistModal({ session, childrenList, therapistsList, allSe
                                 <option value="">Pilih terapis...</option>
                                 {substituteOptions.map(t => (
                                     <option key={t.id} value={t.id} disabled={t.hasConflict}>
-                                        {t.name} ({t.specialty || t.specialization || 'Terapis'}){t.hasConflict ? ' - Bentrok jadwal' : ''}
+                                        {t.name} ({t.specialty || t.specialization || 'Terapis'}){t.isAssistant ? ' - Pendamping' : ''}{t.hasConflict ? ' - Bentrok jadwal' : ''}
                                     </option>
                                 ))}
                             </select>
+                            {assistantTherapistIds.length > 0 && (
+                                <p className="text-xs font-semibold text-slate-500">Terapis pendamping anak ditaruh di urutan paling atas sebagai saran pengganti utama.</p>
+                            )}
                             {selectedSubstitute?.hasConflict && (
                                 <p className="text-xs font-semibold text-red-600">Terapis ini sedang punya sesi yang bentrok di rentang waktu tersebut.</p>
                             )}

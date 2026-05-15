@@ -188,6 +188,15 @@ async function canTherapistReportForChild(childId: string, therapistId: string) 
     && period.scheduleRules.some((rule: any) => rule?.therapistId === therapistId));
 }
 
+async function canTherapistWriteProgramReport(childId: string, therapistId: string, therapyPeriodId?: string) {
+  if (!childId || !therapistId) return false;
+  const periods = therapyPeriodId
+    ? await db.query.therapyPeriods.findMany({ where: and(eq(therapyPeriods.id, therapyPeriodId), eq(therapyPeriods.childId, childId)) })
+    : await db.query.therapyPeriods.findMany({ where: eq(therapyPeriods.childId, childId) });
+  return periods.some((period: any) => Array.isArray(period.scheduleRules)
+    && period.scheduleRules.some((rule: any) => rule?.therapistId === therapistId));
+}
+
 async function getLastReportSeq(client: DbClient = db) {
   const all = await client.select({ id: reports.id }).from(reports);
   if (all.length === 0) return 0;
@@ -402,6 +411,9 @@ export const reportService = {
     if (!therapyPeriodId && linkedSession) {
       therapyPeriodId = linkedSession.therapyPeriodId || "";
     }
+    if (data.type === "harian" && !data.sessionId) {
+      throw httpError(400, "Pilih sesi terapi sebelum membuat laporan harian.");
+    }
     if (data.type === "harian" && data.sessionId && !linkedSession) {
       throw httpError(404, "Sesi terapi tidak ditemukan.");
     }
@@ -415,8 +427,12 @@ export const reportService = {
       : null;
     if (data.id && !existingForAccess) return null;
     const targetChildId = data.childId || linkedSession?.childId || existingForAccess?.childId || "";
-    if (!(await canTherapistReportForChild(targetChildId, data.therapistId))) {
-      throw httpError(403, "Terapis tidak terhubung dengan anak ini.");
+    if (data.type !== "harian") {
+      if (!(await canTherapistWriteProgramReport(targetChildId, data.therapistId, therapyPeriodId || existingForAccess?.therapyPeriodId || ""))) {
+        throw httpError(403, "Laporan periodik/observasi hanya bisa dibuat oleh terapis utama pada periode anak.");
+      }
+    } else if (!(await canTherapistReportForChild(targetChildId, data.therapistId))) {
+      throw httpError(403, "Terapis tidak terhubung dengan sesi anak ini.");
     }
     await this.assertNoPriorMissingDailyReports(data);
 

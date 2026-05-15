@@ -30,7 +30,10 @@ async function canReadChildPeriods(req: any, childId: string) {
     const hasPeriodRule = Array.isArray(child.periods)
       && child.periods.some((period: any) => Array.isArray(period.scheduleRules)
         && period.scheduleRules.some((rule: any) => rule?.therapistId === therapist.id));
-    return hasSession || hasPeriodRule;
+    const isAssistant = Array.isArray(child.periods)
+      && child.periods.some((period: any) => Array.isArray(period.assistantTherapistIds)
+        && period.assistantTherapistIds.includes(therapist.id));
+    return hasSession || hasPeriodRule || isAssistant;
   }
   return false;
 }

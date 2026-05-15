@@ -75,6 +75,14 @@ function normalizeGoals(input: unknown) {
   return input.filter((goal): goal is string => typeof goal === "string" && !!goal.trim()).map((goal) => goal.trim());
 }
 
+function normalizeTherapistIds(input: unknown, primaryTherapistId?: string) {
+  if (!Array.isArray(input)) return [];
+  return Array.from(new Set(input
+    .filter((id): id is string => typeof id === "string" && !!id.trim())
+    .map((id) => id.trim())
+    .filter((id) => id !== primaryTherapistId)));
+}
+
 function calculateTotalPrice(data: {
   billingMode?: string;
   pricePerSession?: number;
@@ -93,6 +101,12 @@ function pickPeriodValues(data: any): Partial<TherapyPeriodInsert> {
   const pricePerSession = Number(data.pricePerSession || 0);
   const pricePerMonth = Number(data.pricePerMonth || 0);
   const billingMode = typeof data.billingMode === "string" ? data.billingMode : "per_session";
+  const normalizedScheduleRules = Array.isArray(data.scheduleRules)
+    ? normalizeScheduleRules(data.scheduleRules, data.therapistId)
+    : [];
+  const primaryTherapistId = typeof data.therapistId === "string" && data.therapistId
+    ? data.therapistId
+    : normalizedScheduleRules.find((rule) => !!rule.therapistId)?.therapistId || "";
   return {
     ...(typeof data.therapyProgramId === "number" ? { therapyProgramId: data.therapyProgramId } : {}),
     ...(typeof data.programId === "string" && data.programId ? { programId: data.programId } : {}),
@@ -107,7 +121,8 @@ function pickPeriodValues(data: any): Partial<TherapyPeriodInsert> {
     ...(Number.isFinite(pricePerMonth) ? { pricePerMonth } : {}),
     billingMode,
     totalPrice: calculateTotalPrice({ billingMode, pricePerSession, pricePerMonth, totalSessions, totalPrice: Number(data.totalPrice || 0) }),
-    ...(Array.isArray(data.scheduleRules) ? { scheduleRules: normalizeScheduleRules(data.scheduleRules, data.therapistId) } : {}),
+    ...(Array.isArray(data.scheduleRules) ? { scheduleRules: normalizedScheduleRules } : {}),
+    ...(Array.isArray(data.assistantTherapistIds) ? { assistantTherapistIds: normalizeTherapistIds(data.assistantTherapistIds, primaryTherapistId) } : {}),
     ...(Array.isArray(data.goals) ? { goals: normalizeGoals(data.goals) } : {}),
     ...(typeof data.notes === "string" ? { notes: data.notes.trim() } : {}),
     ...(typeof data.renewalOf === "string" ? { renewalOf: data.renewalOf } : {}),
@@ -170,9 +185,13 @@ async function notifyPeriodCreated(periodId: string, generation?: { created?: un
     });
   }
 
-  const therapistIds = Array.from(new Set((period.scheduleRules || [])
-    .map((rule: any) => rule?.therapistId)
-    .filter((id): id is string => typeof id === "string" && !!id)));
+  const therapistIds = Array.from(new Set([
+    ...((period.scheduleRules || [])
+      .map((rule: any) => rule?.therapistId)
+      .filter((id): id is string => typeof id === "string" && !!id)),
+    ...((Array.isArray(period.assistantTherapistIds) ? period.assistantTherapistIds : [])
+      .filter((id): id is string => typeof id === "string" && !!id)),
+  ]));
   for (const therapistId of therapistIds) {
     const therapist = await db.query.therapists.findFirst({ where: eq(therapists.id, therapistId) });
     if (!therapist?.userId) continue;
