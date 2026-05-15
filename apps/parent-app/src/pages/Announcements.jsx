@@ -25,6 +25,41 @@ const CATEGORY_META = {
 
 const FILTERS = ['all', 'unread', 'announcement', 'schedule', 'report', 'program', 'meeting', 'payment', 'emergency', 'system'];
 
+const ICON_LABELS = {
+  inbox: 'IN',
+  mark_email_unread: 'NEW',
+  campaign: 'AN',
+  event_repeat: 'JD',
+  summarize: 'LP',
+  library_books: 'PR',
+  groups: 'MT',
+  payments: 'AD',
+  priority_high: '!',
+  notifications: 'NT',
+  refresh: 'RF',
+  done_all: 'OK',
+  done: 'OK',
+  open_in_new: 'GO',
+  visibility: 'SEE',
+  notifications_off: '--',
+  description: 'DOC',
+};
+
+function IconBadge({ icon, className = '', compact = false }) {
+  const label = ICON_LABELS[String(icon || '').trim()] || 'NT';
+
+  return (
+    <span
+      aria-hidden="true"
+      className={`inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-lg font-black leading-none tracking-normal ${
+        compact ? 'h-6 min-w-6 px-1.5 text-[10px]' : 'h-10 min-w-10 px-2 text-xs'
+      } ${className}`}
+    >
+      {label}
+    </span>
+  );
+}
+
 function getNotificationCategory(notification) {
   const type = String(notification?.type || '').toLowerCase();
   const title = String(notification?.title || '').toLowerCase();
@@ -254,9 +289,7 @@ export default function Announcements() {
       <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm sm:p-8">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
-              <span className="material-symbols-rounded text-3xl">notifications</span>
-            </div>
+            <IconBadge icon="notifications" className="bg-blue-50 text-blue-600" />
             <h1 className="mt-4 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">
               Notifikasi & Pengumuman
             </h1>
@@ -271,7 +304,7 @@ export default function Announcements() {
               onClick={loadInbox}
               className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
             >
-              <span className="material-symbols-rounded text-lg">refresh</span>
+              <IconBadge compact icon="refresh" className="bg-slate-100 text-slate-600" />
               Refresh
             </button>
             <button
@@ -280,7 +313,7 @@ export default function Announcements() {
               disabled={!unreadTotal}
               className="inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
             >
-              <span className="material-symbols-rounded text-lg">done_all</span>
+              <IconBadge compact icon="done_all" className="bg-white/20 text-current" />
               Tandai Dibaca
             </button>
           </div>
@@ -304,7 +337,7 @@ export default function Announcements() {
                     : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50',
                 ].join(' ')}
               >
-                <span className="material-symbols-rounded text-lg">{meta.icon}</span>
+                <IconBadge compact icon={meta.icon} className={active ? 'bg-white/20 text-white' : meta.tone} />
                 {meta.label}
                 <span
                   className={[
@@ -341,7 +374,10 @@ export default function Announcements() {
 
         {loading ? (
           <div className="flex min-h-[260px] flex-col items-center justify-center gap-3 px-6 text-center text-slate-500">
-            <span className="material-symbols-rounded animate-spin text-4xl text-blue-600">progress_activity</span>
+            <span
+              aria-hidden="true"
+              className="h-10 w-10 animate-spin rounded-full border-4 border-blue-100 border-t-blue-600"
+            />
             <p className="font-semibold">Mengambil pembaruan terbaru...</p>
           </div>
         ) : visibleItems.length ? (
@@ -360,13 +396,8 @@ export default function Announcements() {
                 >
                   <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                     <div className="flex min-w-0 gap-4">
-                      <div
-                        className={[
-                          'relative flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl',
-                          meta.tone,
-                        ].join(' ')}
-                      >
-                        <span className="material-symbols-rounded text-2xl">{item.icon || meta.icon}</span>
+                      <div className="relative shrink-0">
+                        <IconBadge icon={item.icon || meta.icon} className={meta.tone} />
                         {item.unread && (
                           <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full border-2 border-white bg-blue-600" />
                         )}
@@ -410,7 +441,7 @@ export default function Announcements() {
                           onClick={() => markNotificationRead(item.notificationId)}
                           className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
                         >
-                          <span className="material-symbols-rounded text-lg">done</span>
+                          <IconBadge compact icon="done" className="bg-slate-100 text-slate-700" />
                           Dibaca
                         </button>
                       )}
@@ -419,9 +450,11 @@ export default function Announcements() {
                         onClick={() => openItem(item)}
                         className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 py-2 text-sm font-bold text-white transition hover:bg-slate-800"
                       >
-                        <span className="material-symbols-rounded text-lg">
-                          {item.destination && item.destination !== '/announcements' ? 'open_in_new' : 'visibility'}
-                        </span>
+                        <IconBadge
+                          compact
+                          icon={item.destination && item.destination !== '/announcements' ? 'open_in_new' : 'visibility'}
+                          className="bg-white/15 text-white"
+                        />
                         Lihat
                       </button>
                     </div>
@@ -432,9 +465,7 @@ export default function Announcements() {
           </div>
         ) : (
           <div className="flex min-h-[260px] flex-col items-center justify-center px-6 text-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-slate-100 text-slate-400">
-              <span className="material-symbols-rounded text-4xl">notifications_off</span>
-            </div>
+            <IconBadge icon="notifications_off" className="bg-slate-100 text-slate-400" />
             <h3 className="mt-4 text-xl font-black text-slate-950">Belum ada pembaruan</h3>
             <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">
               Jika admin atau terapis mengirim pembaruan, itemnya akan muncul di sini sesuai kategori.
