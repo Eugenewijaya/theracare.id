@@ -4,6 +4,11 @@ import { reportsApi, sessionsApi } from '../../../shared/api/client';
 import ChildProfileModal from './ChildProfileModal';
 import { readTherapistUser } from '../../../shared/sessionIdentity';
 import { findOldestMissingDailyReportSession, hasPriorMissingDailyReport } from '../../../shared/reportRules';
+import {
+    formatSessionClock,
+    getLiveSessionState,
+    shouldAutoStartSession,
+} from '../../../shared/sessionLiveState';
 
 function todayKey() {
     const now = new Date();
@@ -17,40 +22,6 @@ function getStoredTherapist() {
     return readTherapistUser();
 }
 
-function getDurationSeconds(session) {
-    const minutes = Number.parseInt(session?.duration, 10) || 45;
-    return minutes * 60;
-}
-
-function getRemainingSeconds(session) {
-    const total = getDurationSeconds(session);
-    if (!session?.startedAt) return total;
-    const started = new Date(session.startedAt).getTime();
-    if (Number.isNaN(started)) return total;
-    return Math.max(0, total - Math.floor((Date.now() - started) / 1000));
-}
-
-const ATTENDANCE_CONFIRMED_STATUSES = new Set(['confirmed', 'checked_in', 'present']);
-
-function isAttendanceConfirmed(session) {
-    return ATTENDANCE_CONFIRMED_STATUSES.has(String(session?.status || '').toLowerCase());
-}
-
-function getSessionStartDate(session) {
-    const date = session?.date ? String(session.date).split('T')[0] : todayKey();
-    const time = session?.startTime || session?.time || '00:00';
-    const value = new Date(`${date}T${time}`);
-    return Number.isNaN(value.getTime()) ? null : value;
-}
-
-function isInScheduledWindow(session) {
-    const start = getSessionStartDate(session);
-    if (!start) return false;
-    const end = new Date(start.getTime() + getDurationSeconds(session) * 1000);
-    const now = new Date();
-    return now >= start && now <= end;
-}
-
 const TimelineList = () => {
     const navigate = useNavigate();
     const [sessions, setSessions] = useState([]);
@@ -58,7 +29,7 @@ const TimelineList = () => {
     const [noteText, setNoteText] = useState('');
     const [completeModal, setCompleteModal] = useState(null); // session object
     const [noteSaved, setNoteSaved] = useState(false);
-    const [timeLeft, setTimeLeft] = useState(45 * 60); // 45 minutes
+    const [nowTick, setNowTick] = useState(() => new Date());
     const [profileModalSession, setProfileModalSession] = useState(null);
     const [allSessions, setAllSessions] = useState([]);
     const [reports, setReports] = useState([]);
@@ -92,33 +63,9 @@ const TimelineList = () => {
     }, []);
 
     useEffect(() => {
-        const activeSession = sessions.find(s => s.status === 'active');
-        if (activeSession) {
-            setTimeLeft(getRemainingSeconds(activeSession));
-            const interval = setInterval(() => {
-                setTimeLeft((prev) => {
-                    if (prev <= 1) {
-                        clearInterval(interval);
-                        // Auto-complete if time runs out
-                        sessionsApi.updateStatus(activeSession.id, 'done').then(() => {
-                            window.dispatchEvent(new Event('sessionUpdated'));
-                            fetchSessions();
-                        });
-                        return 0;
-                    }
-                    return prev - 1;
-                });
-            }, 1000);
-            return () => clearInterval(interval);
-        }
-    }, [sessions]);
-
-    const formatTime = (seconds) => {
-        const h = Math.floor(seconds / 3600);
-        const m = Math.floor((seconds % 3600) / 60);
-        const s = seconds % 60;
-        return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-    };
+        const interval = setInterval(() => setNowTick(new Date()), 1000);
+        return () => clearInterval(interval);
+    }, []);
 
     const openCompleteModal = (session) => setCompleteModal(session);
     const closeCompleteModal = () => setCompleteModal(null);
@@ -163,15 +110,13 @@ const TimelineList = () => {
     useEffect(() => {
         if (sessions.some(s => s.status === 'active')) return;
         const candidate = sessions.find(session => (
-            isAttendanceConfirmed(session)
-            && isInScheduledWindow(session)
-            && !session.startedAt
+            shouldAutoStartSession(session, nowTick)
             && !autoStartedIds.current.has(session.id)
         ));
         if (!candidate) return;
         autoStartedIds.current.add(candidate.id);
         startSession(candidate.id, { auto: true });
-    }, [sessions]);
+    }, [sessions, nowTick]);
 
     return (
         <section className="flex flex-col gap-8">
@@ -201,10 +146,16 @@ const TimelineList = () => {
             ) : (
             <div className="relative pl-6 sm:pl-8 before:absolute before:inset-y-0 before:left-7 sm:before:left-10 before:w-1 before:bg-slate-100 dark:before:bg-slate-800 flex flex-col gap-6 sm:gap-8">
                 {sessions.map(session => {
-                    const isDone = session.status === 'done';
-                    const isActive = session.status === 'active';
-                    const isConfirmed = isAttendanceConfirmed(session);
+                    const live = getLiveSessionState(session, nowTick);
+                    const isDone = live.isDone;
+                    const isActive = live.isRunning;
+                    const isConfirmed = live.hasAdminApproval;
                     const childName = session.child ? session.child.name : (session.name || 'Unknown Child');
+                    const countdownLabel = live.isCountdown
+                        ? `Mulai dalam ${formatSessionClock(live.countdownSeconds)}`
+                        : live.isOvertime
+                            ? 'Waktu sesi sudah lewat'
+                            : 'Ready';
 
                     return (
                         <div key={session.id} className="relative flex items-start gap-8 group">
@@ -236,7 +187,9 @@ const TimelineList = () => {
                                                     <span className="w-1.5 h-1.5 bg-teal-500 rounded-full animate-pulse"></span>
                                                     In Progress
                                                 </div>
-                                                <span className="text-sm font-bold font-mono px-2 py-0.5 rounded text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800">{formatTime(timeLeft)}</span>
+                                                <span className="text-sm font-bold font-mono px-2 py-0.5 rounded text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800">
+                                                    {formatSessionClock(live.remainingSeconds)}
+                                                </span>
                                             </div>
                                         )}
                                         <div className="flex items-center gap-3">
@@ -261,7 +214,7 @@ const TimelineList = () => {
                                             isActive ? 'hidden' :
                                             isConfirmed ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400' :
                                             'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
-                                        }`}>{isDone ? 'Completed' : isConfirmed ? 'Ready' : 'Waiting Check-in'}</span>
+                                        }`}>{isDone ? 'Completed' : isConfirmed ? countdownLabel : 'Waiting Check-in'}</span>
                                         <div className="flex items-center justify-end gap-1.5 text-sm font-bold text-slate-600 dark:text-slate-300">
                                             <span className="material-symbols-outlined text-[16px]">schedule</span>
                                             {session.startTime || session.time} ({session.duration || '60 mins'})
@@ -331,9 +284,13 @@ const TimelineList = () => {
                                     )}
                                     {isActive && (
                                         <>
-                                            <button onClick={() => openCompleteModal(session)} className="flex items-center justify-center gap-2 rounded-xl h-11 px-6 bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600 text-white transition-all text-sm font-bold shadow-md shadow-teal-500/20 hover:shadow-teal-500/40 hover:-translate-y-0.5">
+                                            <button
+                                                onClick={() => openCompleteModal(session)}
+                                                disabled={!live.isActiveStored}
+                                                className="flex items-center justify-center gap-2 rounded-xl h-11 px-6 bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600 text-white transition-all text-sm font-bold shadow-md shadow-teal-500/20 hover:shadow-teal-500/40 hover:-translate-y-0.5 disabled:cursor-wait disabled:opacity-60"
+                                            >
                                                 <span className="material-symbols-outlined text-[20px]" style={{fontVariationSettings: "'FILL' 1"}}>check_circle</span>
-                                                End Session
+                                                {live.isActiveStored ? 'End Session' : 'Menyiapkan Sesi'}
                                             </button>
                                             <button onClick={() => { setNoteOpenId(noteOpenId === session.id ? null : session.id); setNoteText(session.notes || ''); }} className="flex items-center justify-center gap-2 rounded-xl h-11 px-5 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-all text-sm font-bold border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow">
                                                 <span className="material-symbols-outlined text-[20px]">edit_note</span>

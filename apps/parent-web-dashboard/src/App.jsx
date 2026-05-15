@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Header from './components/Header';
 import { sessionsApi, childrenApi, adminApi } from '../../shared/api/client';
 import { readParentUser } from '../../shared/sessionIdentity';
+import { formatSessionClock, getLiveSessionState } from '../../shared/sessionLiveState';
 
 // ── Helpers ────────────────────────────────────────────────────────
 const formatDate = (dateStr) => {
@@ -45,6 +46,62 @@ function EmptyState({ icon, title, subtitle }) {
 }
 
 // ── Main App ───────────────────────────────────────────────────────
+function LiveSessionCard({ session, live, onOpenSchedule }) {
+    if (!session || !live) return null;
+    const therapistName = session.therapist?.name || session.therapistName || 'Terapis';
+    const isRunning = live.isRunning;
+    const isCountdown = live.isCountdown;
+    const isOvertime = live.isOvertime;
+    const label = isRunning
+        ? (isOvertime ? 'Sesi perlu diakhiri' : 'Sesi sedang berjalan')
+        : isCountdown
+            ? 'Sesi sudah dikonfirmasi'
+            : 'Siap dimulai';
+    const timeValue = isRunning
+        ? formatSessionClock(live.remainingSeconds)
+        : isCountdown
+            ? formatSessionClock(live.countdownSeconds)
+            : '00:00';
+
+    return (
+        <div className="relative overflow-hidden rounded-3xl border border-teal-200 bg-gradient-to-br from-teal-50 via-white to-sky-50 p-5 shadow-sm dark:border-teal-900/50 dark:from-teal-950/40 dark:via-slate-900 dark:to-sky-950/30">
+            <div className="absolute right-0 top-0 h-32 w-32 translate-x-8 -translate-y-8 rounded-full bg-teal-300/20 blur-2xl" />
+            <div className="relative z-10 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div className="min-w-0">
+                    <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-teal-200 bg-white/70 px-3 py-1 text-xs font-black uppercase tracking-wide text-teal-700 dark:border-teal-800 dark:bg-slate-900/70 dark:text-teal-300">
+                        <span className={`h-2 w-2 rounded-full ${isRunning ? 'animate-pulse bg-teal-500' : 'bg-amber-400'}`} />
+                        {label}
+                    </div>
+                    <h2 className="break-words text-xl font-black text-slate-950 dark:text-white">
+                        {session.focus || 'Sesi terapi'} bersama {therapistName}
+                    </h2>
+                    <p className="mt-1 text-sm font-semibold text-slate-500 dark:text-slate-400">
+                        {formatDate(session.date)}, {session.startTime} - {session.duration || '60 mins'}
+                    </p>
+                </div>
+                <div className="flex flex-col gap-3 rounded-2xl border border-white/70 bg-white/80 p-4 shadow-sm dark:border-slate-700/70 dark:bg-slate-900/80 sm:min-w-[220px]">
+                    <p className="text-[11px] font-black uppercase tracking-wide text-slate-400">
+                        {isRunning ? 'Sisa waktu sesi' : 'Hitung mundur mulai'}
+                    </p>
+                    <div className="flex items-end justify-between gap-4">
+                        <span className="font-mono text-3xl font-black text-teal-700 dark:text-teal-300">{timeValue}</span>
+                        <button
+                            type="button"
+                            onClick={onOpenSchedule}
+                            className="rounded-xl bg-slate-950 px-3 py-2 text-xs font-black text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950"
+                        >
+                            Detail
+                        </button>
+                    </div>
+                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                        Gunakan countdown ini untuk estimasi waktu penjemputan.
+                    </p>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 function App({ onLogout }) {
     const navigate = useNavigate();
 
@@ -53,6 +110,7 @@ function App({ onLogout }) {
     const [upcomingSessions, setUpcomingSessions] = useState([]);
     const [completedSessions, setCompletedSessions] = useState([]);
     const [clinicSettings, setClinicSettings] = useState({});
+    const [nowTick, setNowTick] = useState(() => new Date());
 
     const fetchData = useCallback(async () => {
             const user = readParentUser();
@@ -101,11 +159,21 @@ function App({ onLogout }) {
         return () => events.forEach((eventName) => window.removeEventListener(eventName, fetchData));
     }, [fetchData]);
 
+    useEffect(() => {
+        const interval = setInterval(() => setNowTick(new Date()), 1000);
+        return () => clearInterval(interval);
+    }, []);
+
     const nextSession    = upcomingSessions[0] || null;
     const parentName     = parentUser?.name     || 'Parent';
     const childName      = parentUser?.childName || child?.name || 'your child';
     const therapyPrograms = child?.periods?.length ? child.periods : child?.therapyPrograms || [];
     const recentNotes    = completedSessions.slice(0, 2);
+    const liveSession = upcomingSessions.find(session => {
+        const live = getLiveSessionState(session, nowTick);
+        return live.hasAdminApproval && !live.isDone && !live.isCancelled && (live.isRunning || live.isCountdown || live.state === 'ready');
+    }) || null;
+    const liveState = liveSession ? getLiveSessionState(liveSession, nowTick) : null;
 
     // Compute milestone chart data from completed sessions grouped by month
     const milestoneChartData = (() => {
@@ -161,6 +229,12 @@ function App({ onLogout }) {
                                 </button>
                             </div>
                         </div>
+
+                        <LiveSessionCard
+                            session={liveSession}
+                            live={liveState}
+                            onOpenSchedule={() => navigate('/reschedule')}
+                        />
 
                         {/* ── Next Appointment & Active Programs ────────────── */}
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

@@ -102,7 +102,7 @@ export const sessionService = {
       where: and(
         eq(therapySessions.childId, childId),
         gte(therapySessions.date, today),
-        sql`${therapySessions.status} != 'done'`
+        sql`${therapySessions.status} not in ('done', 'completed', 'cancelled')`
       ),
       with: { therapist: { with: { user: true } }, therapyPeriod: { with: { program: true } } },
       orderBy: (s, { asc }) => [asc(s.date), asc(s.startTime)],
@@ -170,11 +170,15 @@ export const sessionService = {
   async updateStatus(id: string, status: string, cancelReason?: string) {
     const existing = await db.query.therapySessions.findFirst({
       where: eq(therapySessions.id, id),
-      with: { therapist: { with: { user: true } }, child: true },
+      with: { therapist: { with: { user: true } }, child: { with: { parent: true } } },
     });
     if (!existing) return null;
 
     const timestampUpdates: Partial<typeof therapySessions.$inferInsert> = {};
+    if (status === "confirmed") {
+      timestampUpdates.startedAt = null;
+      timestampUpdates.endedAt = null;
+    }
     if (status === "active") {
       timestampUpdates.startedAt = new Date();
       timestampUpdates.endedAt = null;
@@ -194,6 +198,7 @@ export const sessionService = {
         .returning();
 
       const therapistUserId = existing.therapist?.userId || existing.therapist?.user?.id;
+      const parentUserId = existing.child?.parent?.userId;
       const childName = existing.child?.name || existing.childId;
       if (updated && status === "confirmed" && therapistUserId) {
         await notificationService.create({
@@ -206,6 +211,28 @@ export const sessionService = {
           relatedId: id,
         }, tx);
       }
+      if (updated && status === "confirmed" && parentUserId) {
+        await notificationService.create({
+          type: "session_attendance_confirmed",
+          icon: "how_to_reg",
+          title: "Kehadiran anak sudah dikonfirmasi",
+          message: `${childName} sudah dikonfirmasi hadir untuk sesi ${existing.startTime}. Anda bisa memantau countdown sesi di dashboard.`,
+          targetRole: "parent",
+          targetUserId: parentUserId,
+          relatedId: id,
+        }, tx);
+      }
+      if (updated && status === "active" && parentUserId) {
+        await notificationService.create({
+          type: "session_started",
+          icon: "play_circle",
+          title: "Sesi terapi sedang berjalan",
+          message: `${childName} memulai sesi terapi ${existing.startTime}. Dashboard orang tua menampilkan sisa waktu sesi.`,
+          targetRole: "parent",
+          targetUserId: parentUserId,
+          relatedId: id,
+        }, tx);
+      }
       if (updated && status === "done" && therapistUserId) {
         await notificationService.create({
           type: "report_reminder",
@@ -214,6 +241,17 @@ export const sessionService = {
           message: `Sesi ${childName} sudah selesai. Simpan draft atau kirim laporan harian agar orang tua mendapat update.`,
           targetRole: "therapist",
           targetUserId: therapistUserId,
+          relatedId: id,
+        }, tx);
+      }
+      if (updated && status === "done" && parentUserId) {
+        await notificationService.create({
+          type: "session_finished",
+          icon: "task_alt",
+          title: "Sesi terapi selesai",
+          message: `${childName} sudah selesai terapi. Terapis akan mengisi laporan harian setelah sesi.`,
+          targetRole: "parent",
+          targetUserId: parentUserId,
           relatedId: id,
         }, tx);
       }

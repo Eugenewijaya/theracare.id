@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Header from './components/Header';
-import { childrenApi, sessionsApi } from '../../shared/api/client';
+import { childrenApi, reportsApi, sessionsApi } from '../../shared/api/client';
 import { readTherapistUser } from '../../shared/sessionIdentity';
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -16,6 +16,15 @@ const guessTherapyType = (focus = '') => {
 const formatDate = (d) => {
     if (!d) return '—';
     return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+};
+
+const buildReportHref = (session, childId) => {
+    if (session.reportId) return `/reports?reportId=${encodeURIComponent(session.reportId)}`;
+    const params = new URLSearchParams({
+        sessionId: session.id || '',
+        childId: childId || '',
+    });
+    return `/reports/new?${params.toString()}`;
 };
 
 const PROGRAM_COLORS = ['#30e8c9', '#facc15', '#4ade80', '#60a5fa', '#f472b6'];
@@ -198,14 +207,20 @@ function App() {
                 const raw = rawRes.data?.data || fallbackRaw;
                 const mapped = await Promise.all(raw.map(async s => {
                     let ratingData = null;
+                    let reportData = null;
                     try {
                         const rRes = await sessionsApi.getRating(s.id);
                         ratingData = rRes.data?.data;
+                    } catch(e) {}
+                    try {
+                        const reportRes = await reportsApi.getSessionReport(s.id);
+                        if (reportRes.ok) reportData = reportRes.data?.data || null;
                     } catch(e) {}
                     const rating = ratingData;
                     const ttype = guessTherapyType(s.focus);
                     return {
                         id: s.id,
+                        childId: s.childId || s.child?.id || selectedId,
                         date: formatDate(s.date),
                         type: ttype.label,
                         typeBg: ttype.bg,
@@ -213,6 +228,8 @@ function App() {
                         stars: rating?.rating || -1,
                         ratingComment: rating?.comment || '',
                         notes: s.notes || '',
+                        reportId: reportData?.id || '',
+                        reportStatus: reportData?.status || '',
                     };
                 }));
                 setSessionHistory(mapped);
@@ -223,6 +240,7 @@ function App() {
                     const ttype = guessTherapyType(s.focus);
                     return {
                         id: s.id,
+                        childId: s.childId || s.child?.id || selectedId,
                         date: formatDate(s.date),
                         type: ttype.label,
                         typeBg: ttype.bg,
@@ -230,6 +248,8 @@ function App() {
                         stars: -1,
                         ratingComment: '',
                         notes: s.notes || '',
+                        reportId: '',
+                        reportStatus: '',
                     };
                 }));
             }
@@ -453,13 +473,14 @@ function App() {
                                                         )}
                                                     </td>
                                                     <td className="p-4">
-                                                        {s.notes ? (
-                                                            <button title={s.notes} className="text-teal-600 dark:text-teal-400 hover:text-teal-700 font-bold flex items-center gap-1.5 bg-teal-50 dark:bg-teal-900/20 px-3 py-1.5 rounded-lg transition-colors">
-                                                                <span className="material-symbols-outlined text-[16px]">description</span> Lihat
-                                                            </button>
-                                                        ) : (
-                                                            <span className="text-xs text-slate-400 italic">—</span>
-                                                        )}
+                                                        <a
+                                                            href={buildReportHref(s, s.childId || selectedId)}
+                                                            title={s.reportId ? `Lihat laporan ${s.reportStatus || ''}`.trim() : 'Isi laporan harian untuk sesi ini'}
+                                                            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-black transition-colors ${s.reportId ? 'bg-teal-50 text-teal-700 hover:bg-teal-100 dark:bg-teal-900/20 dark:text-teal-300 dark:hover:bg-teal-900/30' : 'bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-900/20 dark:text-amber-300 dark:hover:bg-amber-900/30'}`}
+                                                        >
+                                                            <span className="material-symbols-outlined text-[16px]">{s.reportId ? 'visibility' : 'edit_note'}</span>
+                                                            {s.reportId ? 'Lihat' : 'Isi'}
+                                                        </a>
                                                     </td>
                                                 </tr>
                                             ))}

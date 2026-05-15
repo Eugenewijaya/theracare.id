@@ -62,6 +62,12 @@ export function getNotificationDestination(notification, role = 'user') {
     return '/requests';
   }
 
+  if (type.startsWith('session_')) {
+    if (userRole === 'parent') return '/';
+    if (userRole === 'therapist') return '/schedule';
+    return '/attendance';
+  }
+
   if (type.includes('substitute') || type.includes('schedule') || type.includes('session') || type.includes('center_closure')) {
     if (userRole === 'parent') return '/reschedule';
     if (userRole === 'therapist') return '/schedule-updates';

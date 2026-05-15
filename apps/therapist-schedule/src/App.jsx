@@ -1,14 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { adminApi, authApi, leaveRequestsApi, sessionsApi, therapistsApi } from '../../shared/api/client';
 import PortalProfileMenu from '../../shared/ui/PortalProfileMenu';
 import TherapistWeeklyScheduleTable from '../../shared/ui/TherapistWeeklyScheduleTable';
 import { clearTherapistUser, readTherapistUser } from '../../shared/sessionIdentity';
+import {
+    formatSessionClock,
+    getLiveSessionState,
+    isAttendanceConfirmed,
+    shouldAutoStartSession,
+} from '../../shared/sessionLiveState';
 
 const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-const ATTENDANCE_CONFIRMED_STATUSES = new Set(['confirmed', 'checked_in', 'present']);
-
 function parseDate(str) {
     if (!str) return new Date();
     const [y, m, d] = str.split('-').map(Number);
@@ -38,24 +42,6 @@ function getStoredTherapist() {
     return readTherapistUser();
 }
 
-function getDurationSeconds(session) {
-    const minutes = Number.parseInt(session?.raw?.duration || session?.duration, 10) || 45;
-    return minutes * 60;
-}
-
-function getRemainingSeconds(session) {
-    const total = getDurationSeconds(session);
-    const startedAt = session?.raw?.startedAt || session?.startedAt;
-    if (!startedAt) return total;
-    const started = new Date(startedAt).getTime();
-    if (Number.isNaN(started)) return total;
-    return Math.max(0, total - Math.floor((Date.now() - started) / 1000));
-}
-
-function isAttendanceConfirmed(session) {
-    return ATTENDANCE_CONFIRMED_STATUSES.has(String(session?.raw?.status || session?.status || '').toLowerCase());
-}
-
 function getProgramStyle(programType = '') {
     if (programType.includes('Occupational') || programType === 'OT') return { tag: 'OT', color: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' };
     if (programType.includes('Speech') || programType === 'ST') return { tag: 'ST', color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' };
@@ -83,7 +69,8 @@ function App({ onLogout }) {
     
     const [finishModal, setFinishModal] = useState(null);
     const [startModal, setStartModal] = useState(null);
-    const [timeLeft, setTimeLeft] = useState(45 * 60);
+    const [nowTick, setNowTick] = useState(() => new Date());
+    const autoStartedIds = useRef(new Set());
 
     const loadSessions = async () => {
         if (!currentUser?.id) {
@@ -143,39 +130,25 @@ function App({ onLogout }) {
 
 
     useEffect(() => {
-        const activeSession = sessions.find(s => s.status === 'active');
-        if (activeSession) {
-            setTimeLeft(getRemainingSeconds(activeSession));
-            const interval = setInterval(() => {
-                setTimeLeft(prev => {
-                    if (prev <= 1) {
-                        clearInterval(interval);
-                        handleAutoFinish(activeSession.id);
-                        return 0;
-                    }
-                    return prev - 1;
-                });
-            }, 1000);
-            return () => clearInterval(interval);
-        }
-    }, [sessions]);
+        const interval = setInterval(() => setNowTick(new Date()), 1000);
+        return () => clearInterval(interval);
+    }, []);
 
-    const handleAutoFinish = async (id) => {
-        try {
-            await sessionsApi.updateStatus(id, 'done');
+    useEffect(() => {
+        if (sessions.some(s => s.status === 'active')) return;
+        const candidate = sessions.find(session => (
+            shouldAutoStartSession(session.raw || session, nowTick)
+            && !autoStartedIds.current.has(session.id)
+        ));
+        if (!candidate) return;
+        autoStartedIds.current.add(candidate.id);
+        sessionsApi.updateStatus(candidate.id, 'active').then(() => {
             loadSessions();
             window.dispatchEvent(new Event('sessionUpdated'));
-        } catch (e) {
-            console.error('Failed to auto-finish session', e);
-        }
-    };
-
-    const formatTime = (seconds) => {
-        const h = Math.floor(seconds / 3600);
-        const m = Math.floor((seconds % 3600) / 60);
-        const s = seconds % 60;
-        return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-    };
+        }).catch((e) => {
+            console.error('Failed to auto-start session', e);
+        });
+    }, [sessions, nowTick]);
 
     const today = new Date();
     
@@ -185,7 +158,7 @@ function App({ onLogout }) {
     const prev = () => { const d = new Date(currentDate); d.setDate(d.getDate() - 1); setCurrentDate(d); };
     const next = () => { const d = new Date(currentDate); d.setDate(d.getDate() + 1); setCurrentDate(d); };
 
-    const activeInSchedule = sessions.some(s => s.status === 'active');
+    const activeInSchedule = sessions.some(s => getLiveSessionState(s.raw || s, nowTick).isRunning);
 
     const handleLogout = async () => {
         if (onLogout) {
@@ -221,7 +194,6 @@ function App({ onLogout }) {
             await sessionsApi.updateStatus(startModal.id, 'active');
             loadSessions();
             window.dispatchEvent(new Event('sessionUpdated'));
-            setTimeLeft(getDurationSeconds(startModal));
         } catch (e) {
             console.error('Failed to start session', e);
             setActionError(e?.data?.error || e?.message || 'Sesi belum bisa dimulai. Pastikan admin sudah mengonfirmasi kehadiran anak.');
@@ -301,11 +273,19 @@ function App({ onLogout }) {
                             </div>
                         ) : (
                             sessions.map(session => {
-                                const state = session.status;
-                                const isDone = state === 'done';
-                                const isActive = state === 'active';
-                                const attendanceConfirmed = isAttendanceConfirmed(session);
-                                const canStart = attendanceConfirmed && !activeInSchedule;
+                                const live = getLiveSessionState(session.raw || session, nowTick);
+                                const isDone = live.isDone;
+                                const isActive = live.isRunning;
+                                const isStoredActive = live.isActiveStored;
+                                const attendanceConfirmed = isAttendanceConfirmed(session.raw || session);
+                                const canStart = attendanceConfirmed && !isDone && !live.isCancelled && (!activeInSchedule || isActive);
+                                const countdownLabel = live.isCountdown
+                                    ? `Mulai dalam ${formatSessionClock(live.countdownSeconds)}`
+                                    : live.isOvertime
+                                        ? 'Lewat jadwal'
+                                        : live.isRunning
+                                            ? (live.remainingSeconds > 0 ? `${formatSessionClock(live.remainingSeconds)} tersisa` : 'Waktu sesi habis')
+                                            : '';
 
                                 return (
                                     <div key={session.id} className={`relative overflow-hidden flex flex-col lg:flex-row items-start lg:items-center justify-between p-5 sm:p-6 gap-5 lg:gap-0 rounded-2xl shadow-sm transition-all ${
@@ -349,14 +329,18 @@ function App({ onLogout }) {
                                             {isActive && (
                                                 <div className="flex flex-1 sm:flex-none justify-between items-center gap-4 bg-white dark:bg-slate-800 p-2 pl-4 sm:pl-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm w-full sm:w-auto">
                                                     <div className="flex items-center gap-2 text-slate-800 dark:text-slate-200">
-                                                        <span className="material-symbols-outlined text-primary text-[20px]">hourglass_top</span>
-                                                        <span className="font-mono text-lg sm:text-xl font-bold tracking-tight">{formatTime(timeLeft)}</span>
+                                                        <span className="material-symbols-outlined text-primary text-[20px]">{live.isOvertime ? 'timer_off' : 'hourglass_top'}</span>
+                                                        <div className="flex flex-col leading-tight">
+                                                            <span className="font-mono text-lg sm:text-xl font-bold tracking-tight">{formatSessionClock(live.remainingSeconds)}</span>
+                                                            <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{live.isOvertime ? 'Perlu diakhiri' : 'Sisa sesi'}</span>
+                                                        </div>
                                                     </div>
                                                     <button
                                                         onClick={() => openFinish(session)}
-                                                        className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-4 sm:px-6 py-2 sm:py-2.5 rounded-lg font-bold shadow-sm hover:opacity-90 transition-opacity flex items-center justify-center gap-2 text-sm sm:text-base whitespace-nowrap"
+                                                        disabled={!isStoredActive}
+                                                        className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-4 sm:px-6 py-2 sm:py-2.5 rounded-lg font-bold shadow-sm hover:opacity-90 transition-opacity flex items-center justify-center gap-2 text-sm sm:text-base whitespace-nowrap disabled:cursor-wait disabled:opacity-60"
                                                     >
-                                                        <span className="material-symbols-outlined text-[20px]">stop_circle</span> End Session
+                                                        <span className="material-symbols-outlined text-[20px]">stop_circle</span> {isStoredActive ? 'End Session' : 'Menyiapkan'}
                                                     </button>
                                                 </div>
                                             )}
@@ -372,8 +356,8 @@ function App({ onLogout }) {
                                                             : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed border-slate-200 dark:border-slate-700'
                                                     }`}
                                                 >
-                                                    <span className="material-symbols-outlined text-[20px]">{attendanceConfirmed ? 'play_circle' : 'lock_clock'}</span>
-                                                    {attendanceConfirmed ? 'Start Session' : 'Menunggu Hadir'}
+                                                    <span className="material-symbols-outlined text-[20px]">{attendanceConfirmed ? (live.isCountdown ? 'timer' : 'play_circle') : 'lock_clock'}</span>
+                                                    {attendanceConfirmed ? (countdownLabel || 'Start Session') : 'Menunggu Hadir'}
                                                 </button>
                                             )}
                                         </div>

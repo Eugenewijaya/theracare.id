@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { reportsApi, sessionsApi } from '../../../shared/api/client';
 import { readTherapistUser } from '../../../shared/sessionIdentity';
 import { findOldestMissingDailyReportSession, isCompletedSession } from '../../../shared/reportRules';
+import { formatSessionClock, getLiveSessionState } from '../../../shared/sessionLiveState';
 
 function todayKey() {
     const now = new Date();
@@ -24,6 +25,7 @@ const WelcomeFocus = () => {
     const [pendingReports, setPendingReports] = useState(0);
     const [pendingReportSession, setPendingReportSession] = useState(null);
     const [activeSession, setActiveSession] = useState(null);
+    const [nowTick, setNowTick] = useState(() => new Date());
 
     const loadSummary = useCallback(async () => {
         const user = getStoredTherapist();
@@ -43,7 +45,12 @@ const WelcomeFocus = () => {
             const sessions = res.data?.data || [];
             const reports = reportRes.ok ? reportRes.data?.data || [] : [];
             const today = todayKey();
-            setActiveSession(sessions.find(s => s.status === 'active' && s.date === today) || null);
+            const todaySessions = sessions.filter(s => s.date === today);
+            const liveCandidates = todaySessions.filter(s => {
+                const live = getLiveSessionState(s, new Date());
+                return live.hasAdminApproval && !live.isDone && !live.isCancelled;
+            });
+            setActiveSession(liveCandidates.find(s => getLiveSessionState(s, new Date()).isRunning) || liveCandidates[0] || null);
 
             const completed = sessions.filter(isCompletedSession);
             if (completed.length === 0) {
@@ -67,13 +74,22 @@ const WelcomeFocus = () => {
         return () => window.removeEventListener('sessionUpdated', loadSummary);
     }, [loadSummary]);
 
+    useEffect(() => {
+        const interval = setInterval(() => setNowTick(new Date()), 1000);
+        return () => clearInterval(interval);
+    }, []);
+
     const firstName = therapistName.replace(/^Dr\.\s*/i, '').split(' ')[0];
     const activeChildName = activeSession?.child?.name || activeSession?.childId || 'anak';
+    const activeLive = activeSession ? getLiveSessionState(activeSession, nowTick) : null;
 
     const confirmEndSession = async () => {
         if (!activeSession) return;
         setEnding(true);
         try {
+            if (activeSession.status !== 'active') {
+                await sessionsApi.updateStatus(activeSession.id, 'active');
+            }
             await sessionsApi.updateStatus(activeSession.id, 'done');
             setShowEndModal(false);
             window.dispatchEvent(new Event('sessionUpdated'));
@@ -107,9 +123,30 @@ const WelcomeFocus = () => {
                             <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${activeSession ? 'bg-teal-500' : 'bg-slate-400'}`}></span>
                         </span>
                         <p className="text-sm font-bold tracking-wide">
-                            {activeSession ? `Sesi berjalan: ${activeChildName}` : 'Tidak ada sesi berjalan'}
+                            {activeSession && activeLive?.isRunning
+                                ? `Sesi berjalan: ${activeChildName} - ${formatSessionClock(activeLive?.remainingSeconds || 0)} tersisa`
+                                : activeSession && activeLive?.isCountdown
+                                    ? `Terkonfirmasi: ${activeChildName} - mulai dalam ${formatSessionClock(activeLive?.countdownSeconds || 0)}`
+                                    : activeSession
+                                        ? `Terkonfirmasi: ${activeChildName}`
+                                : 'Tidak ada sesi berjalan'}
                         </p>
                     </div>
+
+                    {activeSession && (
+                        <div className="grid w-full max-w-md grid-cols-2 gap-3 rounded-2xl border border-white/70 bg-white/70 p-3 shadow-sm backdrop-blur dark:border-slate-700/70 dark:bg-slate-800/70">
+                            <div>
+                                <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">Mulai</p>
+                                <p className="mt-1 text-sm font-black text-slate-900 dark:text-white">{activeSession.startTime || '-'}</p>
+                            </div>
+                            <div>
+                                <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">{activeLive?.isRunning ? 'Sisa waktu' : 'Mulai dalam'}</p>
+                                <p className="mt-1 font-mono text-sm font-black text-teal-700 dark:text-teal-300">
+                                    {formatSessionClock(activeLive?.isRunning ? activeLive?.remainingSeconds || 0 : activeLive?.countdownSeconds || 0)}
+                                </p>
+                            </div>
+                        </div>
+                    )}
 
                     {pendingReports > 0 && (
                         <button
@@ -134,7 +171,7 @@ const WelcomeFocus = () => {
                         <span className="material-symbols-outlined text-[18px]">edit_note</span>
                         Tulis Laporan
                     </button>
-                    {activeSession && (
+                    {activeSession && activeLive?.isRunning && (
                         <button
                             onClick={() => setShowEndModal(true)}
                             className="flex flex-1 md:flex-none items-center justify-center gap-2 rounded-xl h-11 px-6 bg-white dark:bg-slate-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all border border-red-100 dark:border-red-900/30 text-sm font-bold shadow-sm group"

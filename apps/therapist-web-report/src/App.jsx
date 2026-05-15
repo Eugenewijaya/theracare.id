@@ -63,14 +63,16 @@ const parseCommaList = (value) => String(value || '')
     .filter(Boolean);
 
 const getDailyContextFromRoute = () => {
-    if (typeof window === 'undefined') return { openComposer: false, childId: '', sessionId: '' };
+    if (typeof window === 'undefined') return { openComposer: false, reportId: '', childId: '', sessionId: '' };
     const url = new URL(window.location.href);
     const openComposer = url.pathname.endsWith('/reports/new');
+    const reportId = url.searchParams.get('reportId') || '';
     const childId = url.searchParams.get('childId') || '';
     const sessionId = url.searchParams.get('sessionId') || '';
 
     return {
         openComposer,
+        reportId,
         childId,
         sessionId,
     };
@@ -1425,6 +1427,7 @@ function App() {
     const [selectedSessionId, setSelectedSessionId] = useState(initialDailyContext.sessionId);
     const [selectedReport, setSelectedReport] = useState(null);
     const [editingReport, setEditingReport] = useState(null);
+    const [pendingReportId, setPendingReportId] = useState(initialDailyContext.reportId);
 
     const [sessions, setSessions] = useState([]);
     const [reports, setReports] = useState([]);
@@ -1462,6 +1465,14 @@ function App() {
         setSelectedReport(report);
         setScreen('report-detail');
     };
+
+    useEffect(() => {
+        if (!pendingReportId || loadingData) return;
+        const report = reports.find(item => item.id === pendingReportId);
+        if (!report) return;
+        handleSelectReport(report);
+        setPendingReportId('');
+    }, [pendingReportId, reports, loadingData]);
 
     const handleEditReport = (report) => {
         const editWindow = getReportEditWindow(report);
