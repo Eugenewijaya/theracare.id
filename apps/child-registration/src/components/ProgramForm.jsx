@@ -65,20 +65,29 @@ const ProgramForm = ({ data, onChange, errors }) => {
     const [therapists, setTherapists] = useState([]);
     const [programsList, setProgramsList] = useState([]);
     const [programPricing, setProgramPricing] = useState({});
+    const [isLoadingResources, setIsLoadingResources] = useState(true);
+    const [resourceError, setResourceError] = useState('');
     
     useEffect(() => {
         const load = async () => {
+            setIsLoadingResources(true);
+            setResourceError('');
             try {
                 const [tRes, pRes, settingsRes] = await Promise.all([
                     therapistsApi.getAll(),
                     adminApi.getPrograms(),
                     adminApi.getSettings()
                 ]);
+                if (tRes.ok === false) throw new Error(tRes.data?.error || tRes.data?.message || 'Gagal memuat data terapis.');
+                if (pRes.ok === false) throw new Error(pRes.data?.error || pRes.data?.message || 'Gagal memuat Program Layanan.');
                 setTherapists(tRes.data?.data || []);
                 setProgramsList(pRes.data?.data || []);
                 if (settingsRes.ok) setProgramPricing(parsePricing(settingsRes.data?.data));
             } catch (e) {
                 console.error(e);
+                setResourceError(e.message || 'Gagal memuat Program Layanan dan data terapis.');
+            } finally {
+                setIsLoadingResources(false);
             }
         };
         load();
@@ -93,11 +102,33 @@ const ProgramForm = ({ data, onChange, errors }) => {
     return (
         <div className="flex flex-col gap-3">
             <p className="text-sm text-slate-500 dark:text-slate-400 -mt-2">Pilih program, periode terapi, harga, dan pola jadwal awal. Data ini akan menjadi enrollment aktif anak.</p>
+            {isLoadingResources && (
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600 dark:border-slate-800 dark:bg-slate-900/40 dark:text-slate-300">
+                    Memuat Program Layanan dan daftar terapis...
+                </div>
+            )}
+            {resourceError && (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 dark:border-red-800/70 dark:bg-red-950/30 dark:text-red-200">
+                    {resourceError}
+                </div>
+            )}
+            {!isLoadingResources && !resourceError && programsList.length === 0 && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/70 dark:bg-amber-950/30 dark:text-amber-200">
+                    <p className="font-bold">Belum ada Program Layanan.</p>
+                    <p className="mt-1">Registrasi belum bisa dilanjutkan sampai admin membuat minimal satu program di menu Program Layanan. Setelah program dibuat, kembali ke halaman ini lalu pilih programnya.</p>
+                </div>
+            )}
+            {!isLoadingResources && !resourceError && therapists.length === 0 && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/70 dark:bg-amber-950/30 dark:text-amber-200">
+                    <p className="font-bold">Belum ada terapis aktif.</p>
+                    <p className="mt-1">Daftarkan terapis terlebih dahulu agar anak bisa ditetapkan ke terapis utama.</p>
+                </div>
+            )}
             {programsList.map(prog => {
                 const isSelected = selected === prog.name;
                 const colorKey = prog.color || DEFAULT_PROGRAM_COLORS[prog.code] || 'emerald';
                 const icon = prog.icon || DEFAULT_PROGRAM_ICONS[prog.code] || 'star';
-                const c = colors[colorKey];
+                const c = colors[colorKey] || colors.emerald;
                 const pricing = programPricing[prog.code] || {};
                 const nextBillingMode = data.billingMode || pricing.billingMode || 'per_session';
                 const nextTotalSessions = Number(data.totalSessions || pricing.totalSessions || 12);

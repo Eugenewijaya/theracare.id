@@ -85,7 +85,7 @@ function App() {
         },
         3: () => {
             const e = {};
-            if (!currentChild.program) e.program = 'Please select a therapy program.';
+            if (!currentChild.program) e.program = 'Pilih satu Program Layanan. Jika pilihan tidak muncul, buat program dulu di menu Program Layanan.';
             if (!currentChild.therapistId) e.therapistId = 'Silakan pilih terapis utama.';
             if (currentChild.assistantTherapistId && currentChild.assistantTherapistId === currentChild.therapistId) {
                 e.assistantTherapistId = 'Terapis pendamping harus berbeda dari terapis utama.';
@@ -301,6 +301,28 @@ function App() {
         return true;
     })();
 
+    const stepIssues = (() => {
+        const issues = [];
+        if (step === 1) {
+            if (!parentData.name?.trim()) issues.push('Nama orang tua/wali wajib diisi.');
+            if (!parentData.phone?.trim()) issues.push('Nomor HP orang tua/wali wajib diisi.');
+            if (!parentData.address?.trim()) issues.push('Alamat orang tua/wali wajib diisi.');
+        }
+        if (step === 2) {
+            if (!currentChild.firstName?.trim()) issues.push('Nama depan anak wajib diisi.');
+            if (!currentChild.lastName?.trim()) issues.push('Nama belakang anak wajib diisi.');
+            if (!currentChild.dob) issues.push('Tanggal lahir anak wajib diisi.');
+        }
+        if (step === 3) {
+            if (!currentChild.program) issues.push('Program layanan belum dipilih. Jika daftar program kosong, buat minimal satu program di menu Program Layanan.');
+            if (!currentChild.periodStartDate) issues.push('Tanggal mulai periode wajib diisi.');
+            if (!Number(currentChild.totalSessions || 0)) issues.push('Jumlah sesi wajib lebih dari 0.');
+            if (!currentChild.therapistId) issues.push('Terapis utama wajib dipilih.');
+            if (currentChild.assistantTherapistId && currentChild.assistantTherapistId === currentChild.therapistId) issues.push('Terapis pendamping harus berbeda dari terapis utama.');
+        }
+        return issues;
+    })();
+
     const isLastStep = step === 4;
     const isFirstStep = step === 0;
 
@@ -336,6 +358,16 @@ function App() {
                     {step === 2 && <ChildForm  data={currentChild} onChange={setCurrentChild} errors={errors} />}
                     {step === 3 && <ProgramForm data={currentChild} onChange={setCurrentChild} errors={errors} />}
                     {step === 4 && <ReviewStep parentData={parentData} childrenList={childrenList} onAddAnother={handleAddAnother} isExistingParent={isExistingParent} />}
+                    {!isStepValid && stepIssues.length > 0 && (
+                        <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/70 dark:bg-amber-950/30 dark:text-amber-200">
+                            <p className="font-bold">Belum bisa lanjut karena:</p>
+                            <ul className="mt-2 list-disc space-y-1 pl-5">
+                                {stepIssues.map((issue) => (
+                                    <li key={issue}>{issue}</li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
                     {errors.submit && (
                         <div className="mt-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
                             {errors.submit}
@@ -351,9 +383,11 @@ function App() {
                             Back
                         </button>
                         {!isLastStep ? (
-                            <button type="button" onClick={goNext} disabled={!isStepValid}
-                                className="inline-flex items-center gap-2 px-6 py-2.5 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary/90 transition-colors shadow-sm focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:opacity-40 disabled:cursor-not-allowed">
-                                Continue
+                            <button type="button" onClick={goNext}
+                                title={!isStepValid && stepIssues.length ? stepIssues[0] : undefined}
+                                aria-disabled={!isStepValid}
+                                className={`inline-flex items-center gap-2 px-6 py-2.5 text-sm font-semibold text-white rounded-lg transition-colors shadow-sm focus:ring-2 focus:ring-offset-2 focus:ring-primary ${isStepValid ? 'bg-primary hover:bg-primary/90' : 'bg-slate-400 hover:bg-slate-500'}`}>
+                                {isStepValid ? 'Continue' : 'Cek data dulu'}
                                 <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
                             </button>
                         ) : (
