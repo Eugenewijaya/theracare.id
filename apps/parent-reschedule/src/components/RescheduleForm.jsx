@@ -26,6 +26,12 @@ const getPrimaryChildId = (user = {}) => {
     return firstChild?.id || firstChild?.nita || (typeof firstChild === 'string' ? firstChild : '');
 };
 
+const formatDuration = (duration) => {
+    if (!duration) return 'Durasi belum diisi';
+    const text = String(duration);
+    return text.toLowerCase().includes('min') ? text : `${text} mins`;
+};
+
 const RescheduleForm = () => {
     const [upcomingSessions, setUpcomingSessions] = useState([]);
     const [requestType, setRequestType] = useState('reschedule'); // 'reschedule' or 'new'
@@ -71,6 +77,8 @@ const RescheduleForm = () => {
     const updateSlot = (index, field, value) => {
         setSlots(prev => prev.map((s, i) => i === index ? { ...s, [field]: value } : s));
     };
+
+    const selectedSession = upcomingSessions.find(session => session.id === selectedSessionId) || null;
 
     const handleSubmit = async () => {
         if (requestType === 'reschedule' && !selectedSessionId) { setError('Pilih sesi yang ingin direschedule.'); return; }
@@ -167,38 +175,50 @@ const RescheduleForm = () => {
             {/* Select Session */}
             {requestType === 'reschedule' && (
                 <>
-                    <h2 className="text-[22px] font-bold leading-tight tracking-[-0.015em] px-4 pb-3 pt-2">Select Session to Reschedule</h2>
-            <div className="flex flex-col gap-3 p-4">
-                {upcomingSessions.length > 0 ? (
-                    upcomingSessions.map(session => (
-                        <label key={session.id} className={`flex items-center gap-4 rounded-lg border p-[15px] cursor-pointer transition-colors ${
-                            selectedSessionId === session.id
-                                ? 'border-primary bg-primary/5 dark:bg-primary/10'
-                                : 'border-border-light dark:border-border-dark hover:bg-surface-light dark:hover:bg-surface-dark'
-                        }`}>
-                            <input
-                                type="radio"
-                                name="session-select"
-                                value={session.id}
-                                checked={selectedSessionId === session.id}
-                                onChange={() => setSelectedSessionId(session.id)}
-                                className="h-5 w-5 accent-primary"
-                            />
-                            <div className="flex grow flex-col">
-                                <p className="text-sm font-semibold leading-normal">{formatDate(session.date)} — {session.startTime} · {session.focus}</p>
-                                <p className="text-text-muted-light dark:text-text-muted-dark text-sm font-normal leading-normal">
-                                    {session.therapist?.name || 'Therapist'} · {session.duration}
-                                </p>
+                    <h2 className="text-[22px] font-bold leading-tight tracking-[-0.015em] px-4 pb-3 pt-2">Pilih Sesi yang Ingin Diubah</h2>
+                    <div className="p-4">
+                        {upcomingSessions.length > 0 ? (
+                            <div className="rounded-xl border border-border-light dark:border-border-dark bg-white dark:bg-slate-900/20 p-4 space-y-4">
+                                <div className="flex flex-col gap-2">
+                                    <label className="text-sm font-medium" htmlFor="session-select">Sesi aktif</label>
+                                    <div className="relative">
+                                        <select
+                                            id="session-select"
+                                            value={selectedSessionId}
+                                            onChange={e => setSelectedSessionId(e.target.value)}
+                                            className="w-full appearance-none rounded-lg border border-border-light dark:border-border-dark bg-surface-light dark:bg-surface-dark px-4 py-3 pr-11 text-sm font-semibold focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary dark:text-slate-100"
+                                        >
+                                            {upcomingSessions.map(session => (
+                                                <option key={session.id} value={session.id}>
+                                                    {formatDate(session.date)} - {session.startTime} - {session.focus || 'Sesi terapi'}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-text-muted-light dark:text-text-muted-dark">
+                                            <span className="material-symbols-outlined">expand_more</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {selectedSession && (
+                                    <div className="rounded-xl border border-primary/20 bg-primary/5 dark:bg-primary/10 p-4">
+                                        <p className="text-[11px] font-black uppercase tracking-wider text-primary mb-2">Sesi yang dipilih</p>
+                                        <p className="text-sm font-bold text-slate-900 dark:text-white">
+                                            {formatDate(selectedSession.date)} - {selectedSession.startTime} - {selectedSession.focus || 'Sesi terapi'}
+                                        </p>
+                                        <p className="mt-1 text-sm text-text-muted-light dark:text-text-muted-dark">
+                                            {selectedSession.therapist?.name || 'Therapist'} - {formatDuration(selectedSession.duration)}
+                                        </p>
+                                    </div>
+                                )}
                             </div>
-                        </label>
-                    ))
-                ) : (
-                    <div className="flex flex-col items-center gap-2 py-8 text-slate-400 dark:text-slate-600 text-center">
-                        <span className="material-symbols-outlined text-3xl">event_busy</span>
-                        <p className="text-sm font-semibold">No upcoming sessions to reschedule.</p>
+                        ) : (
+                            <div className="flex flex-col items-center gap-2 py-8 text-slate-400 dark:text-slate-600 text-center">
+                                <span className="material-symbols-outlined text-3xl">event_busy</span>
+                                <p className="text-sm font-semibold">No upcoming sessions to reschedule.</p>
+                            </div>
+                        )}
                     </div>
-                )}
-            </div>
             </>
             )}
 

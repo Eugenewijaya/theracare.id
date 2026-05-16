@@ -83,8 +83,6 @@ const SCALES = [
     { value: 5, label: 'Sangat Baik',   color: 'bg-green-500' },
 ];
 
-const ASPECTS_CHECKBOX = ['Fine Motor Skills', 'Gross Motor Skills', 'Speech & Language', 'Cognitive', 'Social Emotional', 'Self-Care', 'Sensory Processing'];
-
 // ── Sub Components ───────────────────────────────────────────────────
 function ScaleSelector({ aspectId, value, onChange }) {
     return (
@@ -316,6 +314,7 @@ function DailyReportForm({ childId, sessionId, onBack, onSaved, currentUser, chi
     const linkedSession = findLinkedSession(sessions, childId, sessionId);
 
     const [aspects, setAspects] = useState({});
+    const [evaluations, setEvaluations] = useState({});
     const [rating, setRating] = useState(4);
     const [description, setDescription] = useState('');
     const [childResponse, setChildResponse] = useState('');
@@ -323,9 +322,28 @@ function DailyReportForm({ childId, sessionId, onBack, onSaved, currentUser, chi
     const [recommendations, setRecommendations] = useState('');
     const [internalNotes, setInternalNotes] = useState('');
     const [submitted, setSubmitted] = useState(false);
-    const toggleAspect = (key) => setAspects(prev => ({ ...prev, [key]: !prev[key] }));
+    const toggleAspect = (id) => {
+        setAspects(prev => {
+            const active = !prev[id];
+            setEvaluations(current => {
+                if (active) return { ...current, [id]: current[id] || 3 };
+                const next = { ...current };
+                delete next[id];
+                return next;
+            });
+            return { ...prev, [id]: active };
+        });
+    };
+    const handleEvalChange = (id, val) => {
+        setAspects(prev => ({ ...prev, [id]: true }));
+        setEvaluations(prev => ({ ...prev, [id]: val }));
+    };
 
     const handleSubmit = async () => {
+        const selectedAspectLabels = EVAL_ASPECTS
+            .filter(aspect => aspects[aspect.id])
+            .map(aspect => aspect.label);
+
         const report = {
             type: 'harian',
             childId,
@@ -335,8 +353,8 @@ function DailyReportForm({ childId, sessionId, onBack, onSaved, currentUser, chi
             sessionId: linkedSession?.id || sessionId || '',
             sessionFocus: linkedSession?.focus || child?.program || 'Therapy Session',
             date: linkedSession?.date || new Date().toISOString().split('T')[0],
-            aspects: Object.keys(aspects).filter(k => aspects[k]),
-            evaluations: buildEvaluationMap({}),
+            aspects: selectedAspectLabels,
+            evaluations: buildEvaluationMap(evaluations),
             sessionScore: rating,
             description,
             childResponse,
@@ -385,15 +403,34 @@ function DailyReportForm({ childId, sessionId, onBack, onSaved, currentUser, chi
 
             {/* Therapy Aspects */}
             <section className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
-                <h3 className="font-bold text-lg mb-4">Aspek Terapi yang Ditangani</h3>
-                <div className="flex flex-wrap gap-2">
-                    {ASPECTS_CHECKBOX.map(key => (
-                        <label key={key} className="cursor-pointer">
-                            <input type="checkbox" className="peer sr-only" checked={!!aspects[key]} onChange={() => toggleAspect(key)} />
-                            <div className="flex h-9 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-700 px-4 transition-all peer-checked:bg-teal-500/20 peer-checked:text-teal-700 dark:peer-checked:text-teal-300 peer-checked:border peer-checked:border-teal-300 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 text-sm font-medium">
-                                {key}
+                <div className="mb-5">
+                    <h3 className="font-bold text-lg flex items-center gap-2">
+                        <span className="material-symbols-outlined text-teal-500">query_stats</span>
+                        Aspek Terapi & Rating Capaian
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-1">Pilih aspek yang benar-benar dilatih pada sesi ini, lalu beri rating 1-5 agar grafik perkembangan anak dihitung dari laporan terapis.</p>
+                </div>
+                <div className="flex flex-col gap-4">
+                    {EVAL_ASPECTS.map(aspect => (
+                        <div key={aspect.id} className={`rounded-xl border p-4 transition-colors ${aspects[aspect.id] ? 'border-teal-200 bg-teal-50/50 dark:border-teal-800/60 dark:bg-teal-900/10' : 'border-slate-200 bg-slate-50/60 dark:border-slate-700 dark:bg-slate-900/30'}`}>
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                                <label className="flex flex-1 items-center gap-3 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        className="h-5 w-5 rounded border-slate-300 accent-teal-500"
+                                        checked={!!aspects[aspect.id]}
+                                        onChange={() => toggleAspect(aspect.id)}
+                                    />
+                                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                                        <span className="material-symbols-outlined text-[18px] text-teal-600 dark:text-teal-400">{aspect.icon}</span>
+                                    </span>
+                                    <span className="text-sm font-bold text-slate-800 dark:text-slate-200">{aspect.label}</span>
+                                </label>
+                                <div className={`sm:w-[360px] ${aspects[aspect.id] ? '' : 'opacity-45'}`}>
+                                    <ScaleSelector aspectId={aspect.id} value={evaluations[aspect.id]} onChange={handleEvalChange} />
+                                </div>
                             </div>
-                        </label>
+                        </div>
                     ))}
                 </div>
             </section>

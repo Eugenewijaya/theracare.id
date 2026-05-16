@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Header from './components/Header';
-import { childrenApi, sessionsApi } from '../../shared/api/client';
+import { childrenApi, sessionsApi, reportsApi } from '../../shared/api/client';
 
 // ── Helpers ──────────────────────────────────────────────────────────
 const guessTherapyType = (focus = '') => {
@@ -19,6 +19,12 @@ const formatDate = (d) => {
 
 const PROGRAM_COLORS = ['#30e8c9', '#facc15', '#4ade80', '#60a5fa', '#f472b6'];
 const PROGRAM_ICONS  = ['front_hand', 'psychology', 'extension', 'record_voice_over', 'directions_walk'];
+const DOMAIN_DEFS = [
+    { key: 'cognitive', label: 'Cognitive', aliases: ['cognitive', 'kognitif'] },
+    { key: 'motor', label: 'Motor', aliases: ['motor', 'motorik', 'fine motor', 'gross motor', 'halus', 'kasar'] },
+    { key: 'social', label: 'Social', aliases: ['social', 'sosial', 'bermain', 'emotional', 'emosional'] },
+    { key: 'communication', label: 'Comm.', aliases: ['communication', 'komunikasi', 'bicara', 'speech', 'language'] },
+];
 
 
 // sessions are now loaded dynamically in the component
@@ -33,6 +39,112 @@ const CircularProgress = ({ pct, color }) => (
     </div>
 );
 
+const getReportDate = (report = {}) => {
+    if (report.date) return report.date;
+    if (report.dateTo) return report.dateTo;
+    if (report.dateFrom) return report.dateFrom;
+    if (typeof report.createdAt === 'string') return report.createdAt.slice(0, 10);
+    return '';
+};
+
+const toScore = (value) => {
+    const score = Number(value);
+    if (!Number.isFinite(score) || score <= 0) return null;
+    return Math.min(5, Math.max(1, score));
+};
+
+const average = (values) => {
+    const nums = values.map(toScore).filter(v => v !== null);
+    if (!nums.length) return null;
+    return nums.reduce((sum, value) => sum + value, 0) / nums.length;
+};
+
+const getReportScore = (report = {}) => {
+    const evaluationValues = Object.values(report.evaluations || {});
+    const evaluationAverage = average(evaluationValues);
+    if (evaluationAverage !== null) return evaluationAverage;
+    return toScore(report.sessionScore);
+};
+
+const getDomainScore = (report = {}, domain) => {
+    const entries = Object.entries(report.evaluations || {});
+    const matches = entries
+        .filter(([label]) => {
+            const normalized = label.toLowerCase();
+            return domain.aliases.some(alias => normalized.includes(alias));
+        })
+        .map(([, value]) => value);
+    return average(matches);
+};
+
+const getMonthKey = (dateStr) => {
+    const date = new Date(`${dateStr}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return '';
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+};
+
+const formatMonthLabel = (date) => date.toLocaleDateString('en-US', { month: 'short' });
+
+const makeRadarPoints = (scores) => {
+    const center = 50;
+    const radius = 40;
+    return scores.map((score, index) => {
+        const angle = (-90 + index * 90) * (Math.PI / 180);
+        const distance = ((score || 0) / 5) * radius;
+        const x = center + Math.cos(angle) * distance;
+        const y = center + Math.sin(angle) * distance;
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(' ');
+};
+
+const buildReportAnalytics = (reports = []) => {
+    const scoredReports = reports
+        .map(report => ({ ...report, reportDate: getReportDate(report), score: getReportScore(report) }))
+        .filter(report => report.reportDate)
+        .sort((a, b) => a.reportDate.localeCompare(b.reportDate));
+
+    const latestDate = scoredReports[scoredReports.length - 1]?.reportDate || new Date().toISOString().split('T')[0];
+    const latest = new Date(`${latestDate}T00:00:00`);
+    const months = Array.from({ length: 6 }).map((_, index) => {
+        const date = new Date(latest.getFullYear(), latest.getMonth() - (5 - index), 1);
+        const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        const monthScores = scoredReports
+            .filter(report => getMonthKey(report.reportDate) === key)
+            .map(report => report.score)
+            .filter(score => score !== null);
+        const score = average(monthScores);
+        return {
+            key,
+            label: formatMonthLabel(date),
+            value: score === null ? null : Math.round((score / 5) * 100),
+        };
+    });
+
+    const domainSeries = DOMAIN_DEFS.map(domain => {
+        const values = scoredReports
+            .map(report => ({ date: report.reportDate, score: getDomainScore(report, domain) }))
+            .filter(item => item.score !== null);
+        return {
+            ...domain,
+            baseline: values[0]?.score ?? null,
+            current: values[values.length - 1]?.score ?? null,
+        };
+    });
+
+    const currentScores = domainSeries.map(domain => domain.current);
+    const baselineScores = domainSeries.map(domain => domain.baseline);
+
+    return {
+        months,
+        hasTrendData: months.some(month => month.value !== null),
+        domains: domainSeries,
+        hasDomainData: domainSeries.some(domain => domain.current !== null),
+        currentPoints: makeRadarPoints(currentScores),
+        baselinePoints: makeRadarPoints(baselineScores),
+        reportCount: scoredReports.filter(report => report.score !== null).length,
+    };
+};
+
 function App() {
     const [searchQuery, setSearchQuery] = useState(() => {
         const params = new URLSearchParams(window.location.search);
@@ -42,6 +154,8 @@ function App() {
     // Real children from store
     const [storeChildren, setStoreChildren] = useState([]);
     const [sessions, setSessions] = useState([]);
+    const [reports, setReports] = useState([]);
+    const [loadingReports, setLoadingReports] = useState(false);
 
     useEffect(() => {
         const load = async () => {
@@ -78,8 +192,6 @@ function App() {
             color: PROGRAM_COLORS[i % PROGRAM_COLORS.length],
             target: p.goal || 'Ongoing',
         })),
-        chartData: [20, 35, 45, 55, 60, (c.therapyPrograms?.[0]?.sessionsCompleted || 0) * 5 || 65],
-        radarPoints: '50,10 85,45 60,90 20,70',
     }));
 
     const filteredChildren = allChildren.filter(c =>
@@ -96,11 +208,21 @@ function App() {
 
     // Load sessions for selected child
     useEffect(() => {
-        if (!selectedId) return;
+        if (!selectedId) {
+            setSessions([]);
+            setReports([]);
+            return;
+        }
         const loadSessions = async () => {
+            setLoadingReports(true);
             try {
-                const rawRes = await sessionsApi.getCompletedForChild(selectedId);
-                const raw = rawRes.data?.data || [];
+                const [rawResult, reportResult] = await Promise.allSettled([
+                    sessionsApi.getCompletedForChild(selectedId),
+                    reportsApi.getForChild(selectedId),
+                ]);
+                const raw = rawResult.status === 'fulfilled' ? (rawResult.value.data?.data || []) : [];
+                const childReports = reportResult.status === 'fulfilled' ? (reportResult.value.data?.data || []) : [];
+                setReports(childReports);
                 const mapped = await Promise.all(raw.map(async s => {
                     let ratingData = null;
                     try {
@@ -123,12 +245,16 @@ function App() {
                 setSessions(mapped);
             } catch(e) {
                 console.error(e);
+                setReports([]);
+            } finally {
+                setLoadingReports(false);
             }
         };
         loadSessions();
     }, [selectedId, storeChildren]);
 
     const child = filteredChildren.find(c => c.id === selectedId) || filteredChildren[0] || null;
+    const reportAnalytics = buildReportAnalytics(reports);
 
     return (
         <div className="layout-container flex h-full grow flex-col overflow-x-hidden">
@@ -216,17 +342,41 @@ function App() {
                                 {/* Bar Chart */}
                                 <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col w-full overflow-hidden">
                                     <h3 className="font-bold text-slate-900 dark:text-white mb-1">Skill Acquisition Progress</h3>
-                                    <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-6">Last 6 months across all domains</p>
-                                    <div className="flex-1 min-h-[250px] relative w-full rounded-xl bg-slate-50/50 dark:bg-slate-900/30 flex items-end p-4 border-l-2 border-b-2 border-slate-200 dark:border-slate-700 gap-3">
-                                        {child.chartData.map((h, i) => (
-                                            <div key={i} className="flex-1 rounded-t-md hover:opacity-80 transition-opacity cursor-pointer group relative" style={{ height: `${h}%`, backgroundColor: `rgba(20, 184, 166, ${0.4 + i * 0.12})` }}>
-                                                <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-xs font-bold py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">{h}%</div>
+                                    <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-6">Rata-rata rating aspek dari laporan terapis</p>
+                                    {loadingReports ? (
+                                        <div className="flex-1 min-h-[250px] rounded-xl bg-slate-50/50 dark:bg-slate-900/30 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-sm font-semibold text-slate-400">
+                                            Memuat statistik laporan...
+                                        </div>
+                                    ) : reportAnalytics.hasTrendData ? (
+                                        <>
+                                            <div className="flex-1 min-h-[250px] relative w-full rounded-xl bg-slate-50/50 dark:bg-slate-900/30 flex items-end p-4 border-l-2 border-b-2 border-slate-200 dark:border-slate-700 gap-3">
+                                                {reportAnalytics.months.map((month, i) => (
+                                                    <div key={month.key} className="flex-1 h-full flex items-end">
+                                                        <div
+                                                            className={`w-full rounded-t-md transition-opacity group relative ${month.value === null ? 'bg-slate-200 dark:bg-slate-700' : 'hover:opacity-80 cursor-pointer'}`}
+                                                            style={{
+                                                                height: month.value === null ? '4px' : `${month.value}%`,
+                                                                backgroundColor: month.value === null ? undefined : `rgba(20, 184, 166, ${0.4 + i * 0.12})`,
+                                                            }}
+                                                        >
+                                                            {month.value !== null && (
+                                                                <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-xs font-bold py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">{month.value}%</div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                ))}
                                             </div>
-                                        ))}
-                                    </div>
-                                    <div className="flex justify-between mt-3 text-xs font-bold text-slate-400 dark:text-slate-500 px-4">
-                                        {['May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct'].map((m) => (<span key={m}>{m}</span>))}
-                                    </div>
+                                            <div className="flex justify-between mt-3 text-xs font-bold text-slate-400 dark:text-slate-500 px-4">
+                                                {reportAnalytics.months.map((m) => (<span key={m.key}>{m.label}</span>))}
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <div className="flex-1 min-h-[250px] rounded-xl bg-slate-50/50 dark:bg-slate-900/30 border border-dashed border-slate-300 dark:border-slate-700 flex flex-col items-center justify-center text-center px-6">
+                                            <span className="material-symbols-outlined text-4xl text-slate-300 dark:text-slate-600 mb-2">monitoring</span>
+                                            <p className="text-sm font-bold text-slate-500 dark:text-slate-400">Belum ada rating aspek laporan.</p>
+                                            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 max-w-xs">Grafik akan muncul setelah terapis menyimpan laporan harian atau periodik dengan penilaian 1-5.</p>
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Radar Chart */}
@@ -234,28 +384,44 @@ function App() {
                                     <div className="w-full flex justify-between items-start mb-6">
                                         <div>
                                             <h3 className="font-bold text-slate-900 dark:text-white mb-1">Developmental Domains</h3>
-                                            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Current vs Baseline</p>
+                                            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                                                {reportAnalytics.reportCount > 0 ? `${reportAnalytics.reportCount} laporan dengan rating` : 'Belum ada data rating'}
+                                            </p>
                                         </div>
                                         <div className="flex flex-col gap-1.5 text-xs font-medium">
                                             <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-md bg-teal-500"></div><span className="text-slate-600 dark:text-slate-300">Current</span></div>
                                             <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-md bg-slate-300 dark:bg-slate-600"></div><span className="text-slate-600 dark:text-slate-300">Baseline</span></div>
                                         </div>
                                     </div>
-                                    <div className="relative w-56 h-56 border border-slate-200 dark:border-slate-700 rounded-full flex items-center justify-center mb-6">
-                                        <div className="absolute w-40 h-40 border border-slate-200/50 dark:border-slate-700/50 rounded-full"></div>
-                                        <div className="absolute w-20 h-20 border border-slate-200/30 dark:border-slate-700/30 rounded-full"></div>
-                                        <div className="absolute w-full h-px bg-slate-200 dark:bg-slate-700"></div>
-                                        <div className="absolute w-px h-full bg-slate-200 dark:bg-slate-700"></div>
-                                        <svg className="absolute inset-0 w-full h-full drop-shadow-md" viewBox="0 0 100 100">
-                                            <polygon fill="rgba(20, 184, 166, 0.4)" points={child.radarPoints} stroke="#14b8a6" strokeWidth="2.5" strokeLinejoin="round" className="transition-all duration-1000" />
-                                        </svg>
-                                        <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100">
-                                            <polygon fill="none" points="50,30 70,50 50,70 35,55" stroke="#94a3b8" strokeDasharray="4" strokeWidth="1.5" />
-                                        </svg>
-                                    </div>
-                                    <div className="flex justify-between w-full text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 px-4">
-                                        {['Cognitive', 'Motor', 'Social', 'Comm.'].map((d) => (<span key={d}>{d}</span>))}
-                                    </div>
+                                    {loadingReports ? (
+                                        <div className="w-56 h-56 rounded-full border border-slate-200 dark:border-slate-700 flex items-center justify-center text-xs font-semibold text-slate-400 mb-6">
+                                            Memuat...
+                                        </div>
+                                    ) : reportAnalytics.hasDomainData ? (
+                                        <>
+                                            <div className="relative w-56 h-56 border border-slate-200 dark:border-slate-700 rounded-full flex items-center justify-center mb-6">
+                                                <div className="absolute w-40 h-40 border border-slate-200/50 dark:border-slate-700/50 rounded-full"></div>
+                                                <div className="absolute w-20 h-20 border border-slate-200/30 dark:border-slate-700/30 rounded-full"></div>
+                                                <div className="absolute w-full h-px bg-slate-200 dark:bg-slate-700"></div>
+                                                <div className="absolute w-px h-full bg-slate-200 dark:bg-slate-700"></div>
+                                                <svg className="absolute inset-0 w-full h-full drop-shadow-md" viewBox="0 0 100 100">
+                                                    <polygon fill="rgba(20, 184, 166, 0.4)" points={reportAnalytics.currentPoints} stroke="#14b8a6" strokeWidth="2.5" strokeLinejoin="round" className="transition-all duration-1000" />
+                                                </svg>
+                                                <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100">
+                                                    <polygon fill="none" points={reportAnalytics.baselinePoints} stroke="#94a3b8" strokeDasharray="4" strokeWidth="1.5" />
+                                                </svg>
+                                            </div>
+                                            <div className="flex justify-between w-full text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 px-4">
+                                                {reportAnalytics.domains.map((d) => (<span key={d.key}>{d.label}</span>))}
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <div className="min-h-[250px] w-full rounded-xl bg-slate-50/50 dark:bg-slate-900/30 border border-dashed border-slate-300 dark:border-slate-700 flex flex-col items-center justify-center text-center px-6">
+                                            <span className="material-symbols-outlined text-4xl text-slate-300 dark:text-slate-600 mb-2">radar</span>
+                                            <p className="text-sm font-bold text-slate-500 dark:text-slate-400">Belum ada domain yang bisa dihitung.</p>
+                                            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 max-w-xs">Pilih aspek dan rating saat mengisi laporan agar domain perkembangan muncul di grafik.</p>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
