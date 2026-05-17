@@ -1,8 +1,15 @@
 import { db } from "../db/index.js";
 import { parents, rescheduleRequests, therapists, therapySessions } from "../db/schema.js";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { generateId } from "../utils/id-generators.js";
 import { notificationService } from "./notification.service.js";
+import { sessionService } from "./session.service.js";
+
+function httpError(message: string, statusCode: number) {
+  const error = new Error(message) as Error & { statusCode?: number };
+  error.statusCode = statusCode;
+  return error;
+}
 
 export const rescheduleService = {
   async getAll() {
@@ -76,6 +83,20 @@ export const rescheduleService = {
     const req = await db.query.rescheduleRequests.findFirst({ where: eq(rescheduleRequests.id, id) });
     if (!req) return null;
     const parent = await db.query.parents.findFirst({ where: eq(parents.id, req.parentId) });
+    const sourceSession = status === "approved"
+      ? await db.query.therapySessions.findFirst({ where: eq(therapySessions.id, req.sessionId) })
+      : null;
+
+    if (status === "approved") {
+      if (!updates.newDate) throw httpError("Tanggal baru wajib dipilih untuk approve reschedule.", 400);
+      if (!sourceSession) return null;
+      await sessionService.assertSlotAvailable({
+        ...sourceSession,
+        date: updates.newDate,
+        startTime: updates.newStartTime || sourceSession.startTime,
+        status: "upcoming",
+      }, sourceSession.id);
+    }
 
     await db.update(rescheduleRequests).set({
       status,
@@ -86,27 +107,22 @@ export const rescheduleService = {
     }).where(eq(rescheduleRequests.id, id));
 
     // If approved, cancel old session and create new one
-    if (status === "approved" && updates.newDate) {
-      const session = await db.query.therapySessions.findFirst({
-        where: eq(therapySessions.id, req.sessionId),
-      });
-      if (session) {
+    if (status === "approved" && updates.newDate && sourceSession) {
         await db.update(therapySessions)
           .set({ status: "cancelled", cancelReason: "Rescheduled (parent request)" })
-          .where(eq(therapySessions.id, session.id));
+          .where(eq(therapySessions.id, sourceSession.id));
 
         await db.insert(therapySessions).values({
           id: `S-RESCHED-${Date.now()}`,
-          therapistId: session.therapistId,
-          childId: session.childId,
-          roomId: session.roomId,
+          therapistId: sourceSession.therapistId,
+          childId: sourceSession.childId,
+          roomId: sourceSession.roomId,
           date: updates.newDate,
-          startTime: updates.newStartTime || session.startTime,
-          duration: session.duration,
-          focus: session.focus,
+          startTime: updates.newStartTime || sourceSession.startTime,
+          duration: sourceSession.duration,
+          focus: sourceSession.focus,
           status: "upcoming",
         });
-      }
     }
 
     if (parent?.userId) {
@@ -122,6 +138,64 @@ export const rescheduleService = {
     }
 
     return this.getAll().then((all) => all.find((r) => r.id === id));
+  },
+
+  async respondAsTherapist(id: string, therapistId: string, status: string, updates: {
+    reviewNote?: string; newDate?: string; newStartTime?: string;
+  } = {}) {
+    if (!["approved", "rejected", "review"].includes(status)) {
+      throw httpError("Status respons terapis tidak valid.", 400);
+    }
+
+    const req = await db.query.rescheduleRequests.findFirst({
+      where: eq(rescheduleRequests.id, id),
+    });
+    if (!req) return null;
+
+    const session = await db.query.therapySessions.findFirst({
+      where: eq(therapySessions.id, req.sessionId),
+    });
+    if (!session) return null;
+    if (session.therapistId !== therapistId) {
+      throw httpError("Akses ditolak untuk permintaan reschedule ini.", 403);
+    }
+
+    const proposedSlots = Array.isArray(req.proposedSlots) ? req.proposedSlots : [];
+    const selectedSlot = updates.newDate
+      ? proposedSlots.find((slot) =>
+        slot.date === updates.newDate && (!updates.newStartTime || slot.time === updates.newStartTime)
+      )
+      : proposedSlots[0];
+    if (status === "approved" && proposedSlots.length > 0 && !selectedSlot) {
+      throw httpError("Slot usulan reschedule tidak valid.", 400);
+    }
+    const resolvedUpdates = {
+      ...updates,
+      ...(status === "approved" && selectedSlot
+        ? { newDate: selectedSlot.date, newStartTime: selectedSlot.time }
+        : {}),
+      reviewNote: updates.reviewNote || (
+        status === "approved"
+          ? "Disetujui oleh terapis dan jadwal sudah disinkronkan."
+          : status === "rejected"
+            ? "Ditolak oleh terapis."
+            : "Direview oleh terapis."
+      ),
+    };
+
+    const result = await this.updateStatus(id, status, resolvedUpdates);
+    if (!result) return null;
+
+    await notificationService.create({
+      type: "therapist_reschedule_response",
+      icon: status === "approved" ? "event_available" : status === "rejected" ? "event_busy" : "manage_search",
+      title: "Respons terapis untuk reschedule",
+      message: `Terapis ${therapistId} memberi respons ${status} untuk permintaan reschedule ${id}.`,
+      targetRole: "admin",
+      relatedId: id,
+    });
+
+    return result;
   },
 
   async delete(id: string) {

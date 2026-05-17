@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { adminApi, notificationsApi, rescheduleApi } from '../../../shared/api/client';
+import { getCurrentTherapistProfile } from '../../../shared/api/therapistSession';
 
 const formatDate = (dateStr) => {
     if (!dateStr) return '';
@@ -20,33 +21,45 @@ export default function Announcements() {
     const [unreadTotal, setUnreadTotal] = useState(0);
     const [expanded, setExpanded] = useState(null);
     const [activeTab, setActiveTab] = useState('announcements'); // 'announcements' | 'reschedules'
+    const [selectedSlots, setSelectedSlots] = useState({});
+    const [actionState, setActionState] = useState({ id: '', action: '' });
+    const [error, setError] = useState('');
+
+    const load = async () => {
+        try {
+            setError('');
+            const user = await getCurrentTherapistProfile();
+            const [annRes, notifRes, resRes] = await Promise.all([
+                adminApi.getAnnouncementsForRole('therapist'),
+                notificationsApi.getAll(),
+                user?.id ? rescheduleApi.getForTherapist(user.id) : Promise.resolve({ ok: true, data: { data: [] } }),
+            ]);
+            if (!annRes.ok || !notifRes.ok || !resRes.ok) {
+                throw new Error(annRes.data?.error || notifRes.data?.error || resRes.data?.error || 'Gagal memuat notifikasi');
+            }
+            setAnnouncements(annRes.data?.data || []);
+            const notifs = notifRes.data?.data || [];
+            const byRelated = {};
+            notifs.forEach(n => {
+                if (n.relatedId) byRelated[n.relatedId] = n;
+            });
+            setNotificationMap(byRelated);
+            setUnreadTotal(notifs.filter(n => !n.isRead).length);
+            const requests = resRes.data?.data || [];
+            setReschedules(requests);
+            setSelectedSlots(Object.fromEntries(
+                requests.map(req => {
+                    const first = Array.isArray(req.proposedSlots) ? req.proposedSlots[0] : null;
+                    return [req.id, first ? `${first.date}|${first.time}` : ''];
+                })
+            ));
+        } catch (e) {
+            console.error(e);
+            setError(e.message || 'Gagal memuat notifikasi');
+        };
+    };
 
     useEffect(() => {
-        const load = async () => {
-            try {
-                const [annRes, notifRes] = await Promise.all([
-                    adminApi.getAnnouncementsForRole('therapist'),
-                    notificationsApi.getAll(),
-                ]);
-                setAnnouncements(annRes.data?.data || []);
-                const notifs = notifRes.data?.data || [];
-                const byRelated = {};
-                notifs.forEach(n => {
-                    if (n.relatedId) byRelated[n.relatedId] = n;
-                });
-                setNotificationMap(byRelated);
-                setUnreadTotal(notifs.filter(n => !n.isRead).length);
-                
-                const saved = sessionStorage.getItem('therapist_user') || localStorage.getItem('therapist_user');
-                if (saved) {
-                    const user = JSON.parse(saved);
-                    const resRes = await rescheduleApi.getForTherapist(user.id);
-                    setReschedules(resRes.data?.data || []);
-                }
-            } catch (e) {
-                console.error(e);
-            }
-        };
         load();
     }, []);
 
@@ -55,7 +68,8 @@ export default function Announcements() {
     const markNotificationRead = async (notificationId) => {
         if (!notificationId) return;
         try {
-            await notificationsApi.markRead(notificationId);
+            const res = await notificationsApi.markRead(notificationId);
+            if (!res.ok) throw new Error(res.data?.error || 'Gagal menandai notifikasi');
             setNotificationMap(prev => {
                 const next = {};
                 Object.entries(prev).forEach(([key, value]) => {
@@ -80,12 +94,41 @@ export default function Announcements() {
 
     const markAllRead = async () => {
         try {
-            await notificationsApi.markAllRead();
+            const res = await notificationsApi.markAllRead();
+            if (!res.ok) throw new Error(res.data?.error || 'Gagal menandai semua notifikasi');
             setNotificationMap(prev => Object.fromEntries(Object.entries(prev).map(([key, value]) => [key, { ...value, isRead: true }])));
             setUnreadTotal(0);
             window.dispatchEvent(new Event('notificationsUpdated'));
         } catch (e) {
             console.error('Failed to mark all notifications read', e);
+        }
+    };
+
+    const respondToReschedule = async (req, status) => {
+        setError('');
+        setActionState({ id: req.id, action: status });
+        try {
+            const selected = selectedSlots[req.id] || '';
+            const [newDate, newStartTime] = selected.split('|');
+            if (status === 'approved' && !newDate) {
+                throw new Error('Pilih slot usulan sebelum menyetujui request.');
+            }
+            const res = await rescheduleApi.therapistResponse(req.id, status, {
+                ...(newDate ? { newDate } : {}),
+                ...(newStartTime ? { newStartTime } : {}),
+                reviewNote: status === 'approved'
+                    ? 'Terapis menyetujui slot usulan ini.'
+                    : 'Terapis menolak permintaan reschedule ini.',
+            });
+            if (!res.ok) throw new Error(res.data?.error || res.data?.message || 'Respons reschedule gagal disimpan');
+            await load();
+            window.dispatchEvent(new Event('notificationsUpdated'));
+            window.dispatchEvent(new Event('sessionUpdated'));
+        } catch (e) {
+            console.error(e);
+            setError(e.message || 'Respons reschedule gagal disimpan');
+        } finally {
+            setActionState({ id: '', action: '' });
         }
     };
 
@@ -142,6 +185,12 @@ export default function Announcements() {
 
             <main className="flex-1 overflow-y-auto p-4 md:p-8">
                 <div className="max-w-3xl mx-auto flex flex-col gap-4">
+                    {error && (
+                        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-300">
+                            {error}
+                        </div>
+                    )}
+
                     {/* Pengumuman Tab */}
                     {activeTab === 'announcements' && (
                         announcements.length === 0 ? (
@@ -232,6 +281,50 @@ export default function Announcements() {
                                             <div className="mt-3 ml-14 text-sm bg-slate-50 dark:bg-slate-700/50 rounded-xl p-3 text-slate-600 dark:text-slate-300">
                                                 <span className="font-semibold">Alasan:</span> {req.reason}
                                                 {req.details && <p className="mt-1 text-slate-500">{req.details}</p>}
+                                            </div>
+                                        )}
+                                        {Array.isArray(req.proposedSlots) && req.proposedSlots.length > 0 && (
+                                            <div className="mt-3 ml-14 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900/40">
+                                                <p className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500 dark:text-slate-400">Slot usulan orang tua</p>
+                                                <div className="flex flex-col gap-2">
+                                                    {req.proposedSlots.map((slot, index) => {
+                                                        const value = `${slot.date}|${slot.time}`;
+                                                        return (
+                                                            <label key={`${req.id}-${value}-${index}`} className="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-200 px-3 py-2 text-sm font-bold text-slate-700 hover:border-teal-300 hover:bg-teal-50 dark:border-slate-700 dark:text-slate-200 dark:hover:border-teal-700 dark:hover:bg-teal-900/20">
+                                                                <input
+                                                                    type="radio"
+                                                                    name={`slot-${req.id}`}
+                                                                    value={value}
+                                                                    checked={selectedSlots[req.id] === value}
+                                                                    onChange={(e) => setSelectedSlots(prev => ({ ...prev, [req.id]: e.target.value }))}
+                                                                    disabled={req.status !== 'pending'}
+                                                                    className="accent-teal-500"
+                                                                />
+                                                                <span>{formatDateSimple(slot.date)} - {slot.time}</span>
+                                                            </label>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        )}
+                                        {req.status === 'pending' && (
+                                            <div className="mt-4 ml-14 flex flex-col gap-2 sm:flex-row">
+                                                <button
+                                                    onClick={() => respondToReschedule(req, 'approved')}
+                                                    disabled={actionState.id === req.id}
+                                                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-teal-500 px-4 py-2 text-sm font-black text-white shadow-sm hover:bg-teal-600 disabled:opacity-60"
+                                                >
+                                                    <span className="material-symbols-outlined text-[18px]">check_circle</span>
+                                                    {actionState.id === req.id && actionState.action === 'approved' ? 'Menyimpan...' : 'Setujui Slot'}
+                                                </button>
+                                                <button
+                                                    onClick={() => respondToReschedule(req, 'rejected')}
+                                                    disabled={actionState.id === req.id}
+                                                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-black text-red-700 hover:bg-red-100 disabled:opacity-60 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-300 dark:hover:bg-red-900/30"
+                                                >
+                                                    <span className="material-symbols-outlined text-[18px]">cancel</span>
+                                                    {actionState.id === req.id && actionState.action === 'rejected' ? 'Menyimpan...' : 'Tolak'}
+                                                </button>
                                             </div>
                                         )}
                                     </div>

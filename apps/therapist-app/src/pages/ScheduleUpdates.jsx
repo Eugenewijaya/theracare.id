@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { rescheduleApi, notificationsApi, sessionsApi } from '../../../shared/api/client';
+import { getCurrentTherapistProfile } from '../../../shared/api/therapistSession';
 
 const formatDate = (dateStr) => {
     if (!dateStr) return '';
@@ -19,16 +20,22 @@ export default function ScheduleUpdates() {
 
     useEffect(() => {
         const load = async () => {
-            const saved = sessionStorage.getItem('therapist_user') || localStorage.getItem('therapist_user');
-            if (!saved) return;
-            const user = JSON.parse(saved);
-
             try {
+                const user = await getCurrentTherapistProfile();
+                if (!user?.id) {
+                    setUpdates([]);
+                    return;
+                }
+
                 const [reqRes, notifRes, sessRes] = await Promise.all([
                     rescheduleApi.getForTherapist(user.id),
                     notificationsApi.getAll(),
                     sessionsApi.getForTherapist(user.id)
                 ]);
+
+                if (!reqRes.ok || !notifRes.ok || !sessRes.ok) {
+                    throw new Error(reqRes.data?.error || notifRes.data?.error || sessRes.data?.error || 'Gagal memuat pembaruan jadwal');
+                }
 
                 const requests = reqRes.data?.data || [];
                 const notifs = notifRes.data?.data || [];
@@ -36,7 +43,8 @@ export default function ScheduleUpdates() {
 
                 const unreadNotifs = notifs.filter(n => (n.type === 'schedule_change' || n.type === 'new_session') && !n.isRead && !(n.readBy || []).includes(user.id));
                 for (const n of unreadNotifs) {
-                    await notificationsApi.markRead(n.id);
+                    const readRes = await notificationsApi.markRead(n.id);
+                    if (!readRes.ok) throw new Error(readRes.data?.error || 'Gagal menandai notifikasi dibaca');
                 }
                 if (unreadNotifs.length > 0) {
                     window.dispatchEvent(new Event('notificationsUpdated'));

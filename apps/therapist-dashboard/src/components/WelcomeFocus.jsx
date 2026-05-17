@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { reportsApi, sessionsApi } from '../../../shared/api/client';
+import { getCurrentTherapistProfile } from '../../../shared/api/therapistSession';
 
 function todayKey() {
     const now = new Date();
@@ -10,34 +11,27 @@ function todayKey() {
     return `${y}-${m}-${d}`;
 }
 
-function getStoredTherapist() {
-    try {
-        const saved = sessionStorage.getItem('therapist_user') || localStorage.getItem('therapist_user');
-        return saved ? JSON.parse(saved) : null;
-    } catch {
-        return null;
-    }
-}
-
 const WelcomeFocus = () => {
     const navigate = useNavigate();
     const [showEndModal, setShowEndModal] = useState(false);
     const [ending, setEnding] = useState(false);
+    const [error, setError] = useState('');
     const [therapistName, setTherapistName] = useState('Therapist');
     const [pendingReports, setPendingReports] = useState(0);
     const [activeSession, setActiveSession] = useState(null);
 
     const loadSummary = useCallback(async () => {
-        const user = getStoredTherapist();
-        if (user?.name) setTherapistName(user.name);
-        if (!user?.id) {
-            setPendingReports(0);
-            setActiveSession(null);
-            return;
-        }
-
         try {
+            const user = await getCurrentTherapistProfile();
+            if (user?.name) setTherapistName(user.name);
+            if (!user?.id) {
+                setPendingReports(0);
+                setActiveSession(null);
+                return;
+            }
+
             const res = await sessionsApi.getForTherapist(user.id);
+            if (!res.ok) throw new Error(res.data?.error || 'Gagal memuat ringkasan sesi');
             const sessions = res.data?.data || [];
             const today = todayKey();
             setActiveSession(sessions.find(s => s.status === 'active' && s.date === today) || null);
@@ -53,8 +47,10 @@ const WelcomeFocus = () => {
             );
             const pending = reportChecks.filter(result => !result?.ok || !result?.data?.data).length;
             setPendingReports(pending);
+            setError('');
         } catch (e) {
             console.error('Failed to load therapist dashboard summary', e);
+            setError(e.message || 'Gagal memuat ringkasan sesi');
         }
     }, []);
 
@@ -71,12 +67,14 @@ const WelcomeFocus = () => {
         if (!activeSession) return;
         setEnding(true);
         try {
-            await sessionsApi.updateStatus(activeSession.id, 'done');
+            const res = await sessionsApi.updateStatus(activeSession.id, 'done');
+            if (!res.ok) throw new Error(res.data?.error || 'Gagal mengakhiri sesi');
             setShowEndModal(false);
             window.dispatchEvent(new Event('sessionUpdated'));
             await loadSummary();
         } catch (e) {
             console.error('Failed to end active session', e);
+            setError(e.message || 'Gagal mengakhiri sesi');
         } finally {
             setEnding(false);
         }
@@ -117,6 +115,11 @@ const WelcomeFocus = () => {
                             <span className="material-symbols-outlined text-[15px]">warning</span>
                             <span className="text-xs font-bold">{pendingReports} laporan sesi belum dibuat</span>
                         </button>
+                    )}
+                    {error && (
+                        <p className="max-w-xl rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-300">
+                            {error}
+                        </p>
                     )}
                 </div>
 

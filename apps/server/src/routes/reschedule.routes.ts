@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { requireAuth, requireRole } from "../middleware/auth.middleware.js";
 import { rescheduleService } from "../services/reschedule.service.js";
+import { therapistService } from "../services/therapist.service.js";
 import { ok, created, notFound, badRequest } from "../utils/response.js";
 
 const router = Router();
@@ -22,6 +23,18 @@ router.post("/", requireAuth, requireRole("parent"), async (req, res, next) => {
     const { parentId, childId, sessionId } = req.body;
     if (!parentId || !childId || !sessionId) return badRequest(res, "Data tidak lengkap");
     created(res, await rescheduleService.create(req.body), "Permintaan reschedule berhasil dikirim");
+  } catch (e) { next(e); }
+});
+
+router.patch("/:id/therapist-response", requireAuth, requireRole("therapist"), async (req, res, next) => {
+  try {
+    const therapist = await therapistService.getByUserId(req.user!.id);
+    if (!therapist) return notFound(res, "Profil terapis tidak ditemukan");
+
+    const { status, ...updates } = req.body;
+    const result = await rescheduleService.respondAsTherapist(req.params.id as string, therapist.id, status, updates);
+    if (!result) return notFound(res);
+    ok(res, result, "Respons terapis berhasil disimpan");
   } catch (e) { next(e); }
 });
 

@@ -1,56 +1,60 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { childrenApi } from '../../../shared/api/client';
 
-const getChartData = () => {
-    const result = [];
-    try {
-        const store = JSON.parse(localStorage.getItem('clinicData') || '{}');
-        const children = store.children || [];
-        const counts = {};
-        
-        children.forEach(c => {
-            if (c.registeredAt || c.createdAt) {
-                const d = new Date(c.registeredAt || c.createdAt);
-                const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-                counts[key] = (counts[key] || 0) + 1;
-            }
-        });
-        
-        for (let i = 5; i >= 0; i--) {
-            const d = new Date();
-            d.setMonth(d.getMonth() - i);
+const buildChartData = (children) => {
+    const counts = {};
+    children.forEach(child => {
+        if (child.registeredAt || child.createdAt) {
+            const d = new Date(child.registeredAt || child.createdAt);
             const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-            const label = d.toLocaleDateString('en-US', { month: 'short' });
-            result.push({ label, value: counts[key] || 0 });
+            counts[key] = (counts[key] || 0) + 1;
         }
-    } catch {
-        // Fallback to empty 6 months if error
-        for (let i = 5; i >= 0; i--) {
-            const d = new Date();
-            d.setMonth(d.getMonth() - i);
-            const label = d.toLocaleDateString('en-US', { month: 'short' });
-            result.push({ label, value: 0 });
-        }
+    });
+
+    const result = [];
+    for (let i = 5; i >= 0; i--) {
+        const d = new Date();
+        d.setMonth(d.getMonth() - i);
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        const label = d.toLocaleDateString('en-US', { month: 'short' });
+        result.push({ label, value: counts[key] || 0 });
     }
     return result;
 };
 
 const ChildrenMonthChart = () => {
     const navigate = useNavigate();
-    const data = useMemo(() => getChartData(), []);
+    const [children, setChildren] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        let mounted = true;
+        childrenApi.getAll()
+            .then(res => {
+                if (mounted && res.ok) setChildren(res.data?.data || []);
+            })
+            .catch(() => {})
+            .finally(() => {
+                if (mounted) setLoading(false);
+            });
+        return () => { mounted = false; };
+    }, []);
+
+    const data = useMemo(() => buildChartData(children), [children]);
     const maxVal = Math.max(...data.map(d => d.value), 1);
     const latest = data[data.length - 1];
-    const prev   = data[data.length - 2];
-    const diff   = (latest?.value ?? 0) - (prev?.value ?? 0);
-    const isUp   = diff > 0;
-    const total  = data.reduce((a, d) => a + d.value, 0);
+    const prev = data[data.length - 2];
+    const diff = (latest?.value ?? 0) - (prev?.value ?? 0);
+    const isUp = diff > 0;
+    const total = data.reduce((a, d) => a + d.value, 0);
 
     return (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
             <div className="flex justify-between items-start mb-4">
                 <div>
                     <h2 className="text-base font-bold text-slate-900">Data Anak / Bulan</h2>
-                    <p className="text-xs text-slate-500 mt-0.5">Tren registrasi baru</p>
+                    <p className="text-xs text-slate-500 mt-0.5">{loading ? 'Memuat dari backend' : 'Tren registrasi baru'}</p>
                 </div>
                 <button
                     onClick={() => navigate('/monitoring')}
@@ -61,7 +65,6 @@ const ChildrenMonthChart = () => {
                 </button>
             </div>
 
-            {/* Summary */}
             <div className="flex items-center gap-3 mb-4">
                 <div className="text-3xl font-bold text-slate-900">{total}</div>
                 <div>
@@ -75,7 +78,6 @@ const ChildrenMonthChart = () => {
                 </div>
             </div>
 
-            {/* Mini bar chart */}
             <div className="flex items-end gap-1.5 h-16 border-b border-slate-100 pb-px mb-2">
                 {data.map((d, i) => {
                     const pct = maxVal > 0 ? (d.value / maxVal) * 100 : 0;
@@ -91,7 +93,6 @@ const ChildrenMonthChart = () => {
                     );
                 })}
             </div>
-            {/* Labels */}
             <div className="flex gap-1.5">
                 {data.map(d => (
                     <span key={d.label} className="text-[10px] text-slate-400 text-center flex-1">{d.label}</span>

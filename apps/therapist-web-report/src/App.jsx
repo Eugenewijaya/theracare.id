@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Header from './components/Header';
 import { sessionsApi, reportsApi } from '../../shared/api/client';
+import { getCurrentTherapistProfile } from '../../shared/api/therapistSession';
 import { useClinicSettings } from '../../shared/clinicSettings';
 import { openReportPdf } from '../../shared/reportPdf';
 
@@ -322,6 +323,8 @@ function DailyReportForm({ childId, sessionId, onBack, onSaved, currentUser, chi
     const [recommendations, setRecommendations] = useState('');
     const [internalNotes, setInternalNotes] = useState('');
     const [submitted, setSubmitted] = useState(false);
+    const [submitting, setSubmitting] = useState(false);
+    const [error, setError] = useState('');
     const toggleAspect = (id) => {
         setAspects(prev => {
             const active = !prev[id];
@@ -340,6 +343,8 @@ function DailyReportForm({ childId, sessionId, onBack, onSaved, currentUser, chi
     };
 
     const handleSubmit = async () => {
+        setSubmitting(true);
+        setError('');
         const selectedAspectLabels = EVAL_ASPECTS
             .filter(aspect => aspects[aspect.id])
             .map(aspect => aspect.label);
@@ -363,11 +368,15 @@ function DailyReportForm({ childId, sessionId, onBack, onSaved, currentUser, chi
             internalNotes
         };
         try {
-            await reportsApi.save(report);
+            const res = await reportsApi.save(report);
+            if (!res.ok) throw new Error(res.data?.error || res.data?.message || 'Gagal menyimpan laporan harian');
             onReportSaved && onReportSaved();
             setSubmitted(true);
         } catch (e) {
             console.error(e);
+            setError(e.message || 'Gagal menyimpan laporan harian');
+        } finally {
+            setSubmitting(false);
         }
     };
 
@@ -488,11 +497,18 @@ function DailyReportForm({ childId, sessionId, onBack, onSaved, currentUser, chi
 
             {/* Footer Submit */}
             <div className="fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 p-4 z-20">
-                <div className="max-w-3xl mx-auto flex justify-between items-center gap-4 px-4 sm:px-8">
+                <div className="max-w-3xl mx-auto flex flex-col gap-3 px-4 sm:px-8">
+                    {error && (
+                        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-bold text-red-700 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-300">
+                            {error}
+                        </div>
+                    )}
+                    <div className="flex justify-between items-center gap-4">
                     <button onClick={onBack} className="px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 transition-colors text-sm">Batal</button>
-                    <button onClick={handleSubmit} className="px-8 py-2.5 rounded-xl bg-teal-500 text-white font-bold shadow-lg shadow-teal-500/20 hover:bg-teal-600 transition-all flex items-center gap-2 text-sm">
-                        <span className="material-symbols-outlined text-[18px]">send</span> Simpan Laporan Harian
+                    <button onClick={handleSubmit} disabled={submitting} className="px-8 py-2.5 rounded-xl bg-teal-500 text-white font-bold shadow-lg shadow-teal-500/20 hover:bg-teal-600 transition-all flex items-center gap-2 text-sm disabled:opacity-60">
+                        <span className="material-symbols-outlined text-[18px]">send</span> {submitting ? 'Menyimpan...' : 'Simpan Laporan Harian'}
                     </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -512,6 +528,8 @@ function PeriodicReportForm({ childId, onBack, currentUser, childrenData, onRepo
     const [summary, setSummary] = useState('');
     const [parentNotes, setParentNotes] = useState('');
     const [submitted, setSubmitted] = useState(false);
+    const [submitting, setSubmitting] = useState(false);
+    const [error, setError] = useState('');
 
     const handleEvalChange = (id, val) => setEvaluations(prev => ({...prev, [id]: val}));
     const updateList = (setter, idx, val) => setter(prev => prev.map((v, i) => i === idx ? val : v));
@@ -519,6 +537,8 @@ function PeriodicReportForm({ childId, onBack, currentUser, childrenData, onRepo
     const removeItem = (setter, idx) => setter(prev => prev.filter((_, i) => i !== idx));
 
     const handleSubmit = async () => {
+        setSubmitting(true);
+        setError('');
         const report = {
             type: 'periodik',
             childId,
@@ -535,11 +555,15 @@ function PeriodicReportForm({ childId, onBack, currentUser, childrenData, onRepo
             parentNotes
         };
         try {
-            await reportsApi.save(report);
+            const res = await reportsApi.save(report);
+            if (!res.ok) throw new Error(res.data?.error || res.data?.message || 'Gagal menyimpan laporan periodik');
             onReportSaved && onReportSaved();
             setSubmitted(true);
         } catch (e) {
             console.error(e);
+            setError(e.message || 'Gagal menyimpan laporan periodik');
+        } finally {
+            setSubmitting(false);
         }
     };
 
@@ -683,11 +707,18 @@ function PeriodicReportForm({ childId, onBack, currentUser, childrenData, onRepo
 
             {/* Footer Submit */}
             <div className="fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 p-4 z-20">
-                <div className="max-w-3xl mx-auto flex justify-between items-center gap-4 px-4 sm:px-8">
+                <div className="max-w-3xl mx-auto flex flex-col gap-3 px-4 sm:px-8">
+                    {error && (
+                        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-bold text-red-700 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-300">
+                            {error}
+                        </div>
+                    )}
+                    <div className="flex justify-between items-center gap-4">
                     <button onClick={onBack} className="px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 transition-colors text-sm">Batal</button>
-                    <button onClick={handleSubmit} className="px-8 py-2.5 rounded-xl bg-amber-500 text-white font-bold shadow-lg shadow-amber-500/20 hover:bg-amber-600 transition-all flex items-center gap-2 text-sm">
-                        <span className="material-symbols-outlined text-[18px]">send</span> Simpan & Kirim untuk Ditinjau Admin
+                    <button onClick={handleSubmit} disabled={submitting} className="px-8 py-2.5 rounded-xl bg-amber-500 text-white font-bold shadow-lg shadow-amber-500/20 hover:bg-amber-600 transition-all flex items-center gap-2 text-sm disabled:opacity-60">
+                        <span className="material-symbols-outlined text-[18px]">send</span> {submitting ? 'Menyimpan...' : 'Simpan & Kirim untuk Ditinjau Admin'}
                     </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -777,9 +808,7 @@ function ReportDetail({ report, onBack }) {
 
 // ── Main App ─────────────────────────────────────────────────────────
 function App() {
-    const [currentUser, setCurrentUser] = useState(() => {
-        try { return JSON.parse(sessionStorage.getItem('therapist_user')); } catch { return null; }
-    });
+    const [currentUser, setCurrentUser] = useState(null);
     const initialDailyContext = getDailyContextFromRoute();
 
     // screen: 'landing' | 'daily-gate' | 'daily-form' | 'periodic-gate' | 'periodic-form'
@@ -794,6 +823,19 @@ function App() {
     const [sessions, setSessions] = useState([]);
     const [reports, setReports] = useState([]);
     const [loadingData, setLoadingData] = useState(true);
+    const [loadError, setLoadError] = useState('');
+
+    useEffect(() => {
+        let cancelled = false;
+        getCurrentTherapistProfile()
+            .then(user => {
+                if (!cancelled) setCurrentUser(user);
+            })
+            .catch(() => {
+                if (!cancelled) setCurrentUser(null);
+            });
+        return () => { cancelled = true; };
+    }, []);
 
     const loadData = async () => {
         if (!currentUser?.id) { setLoadingData(false); return; }
@@ -802,10 +844,15 @@ function App() {
                 sessionsApi.getForTherapist(currentUser.id),
                 reportsApi.getForTherapist(currentUser.id)
             ]);
+            if (!sessRes.ok || !repRes.ok) {
+                throw new Error(sessRes.data?.error || repRes.data?.error || 'Gagal memuat data laporan');
+            }
             setSessions(sessRes.data?.data || []);
             setReports(repRes.data?.data || []);
+            setLoadError('');
         } catch (e) {
             console.error(e);
+            setLoadError(e.message || 'Gagal memuat data laporan');
         }
         setLoadingData(false);
     };
@@ -838,6 +885,11 @@ function App() {
                         <div className="flex justify-center p-10"><span className="text-slate-500">Loading data...</span></div>
                     ) : (
                         <>
+                            {loadError && (
+                                <div className="mx-auto mt-4 max-w-3xl rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-300">
+                                    {loadError}
+                                </div>
+                            )}
                             {screen === 'landing' && (
                                 <ReportLanding onSelectType={(type) => setScreen(type === 'harian' ? 'daily-gate' : 'periodic-gate')}>
                                     <ReportHistory onSelectReport={handleSelectReport} reports={reports} />

@@ -6,9 +6,14 @@ export const errorHandler = (
   res: Response,
   _next: NextFunction
 ) => {
-  console.error("❌ Server Error:", err.message);
-  res.status(500).json({
-    error: "Internal server error",
+  const statusCode = Number((err as any).statusCode || (err as any).status || 500);
+  const safeStatus = statusCode >= 400 && statusCode < 600 ? statusCode : 500;
+
+  console.error("Server Error:", err.message);
+  res.status(safeStatus).json({
+    success: false,
+    error: safeStatus === 500 ? "Internal server error" : err.message,
     message: process.env.NODE_ENV === "development" ? err.message : undefined,
+    data: (err as any).data,
   });
 };

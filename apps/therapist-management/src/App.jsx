@@ -149,6 +149,7 @@ function App() {
                                     onDelete={handleDeleteTherapist}
                                     onView={() => navigate('/users')}
                                     onEdit={() => navigate('/users')}
+                                    onPerformance={() => navigate('/monitoring')}
                                 />
                             ))}
                         </div>

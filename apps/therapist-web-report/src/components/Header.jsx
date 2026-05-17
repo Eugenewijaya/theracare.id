@@ -1,19 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { notificationsApi } from '../../../shared/api/client';
-
-function readStoredTherapist() {
-    try {
-        const saved = sessionStorage.getItem('therapist_user') || localStorage.getItem('therapist_user');
-        return saved ? JSON.parse(saved) : null;
-    } catch {
-        return null;
-    }
-}
+import { getCurrentTherapistProfile } from '../../../shared/api/therapistSession';
 
 const Header = () => {
     const navigate = useNavigate();
-    const [user, setUser] = useState(readStoredTherapist);
+    const [user, setUser] = useState(null);
     const [unreadCount, setUnreadCount] = useState(0);
     const initials = (user?.name || 'Therapist')
         .split(' ')
@@ -26,8 +18,11 @@ const Header = () => {
     useEffect(() => {
         const loadUnread = async () => {
             try {
-                setUser(readStoredTherapist());
-                const res = await notificationsApi.getUnreadCount();
+                const [profile, res] = await Promise.all([
+                    getCurrentTherapistProfile(),
+                    notificationsApi.getUnreadCount(),
+                ]);
+                setUser(profile);
                 setUnreadCount(res.data?.data?.count || 0);
             } catch (e) {
                 console.error('Failed to load notification count', e);

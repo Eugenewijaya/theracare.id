@@ -17,6 +17,8 @@ const DAY_INDEX = {
     'Thursday': 4, 'Friday': 5, 'Saturday': 6,
 };
 
+const getApiError = (res, fallback) => res?.data?.error || res?.data?.message || fallback;
+
 function generateSessionDates(formData) {
     if (!formData.startDate || !formData.endDate || formData.days.length === 0) return [];
     const start = new Date(formData.startDate);
@@ -170,6 +172,7 @@ function App() {
     const [showConfirm, setShowConfirm] = useState(false);
     const [showSuccess, setShowSuccess] = useState(false);
     const [generatedCount, setGeneratedCount] = useState(0);
+    const [error, setError] = useState('');
 
     const update = (key, value) => setFormData(prev => ({ ...prev, [key]: value }));
     const handleNext = () => setCurrentStep(s => Math.min(s + 1, TOTAL_STEPS));
@@ -185,11 +188,13 @@ function App() {
     const sessionDates = generateSessionDates(formData);
 
     const handleGenerateClick = () => {
+        setError('');
         setShowConfirm(true);
     };
 
     const handleConfirmGenerate = async () => {
         setShowConfirm(false);
+        setError('');
 
         const dates = generateSessionDates(formData);
         if (dates.length === 0) return;
@@ -207,7 +212,11 @@ function App() {
         });
 
         try {
-            await sessionsApi.createBulk(newSessionsData);
+            const res = await sessionsApi.createBulk(newSessionsData);
+            if (!res.ok) {
+                setError(getApiError(res, 'Gagal membuat jadwal massal.'));
+                return;
+            }
             setGeneratedCount(dates.length);
             setShowSuccess(true);
             // reset form
@@ -215,6 +224,7 @@ function App() {
             setCurrentStep(1);
         } catch(e) {
             console.error(e);
+            setError('Gagal menghubungi server jadwal.');
         }
     };
 
@@ -233,6 +243,11 @@ function App() {
                         <div className="border-b border-slate-200 dark:border-slate-800 px-4 sm:px-8 py-4 sm:py-6">
                             <h1 className="text-2xl font-bold leading-tight tracking-[-0.015em] mb-6">Bulk Schedule Generator</h1>
                             <Stepper currentStep={currentStep} />
+                            {error && (
+                                <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
+                                    {error}
+                                </div>
+                            )}
                         </div>
 
                         {/* Form Content */}

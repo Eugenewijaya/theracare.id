@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Header from './components/Header';
 import { sessionsApi } from '../../shared/api/client';
+import { getCurrentTherapistProfile } from '../../shared/api/therapistSession';
 
 const WEEK_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const HOURS = Array.from({ length: 10 }, (_, index) => 8 + index);
@@ -84,12 +85,23 @@ function EmptyState({ title, subtitle }) {
 }
 
 function App() {
-    const [currentUser] = useState(() => {
-        try { return JSON.parse(sessionStorage.getItem('therapist_user')); } catch { return null; }
-    });
+    const [currentUser, setCurrentUser] = useState(null);
     const [viewMode, setViewMode] = useState('week');
     const [anchorDate, setAnchorDate] = useState(() => new Date());
     const [events, setEvents] = useState([]);
+    const [error, setError] = useState('');
+
+    useEffect(() => {
+        let cancelled = false;
+        getCurrentTherapistProfile()
+            .then(user => {
+                if (!cancelled) setCurrentUser(user);
+            })
+            .catch(() => {
+                if (!cancelled) setCurrentUser(null);
+            });
+        return () => { cancelled = true; };
+    }, []);
 
     useEffect(() => {
         const loadEvents = async () => {
@@ -100,14 +112,17 @@ function App() {
 
             try {
                 const res = await sessionsApi.getForTherapist(currentUser.id);
+                if (!res.ok) throw new Error(res.data?.error || 'Gagal memuat kalender jadwal');
                 const rawSessions = res.data?.data || [];
                 const mapped = rawSessions
                     .map(toCalendarEvent)
                     .sort((a, b) => `${a.date} ${a.startTime}`.localeCompare(`${b.date} ${b.startTime}`));
 
                 setEvents(mapped);
+                setError('');
             } catch (e) {
                 console.error('Failed to load sessions', e);
+                setError(e.message || 'Gagal memuat kalender jadwal');
             }
         };
 
@@ -244,6 +259,12 @@ function App() {
                                 </div>
                             </div>
                         </div>
+
+                        {error && (
+                            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-300">
+                                {error}
+                            </div>
+                        )}
 
                         <div className="grid gap-4 md:grid-cols-3">
                             <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-800">

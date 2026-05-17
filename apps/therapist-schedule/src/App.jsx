@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { authApi, sessionsApi } from '../../shared/api/client';
+import { sessionsApi } from '../../shared/api/client';
+import { getCurrentTherapistProfile, logoutTherapist } from '../../shared/api/therapistSession';
 import PortalProfileMenu from '../../shared/ui/PortalProfileMenu';
 
 const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
@@ -31,15 +32,6 @@ function calculateEndTime(startTime, durationStr) {
     return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }
 
-function getStoredTherapist() {
-    try {
-        const saved = sessionStorage.getItem('therapist_user') || localStorage.getItem('therapist_user');
-        return saved ? JSON.parse(saved) : null;
-    } catch {
-        return null;
-    }
-}
-
 function getDurationSeconds(session) {
     const minutes = Number.parseInt(session?.raw?.duration || session?.duration, 10) || 45;
     return minutes * 60;
@@ -67,23 +59,27 @@ function App() {
     const navigate = useNavigate();
     
     // User Session
-    const [currentUser, setCurrentUser] = useState(() => {
-        return getStoredTherapist();
-    });
+    const [currentUser, setCurrentUser] = useState(null);
 
     const [currentDate, setCurrentDate] = useState(new Date());
     const [sessions, setSessions] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
     
     const [finishModal, setFinishModal] = useState(null);
     const [startModal, setStartModal] = useState(null);
     const [timeLeft, setTimeLeft] = useState(45 * 60);
 
     const loadSessions = async () => {
-        if (!currentUser) return;
+        if (!currentUser) {
+            setSessions([]);
+            setLoading(false);
+            return;
+        }
         const dateKey = formatKey(currentDate);
         try {
             const res = await sessionsApi.getForTherapist(currentUser.id, dateKey);
+            if (!res.ok) throw new Error(res.data?.error || 'Failed to load therapist schedule');
             const rawSessions = res.data?.data || [];
             
             const mapped = rawSessions.map(s => {
@@ -104,11 +100,25 @@ function App() {
             }).sort((a, b) => a.start.localeCompare(b.start));
             
             setSessions(mapped);
+            setError('');
         } catch (e) {
             console.error('Failed to load therapist schedule', e);
+            setError(e.message || 'Failed to load therapist schedule');
         }
         setLoading(false);
     };
+
+    useEffect(() => {
+        let cancelled = false;
+        getCurrentTherapistProfile()
+            .then(user => {
+                if (!cancelled) setCurrentUser(user);
+            })
+            .catch(() => {
+                if (!cancelled) setCurrentUser(null);
+            });
+        return () => { cancelled = true; };
+    }, []);
 
     useEffect(() => {
         setLoading(true);
@@ -138,11 +148,14 @@ function App() {
 
     const handleAutoFinish = async (id) => {
         try {
-            await sessionsApi.updateStatus(id, 'done');
+            const res = await sessionsApi.updateStatus(id, 'done');
+            if (!res.ok) throw new Error(res.data?.error || 'Failed to auto-finish session');
             loadSessions();
             window.dispatchEvent(new Event('sessionUpdated'));
+            setError('');
         } catch (e) {
             console.error('Failed to auto-finish session', e);
+            setError(e.message || 'Failed to auto-finish session');
         }
     };
 
@@ -164,11 +177,7 @@ function App() {
     const activeInSchedule = sessions.some(s => s.status === 'active');
 
     const handleLogout = async () => {
-        try {
-            await authApi.signOut();
-        } catch {}
-        sessionStorage.removeItem('therapist_user');
-        localStorage.removeItem('therapist_user');
+        await logoutTherapist();
         navigate('/login');
     };
 
@@ -176,11 +185,14 @@ function App() {
     const confirmFinish = async () => {
         if (!finishModal) return;
         try {
-            await sessionsApi.updateStatus(finishModal.id, 'done');
+            const res = await sessionsApi.updateStatus(finishModal.id, 'done');
+            if (!res.ok) throw new Error(res.data?.error || 'Failed to finish session');
             loadSessions();
             window.dispatchEvent(new Event('sessionUpdated'));
+            setError('');
         } catch (e) {
             console.error('Failed to finish session', e);
+            setError(e.message || 'Failed to finish session');
         }
         setFinishModal(null);
     };
@@ -189,12 +201,15 @@ function App() {
     const confirmStart = async () => {
         if (!startModal) return;
         try {
-            await sessionsApi.updateStatus(startModal.id, 'active');
+            const res = await sessionsApi.updateStatus(startModal.id, 'active');
+            if (!res.ok) throw new Error(res.data?.error || 'Failed to start session');
             loadSessions();
             window.dispatchEvent(new Event('sessionUpdated'));
             setTimeLeft(getDurationSeconds(startModal));
+            setError('');
         } catch (e) {
             console.error('Failed to start session', e);
+            setError(e.message || 'Failed to start session');
         }
         setStartModal(null);
     };
@@ -250,6 +265,12 @@ function App() {
                             </div>
                         </div>
                     </div>
+
+                    {error && (
+                        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-300">
+                            {error}
+                        </div>
+                    )}
 
                     {/* Sessions List */}
                     <div className="space-y-6">

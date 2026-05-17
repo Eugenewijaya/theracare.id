@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { authApi, notificationsApi } from '../../../shared/api/client';
+import { notificationsApi } from '../../../shared/api/client';
+import { getCurrentTherapistProfile, logoutTherapist } from '../../../shared/api/therapistSession';
 import PortalProfileMenu from '../../../shared/ui/PortalProfileMenu';
 
 // Dashboard header search: navigates to /child-progress with a ?q= param
@@ -12,12 +13,15 @@ const Header = ({ searchValue = '', onSearchChange }) => {
     const [unreadCount, setUnreadCount] = useState(0);
 
     useEffect(() => {
-        try {
-            const saved = sessionStorage.getItem('therapist_user') || localStorage.getItem('therapist_user');
-            setCurrentUser(saved ? JSON.parse(saved) : null);
-        } catch {
-            setCurrentUser(null);
-        }
+        let cancelled = false;
+        getCurrentTherapistProfile()
+            .then(user => {
+                if (!cancelled) setCurrentUser(user);
+            })
+            .catch(() => {
+                if (!cancelled) setCurrentUser(null);
+            });
+        return () => { cancelled = true; };
     }, []);
 
     useEffect(() => {
@@ -41,11 +45,7 @@ const Header = ({ searchValue = '', onSearchChange }) => {
     };
 
     const handleLogout = async () => {
-        try {
-            await authApi.signOut();
-        } catch {}
-        sessionStorage.removeItem('therapist_user');
-        localStorage.removeItem('therapist_user');
+        await logoutTherapist();
         navigate('/login');
     };
 

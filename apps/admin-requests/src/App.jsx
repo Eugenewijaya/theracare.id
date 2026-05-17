@@ -3,6 +3,8 @@ import Header from './components/Header';
 import RequestCard from './components/RequestCard';
 import { rescheduleApi } from '../../shared/api/client';
 
+const getApiError = (res, fallback) => res?.data?.error || res?.data?.message || fallback;
+
 // ── Notification Popup Component ──────────────────────────────────
 function NotificationPopup({ isOpen, message, type, onClose, onConfirm, showConfirmButtons }) {
     if (!isOpen) return null;
@@ -170,6 +172,7 @@ function App() {
     const [popup, setPopup] = useState({ isOpen: false, message: '', type: 'success', showConfirm: false });
     const [pendingAction, setPendingAction] = useState(null);
     const [searchQuery, setSearchQuery] = useState('');
+    const [selectedSlots, setSelectedSlots] = useState({});
 
     const refreshData = async () => {
         try {
@@ -189,11 +192,12 @@ function App() {
                     date: session.date ? `${session.date} • ${session.startTime}` : 'Date TBD',
                     reason: r.reason || r.details || 'No reason provided',
                     submittedAgo: new Date(r.createdAt || Date.now()).toLocaleDateString(),
-                    slots: (r.proposedSlots || []).map((s, idx) => ({
+                    slots: (r.proposedSlots || []).map((s) => ({
+                        key: `${s.date || ''}|${s.time || ''}`,
                         date: s.date,
                         time: s.time,
                         label: `${s.date || 'Tanggal TBD'} • ${s.time || 'Jam TBD'}`,
-                        status: idx===0?'available':'conflict',
+                        status: s.status || 'unverified',
                     })),
                     status: r.status || 'pending',
                     reviewNote: r.reviewNote || '',
@@ -228,32 +232,45 @@ function App() {
     const confirmAction = async () => {
         if (!pendingAction) return;
         const { type, req } = pendingAction;
+        let res = null;
+        let successMessage = '';
+        let nextTab = null;
         
         if (type === 'reject') {
-            await rescheduleApi.updateStatus(req.id, 'rejected');
-            refreshData();
-            setTimeout(() => showPopup(`Request from ${req.name} has been rejected.`, 'success'), 300);
+            res = await rescheduleApi.updateStatus(req.id, 'rejected');
+            successMessage = `Request from ${req.name} has been rejected.`;
         }
         else if (type === 'process') {
-            await rescheduleApi.updateStatus(req.id, 'review', { reviewNote: 'Under internal review.' });
-            refreshData();
-            setTimeout(() => {
-                showPopup(`Request from ${req.name} moved to Under Review.`);
-                setActiveTab('review');
-            }, 300);
+            res = await rescheduleApi.updateStatus(req.id, 'review', { reviewNote: 'Under internal review.' });
+            successMessage = `Request from ${req.name} moved to Under Review.`;
+            nextTab = 'review';
         }
         else if (type === 'approve') {
-            const chosenSlot = req.slots ? req.slots.find(s => s.status === 'available') || req.slots[0] : null;
-            await rescheduleApi.updateStatus(req.id, 'approved', {
+            const selectedKey = selectedSlots[req.id];
+            const chosenSlot = req.slots ? req.slots.find(s => s.key === selectedKey) || req.slots[0] : null;
+            if (!chosenSlot?.date || !chosenSlot?.time) {
+                setPendingAction(null);
+                showPopup(`Pilih slot tanggal dan jam yang valid untuk ${req.name}.`, 'warning');
+                return;
+            }
+            res = await rescheduleApi.updateStatus(req.id, 'approved', {
                 newDate: chosenSlot?.date,
                 newStartTime: chosenSlot?.time,
             });
-            refreshData();
-            setTimeout(() => showPopup(`Request from ${req.name} has been approved.`, 'success'), 300);
+            successMessage = `Request from ${req.name} has been approved.`;
+        }
+
+        if (!res?.ok) {
+            setPendingAction(null);
+            showPopup(getApiError(res, `Aksi untuk ${req.name} gagal diproses.`), 'warning');
+            return;
         }
         
         setPendingAction(null);
         setPopup(prev => ({ ...prev, showConfirm: false, isOpen: false }));
+        await refreshData();
+        if (nextTab) setActiveTab(nextTab);
+        showPopup(successMessage, 'success');
     };
 
     const handleReject = (req) => {
@@ -273,8 +290,12 @@ function App() {
 
     const handleDelete = async (req) => {
         if (!window.confirm(`Hapus riwayat request ${req.name}?`)) return;
-        await rescheduleApi.delete(req.id);
-        refreshData();
+        const res = await rescheduleApi.delete(req.id);
+        if (!res.ok) {
+            showPopup(getApiError(res, 'Gagal menghapus riwayat request.'), 'warning');
+            return;
+        }
+        await refreshData();
         showPopup('Riwayat request berhasil dihapus.', 'success');
     };
 
@@ -361,6 +382,9 @@ function App() {
                                             onReject={() => handleReject(req)}
                                             onProcess={() => handleProcess(req)}
                                             onApprove={() => handleApprove(req)}
+                                            selectedSlotKey={selectedSlots[req.id]}
+                                            onSelectSlot={(slotKey) => setSelectedSlots(prev => ({ ...prev, [req.id]: slotKey }))}
+                                            approveDisabled={req.slots.length === 0}
                                         />
                                     ))}
                                 </div>

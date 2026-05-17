@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { sessionsApi } from '../../../shared/api/client';
+import { getCurrentTherapistProfile } from '../../../shared/api/therapistSession';
 import ChildProfileModal from './ChildProfileModal';
 
 function todayKey() {
@@ -9,15 +10,6 @@ function todayKey() {
     const m = String(now.getMonth() + 1).padStart(2, '0');
     const d = String(now.getDate()).padStart(2, '0');
     return `${y}-${m}-${d}`;
-}
-
-function getStoredTherapist() {
-    try {
-        const saved = sessionStorage.getItem('therapist_user') || localStorage.getItem('therapist_user');
-        return saved ? JSON.parse(saved) : null;
-    } catch {
-        return null;
-    }
 }
 
 function getDurationSeconds(session) {
@@ -40,22 +32,26 @@ const TimelineList = () => {
     const [noteText, setNoteText] = useState('');
     const [completeModal, setCompleteModal] = useState(null); // session object
     const [noteSaved, setNoteSaved] = useState(false);
+    const [error, setError] = useState('');
     const [timeLeft, setTimeLeft] = useState(45 * 60); // 45 minutes
     const [profileModalSession, setProfileModalSession] = useState(null);
 
     const fetchSessions = async () => {
-        const user = getStoredTherapist();
-        if (!user?.id) {
-            setSessions([]);
-            return;
-        }
-        
         try {
+            const user = await getCurrentTherapistProfile();
+            if (!user?.id) {
+                setSessions([]);
+                return;
+            }
+
             const res = await sessionsApi.getForTherapist(user.id, todayKey());
+            if (!res.ok) throw new Error(res.data?.error || 'Gagal memuat jadwal hari ini');
             const todaySessions = res.data?.data || [];
             setSessions(todaySessions);
+            setError('');
         } catch (e) {
             console.error(e);
+            setError(e.message || 'Gagal memuat jadwal hari ini');
         }
     };
 
@@ -72,10 +68,11 @@ const TimelineList = () => {
                     if (prev <= 1) {
                         clearInterval(interval);
                         // Auto-complete if time runs out
-                        sessionsApi.updateStatus(activeSession.id, 'done').then(() => {
+                        sessionsApi.updateStatus(activeSession.id, 'done').then((res) => {
+                            if (!res.ok) throw new Error(res.data?.error || 'Gagal mengakhiri sesi otomatis');
                             window.dispatchEvent(new Event('sessionUpdated'));
                             fetchSessions();
-                        });
+                        }).catch(e => setError(e.message || 'Gagal mengakhiri sesi otomatis'));
                         return 0;
                     }
                     return prev - 1;
@@ -98,32 +95,47 @@ const TimelineList = () => {
     const confirmComplete = async () => {
         if (!completeModal) return;
         try {
-            await sessionsApi.updateStatus(completeModal.id, 'done');
+            const res = await sessionsApi.updateStatus(completeModal.id, 'done');
+            if (!res.ok) throw new Error(res.data?.error || 'Gagal mengakhiri sesi');
             await fetchSessions();
             window.dispatchEvent(new Event('sessionUpdated'));
-        } catch(e) { console.error(e); }
+            setError('');
+        } catch(e) {
+            console.error(e);
+            setError(e.message || 'Gagal mengakhiri sesi');
+        }
         closeCompleteModal();
     };
 
     const handleSaveNote = async () => {
         try {
-            await sessionsApi.saveNotes(noteOpenId, noteText);
+            const res = await sessionsApi.saveNotes(noteOpenId, noteText);
+            if (!res.ok) throw new Error(res.data?.error || 'Gagal menyimpan catatan');
             await fetchSessions();
             window.dispatchEvent(new Event('sessionUpdated'));
             setNoteOpenId(null);
             setNoteText('');
             setNoteSaved(true);
+            setError('');
             setTimeout(() => setNoteSaved(false), 3000);
-        } catch (e) { console.error(e); }
+        } catch (e) {
+            console.error(e);
+            setError(e.message || 'Gagal menyimpan catatan');
+        }
     };
 
     const startSession = async (sessionId) => {
         try {
-            await sessionsApi.updateStatus(sessionId, 'active');
+            const res = await sessionsApi.updateStatus(sessionId, 'active');
+            if (!res.ok) throw new Error(res.data?.error || 'Gagal memulai sesi');
             await fetchSessions();
             window.dispatchEvent(new Event('sessionUpdated'));
             setTimeLeft(45 * 60);
-        } catch (e) { console.error(e); }
+            setError('');
+        } catch (e) {
+            console.error(e);
+            setError(e.message || 'Gagal memulai sesi');
+        }
     };
 
     return (
@@ -138,6 +150,12 @@ const TimelineList = () => {
                     {sessions.length} Sessions
                 </div>
             </div>
+
+            {error && (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-300">
+                    {error}
+                </div>
+            )}
 
             {sessions.length === 0 ? (
                 <div className="text-center py-10 text-slate-500">

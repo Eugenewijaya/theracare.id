@@ -1,6 +1,12 @@
 import React from 'react';
 
-const RequestCard = ({ name, parentName, session, date, reason, slots, submittedAgo, approveDisabled, onReject, onProcess, onApprove }) => {
+const slotStatusConfig = {
+    available: { label: 'Tutor Available', className: 'text-green-600 dark:text-primary bg-green-100 dark:bg-primary/20' },
+    conflict: { label: 'Conflict', className: 'text-yellow-600 dark:text-yellow-400 bg-yellow-100 dark:bg-yellow-900/30' },
+    unverified: { label: 'Validasi saat approve', className: 'text-blue-600 dark:text-blue-300 bg-blue-100 dark:bg-blue-900/30' },
+};
+
+const RequestCard = ({ id, name, parentName, session, date, reason, slots = [], selectedSlotKey, onSelectSlot, submittedAgo, approveDisabled, onReject, onProcess, onApprove }) => {
     return (
         <div className="bg-white dark:bg-primary/5 border border-slate-200 dark:border-primary/20 rounded-xl overflow-hidden shadow-sm flex flex-col">
             <div className="p-6 flex-1">
@@ -13,9 +19,7 @@ const RequestCard = ({ name, parentName, session, date, reason, slots, submitted
                         </div>
                         <span className="text-slate-500 dark:text-slate-400 text-xs font-medium">{submittedAgo}</span>
                     </div>
-                    <button className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
-                        <span className="material-symbols-outlined">more_vert</span>
-                    </button>
+                    <span className="text-xs font-semibold text-slate-400">{id}</span>
                 </div>
 
                 {/* Requester */}
@@ -43,18 +47,28 @@ const RequestCard = ({ name, parentName, session, date, reason, slots, submitted
                 {/* Proposed Slots */}
                 <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-3">Proposed Alternate Slots:</h4>
                 <div className="flex flex-col gap-2">
-                    {slots.map((slot, i) => (
+                    {slots.length === 0 && (
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm font-semibold text-slate-500 dark:border-primary/20 dark:bg-primary/5 dark:text-slate-300">
+                            Belum ada slot alternatif dari parent.
+                        </div>
+                    )}
+                    {slots.map((slot, i) => {
+                        const status = slotStatusConfig[slot.status] || slotStatusConfig.unverified;
+                        return (
                         <label key={i} className="flex items-center p-3 border border-slate-200 dark:border-primary/30 rounded-lg cursor-pointer hover:bg-slate-50 dark:hover:bg-primary/10 transition-colors">
-                            <input type="radio" name={`slot_${name.replace(/\s/g, '_')}`} className="text-primary focus:ring-primary h-4 w-4 border-slate-300 dark:border-primary/50 bg-transparent" />
+                            <input
+                                type="radio"
+                                name={`slot_${id || name.replace(/\s/g, '_')}`}
+                                checked={selectedSlotKey === slot.key || (!selectedSlotKey && i === 0)}
+                                onChange={() => onSelectSlot?.(slot.key)}
+                                className="text-primary focus:ring-primary h-4 w-4 border-slate-300 dark:border-primary/50 bg-transparent"
+                            />
                             <span className="ml-3 text-sm text-slate-700 dark:text-slate-200 font-medium flex-1">{slot.label || slot.time}</span>
-                            <span className={`text-xs font-medium px-2 py-0.5 rounded ${slot.status === 'available'
-                                    ? 'text-green-600 dark:text-primary bg-green-100 dark:bg-primary/20'
-                                    : 'text-yellow-600 dark:text-yellow-400 bg-yellow-100 dark:bg-yellow-900/30'
-                                }`}>
-                                {slot.status === 'available' ? 'Tutor Available' : 'Conflict'}
+                            <span className={`text-xs font-medium px-2 py-0.5 rounded ${status.className}`}>
+                                {status.label}
                             </span>
                         </label>
-                    ))}
+                    )})}
                 </div>
             </div>
 

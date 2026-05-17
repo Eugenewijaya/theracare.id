@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 
-const TherapistCard = ({ name, id, avatar, specializations, status, statusColor, sessionsToday, inactive, onDelete, onEdit, onView }) => {
+const TherapistCard = ({ name, id, avatar, specializations, status, statusColor, sessionsToday, inactive, onDelete, onEdit, onView, onPerformance }) => {
     const [menuOpen, setMenuOpen] = useState(false);
     const menuRef = useRef(null);
     const dotColor = statusColor === 'green'
@@ -102,7 +102,7 @@ const TherapistCard = ({ name, id, avatar, specializations, status, statusColor,
                 ].map((action) => (
                     <button
                         key={action.label}
-                        onClick={() => action.label === 'Profile' ? onView?.(id) : action.label === 'Edit' ? onEdit?.(id) : undefined}
+                        onClick={() => action.label === 'Profile' ? onView?.(id) : action.label === 'Edit' ? onEdit?.(id) : onPerformance?.(id)}
                         className="flex-1 flex items-center justify-center gap-1 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-primary transition-colors hover:bg-slate-50 dark:hover:bg-primary/10 rounded-lg"
                     >
                         <span className="material-symbols-outlined text-[18px]">{action.icon}</span>

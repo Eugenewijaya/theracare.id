@@ -70,12 +70,12 @@ export async function fetchClinicSettings() {
 }
 
 export async function saveClinicSettings(updates) {
-  const next = cacheClinicSettings({ ...getCachedClinicSettings(), ...updates });
+  const next = normalizeClinicSettings({ ...getCachedClinicSettings(), ...updates });
   const res = await adminApi.updateSettings(next);
   if (!res.ok) {
     throw new Error(res.data?.error || res.data?.message || 'Gagal menyimpan pengaturan pusat terapi');
   }
-  return next;
+  return cacheClinicSettings({ ...next, ...(res.data?.data || {}) });
 }
 
 export function applyClinicTheme(settings) {

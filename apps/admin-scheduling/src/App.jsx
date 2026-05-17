@@ -14,6 +14,8 @@ const parseJsonSetting = (value, fallback) => {
     }
 };
 
+const getApiError = (res, fallback) => res?.data?.error || res?.data?.message || fallback;
+
 // ── Toast Notification ──────────────────────────────────────────────────────
 function Toast({ message, type = 'success', onClose }) {
     React.useEffect(() => {
@@ -367,7 +369,11 @@ function App() {
         };
 
         try {
-            await sessionsApi.create(sessionObj);
+            const createRes = await sessionsApi.create(sessionObj);
+            if (!createRes.ok) {
+                showToast(getApiError(createRes, 'Gagal menambahkan sesi'), 'error');
+                return;
+            }
             setIsAddModalOpen(false);
             showToast('Sesi berhasil ditambahkan ke jadwal!');
             
@@ -382,12 +388,16 @@ function App() {
     // ── Edit: save changes ─────────────────────────────────────────────
     const handleEditSave = async (sessionId, form) => {
         try {
-            await sessionsApi.update(sessionId, {
+            const updateRes = await sessionsApi.update(sessionId, {
                 therapistId: form.therapistId,
                 focus:       form.program,
                 startTime:   form.startTime,
                 duration:    `${form.duration} mins`,
             });
+            if (!updateRes.ok) {
+                showToast(getApiError(updateRes, 'Gagal memperbarui sesi'), 'error');
+                return;
+            }
             showToast('Sesi berhasil diperbarui!');
             setEditSession(null);
             
@@ -402,7 +412,11 @@ function App() {
     const handleEditDelete = async (sessionId) => {
         if (!window.confirm('Yakin ingin menghapus sesi ini? Tindakan ini tidak dapat dibatalkan.')) return;
         try {
-            await sessionsApi.delete(sessionId);
+            const deleteRes = await sessionsApi.delete(sessionId);
+            if (!deleteRes.ok) {
+                showToast(getApiError(deleteRes, 'Gagal menghapus sesi'), 'error');
+                return;
+            }
             setEditSession(null);
             showToast('Sesi berhasil dihapus.', 'info');
             
@@ -416,7 +430,11 @@ function App() {
     const handleMarkTherapistLeave = async (sessionId) => {
         if (!window.confirm('Tandai sesi ini merah karena terapis cuti? Orang tua perlu diarahkan ke reschedule atau terapis pendamping.')) return;
         try {
-            await sessionsApi.updateStatus(sessionId, 'cancelled', 'Terapis cuti - sarankan reschedule atau jadwalkan dengan terapis pendamping.');
+            const statusRes = await sessionsApi.updateStatus(sessionId, 'cancelled', 'Terapis cuti - sarankan reschedule atau jadwalkan dengan terapis pendamping.');
+            if (!statusRes.ok) {
+                showToast(getApiError(statusRes, 'Gagal menandai cuti terapis'), 'error');
+                return;
+            }
             setEditSession(null);
             showToast('Sesi ditandai sebagai cuti terapis.', 'info');
             const res = await sessionsApi.getAll();

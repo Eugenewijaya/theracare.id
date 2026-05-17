@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { authApi, notificationsApi } from '../../../shared/api/client';
+import { notificationsApi } from '../../../shared/api/client';
+import { logoutTherapist } from '../../../shared/api/therapistSession';
 import PortalProfileMenu from '../../../shared/ui/PortalProfileMenu';
 
 const Header = ({ searchValue, onSearchChange, user, onSettingsClick }) => {
@@ -22,11 +23,7 @@ const Header = ({ searchValue, onSearchChange, user, onSettingsClick }) => {
     }, []);
 
     const handleLogout = async () => {
-        try {
-            await authApi.signOut();
-        } catch {}
-        sessionStorage.removeItem('therapist_user');
-        localStorage.removeItem('therapist_user');
+        await logoutTherapist();
         navigate('/login');
     };
 

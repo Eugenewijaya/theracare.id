@@ -1,30 +1,29 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import WelcomeFocus from './components/WelcomeFocus';
 import TimelineList from './components/TimelineList';
 import RecentActivity from './components/RecentActivity';
-import { authApi } from '../../shared/api/client';
 import PortalProfileMenu from '../../shared/ui/PortalProfileMenu';
-
-function readStoredTherapist() {
-    try {
-        const saved = sessionStorage.getItem('therapist_user') || localStorage.getItem('therapist_user');
-        return saved ? JSON.parse(saved) : null;
-    } catch {
-        return null;
-    }
-}
+import { getCurrentTherapistProfile, logoutTherapist } from '../../shared/api/therapistSession';
 
 function App() {
     const navigate = useNavigate();
-    const [currentUser] = useState(readStoredTherapist);
+    const [currentUser, setCurrentUser] = useState(null);
+
+    useEffect(() => {
+        let cancelled = false;
+        getCurrentTherapistProfile()
+            .then(user => {
+                if (!cancelled) setCurrentUser(user);
+            })
+            .catch(() => {
+                if (!cancelled) setCurrentUser(null);
+            });
+        return () => { cancelled = true; };
+    }, []);
 
     const handleLogout = async () => {
-        try {
-            await authApi.signOut();
-        } catch {}
-        sessionStorage.removeItem('therapist_user');
-        localStorage.removeItem('therapist_user');
+        await logoutTherapist();
         navigate('/login');
     };
 

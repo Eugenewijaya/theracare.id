@@ -2,18 +2,10 @@ import React, { useState, useEffect } from 'react';
 import Header from './components/Header';
 import TherapistProfile from './components/TherapistProfile';
 import { sessionsApi, reportsApi, therapistsApi } from '../../shared/api/client';
+import { getCurrentTherapistProfile, normalizeTherapistProfile, publishTherapistSession } from '../../shared/api/therapistSession';
 import { uploadImageFile } from '../../shared/uploadImage';
 
 const MONTH_FORMATTER = new Intl.DateTimeFormat('en-US', { month: 'short' });
-
-function readStoredTherapist() {
-    try {
-        const storedUser = sessionStorage.getItem('therapist_user') || localStorage.getItem('therapist_user');
-        return storedUser ? JSON.parse(storedUser) : null;
-    } catch {
-        return null;
-    }
-}
 
 function normalizeCertification(cert, index) {
     const title = cert?.title || cert?.name || '';
@@ -30,13 +22,6 @@ function normalizeCertification(cert, index) {
 
 function normalizeCertifications(certifications = []) {
     return certifications.map(normalizeCertification).filter(Boolean);
-}
-
-function storeTherapist(user) {
-    sessionStorage.setItem('therapist_user', JSON.stringify(user));
-    if (localStorage.getItem('therapist_user')) {
-        localStorage.setItem('therapist_user', JSON.stringify(user));
-    }
 }
 
 function formatRelativeDate(dateStr) {
@@ -86,8 +71,8 @@ function App() {
     const [profileModal, setProfileModal] = useState(false);
     
     // User Management
-    const [currentUser, setCurrentUser] = useState(readStoredTherapist);
-    const [growth, setGrowth] = useState(() => normalizeCertifications(readStoredTherapist()?.certifications || []));
+    const [currentUser, setCurrentUser] = useState(null);
+    const [growth, setGrowth] = useState([]);
     const [profileDraft, setProfileDraft] = useState({});
 
     // Derived Statistics
@@ -100,6 +85,18 @@ function App() {
     const [monthlySeries, setMonthlySeries] = useState([]);
     const [volumeSummary, setVolumeSummary] = useState({ scheduled: 0, completed: 0, delta: '0%', completionRate: '0%' });
     const [feedbackFeed, setFeedbackFeed] = useState([]);
+
+    useEffect(() => {
+        let cancelled = false;
+        getCurrentTherapistProfile()
+            .then(user => {
+                if (!cancelled) setCurrentUser(user);
+            })
+            .catch(() => {
+                if (!cancelled) setCurrentUser(null);
+            });
+        return () => { cancelled = true; };
+    }, []);
 
     useEffect(() => {
         setGrowth(normalizeCertifications(currentUser?.certifications || []));
@@ -212,17 +209,19 @@ function App() {
         if (currentUser) {
             try {
                 const res = await therapistsApi.updateProfile(currentUser.id, profileDraft);
+                if (!res.ok) throw new Error(res.data?.error || 'Gagal memperbarui profil');
                 if (res.data?.data) {
-                    const updated = { ...currentUser, ...res.data.data };
+                    const updated = normalizeTherapistProfile({ ...currentUser, ...res.data.data });
                     setCurrentUser(updated);
-                    storeTherapist(updated);
+                    publishTherapistSession(updated);
                 }
+                setProfileModal(false);
+                showToast('Profile updated successfully.');
             } catch (e) {
                 console.error('Failed to update profile', e);
+                showToast(e.message || 'Gagal memperbarui profil.');
             }
         }
-        setProfileModal(false); 
-        showToast('Profile updated successfully.'); 
     };
 
     const handlePhotoUpdate = async (file) => {
@@ -230,10 +229,11 @@ function App() {
             try {
                 const avatarUrl = await uploadImageFile(file, 'therapist-profile');
                 const res = await therapistsApi.updateProfile(currentUser.id, { avatar: avatarUrl });
+                if (!res.ok) throw new Error(res.data?.error || 'Failed to update profile photo.');
                 if (res.data?.data) {
-                    const updated = { ...currentUser, ...res.data.data };
+                    const updated = normalizeTherapistProfile({ ...currentUser, ...res.data.data });
                     setCurrentUser(updated);
-                    storeTherapist(updated);
+                    publishTherapistSession(updated);
                 }
                 showToast('Profile photo updated.');
             } catch (e) {
@@ -244,6 +244,7 @@ function App() {
     };
 
     const persistGrowth = async (nextGrowth, message) => {
+        const previousGrowth = growth;
         setGrowth(nextGrowth);
         if (!currentUser?.id) {
             showToast(message);
@@ -252,14 +253,16 @@ function App() {
 
         try {
             const res = await therapistsApi.updateProfile(currentUser.id, { certifications: nextGrowth });
+            if (!res.ok) throw new Error(res.data?.error || 'Gagal menyimpan sertifikasi.');
             if (res.data?.data) {
-                const updated = { ...currentUser, ...res.data.data };
+                const updated = normalizeTherapistProfile({ ...currentUser, ...res.data.data });
                 setCurrentUser(updated);
-                storeTherapist(updated);
+                publishTherapistSession(updated);
             }
             showToast(message);
         } catch (e) {
             console.error('Failed to update certifications', e);
+            setGrowth(previousGrowth);
             showToast('Gagal menyimpan sertifikasi.');
         }
     };

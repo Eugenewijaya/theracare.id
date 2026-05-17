@@ -2,23 +2,15 @@ import React, { useState, useEffect } from 'react';
 import Header from './components/Header';
 import SettingsSidebar from './components/SettingsSidebar';
 import { adminApi, notificationsApi } from '../../shared/api/client';
+import { useAuthSession } from '../../shared/api/useAuthSession';
 
 const tabs = ['Semua', 'Notifikasi Baru', 'Admin', 'Parent / Orang Tua', 'Terapis', 'Umum / Global'];
 
-function readStoredAdmin() {
-    try {
-        const saved = localStorage.getItem('theracare_auth_admin') || sessionStorage.getItem('theracare_auth_admin');
-        return saved ? JSON.parse(saved) : null;
-    } catch {
-        return null;
-    }
-}
-
 function App() {
+    const { user: currentUser } = useAuthSession('admin');
     const [activeTab, setActiveTab] = useState('Semua');
     const [audienceFilter, setAudienceFilter] = useState('all');
     const [notifications, setNotifications] = useState([]);
-    const [currentUser, setCurrentUser] = useState(readStoredAdmin);
     
     // For creating new notes
     const [isCreating, setIsCreating] = useState(false);
@@ -62,7 +54,6 @@ function App() {
     };
 
     useEffect(() => {
-        setCurrentUser(readStoredAdmin());
         refreshData();
     }, []);
 

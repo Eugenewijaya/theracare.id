@@ -1,5 +1,5 @@
 import React, { lazy, Suspense, useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import { useAdmin } from './context/AdminContext';
 import Sidebar from './components/Sidebar';
@@ -72,6 +72,24 @@ function MobileTopBar({ onMenuOpen }) {
   );
 }
 
+function NotFound() {
+  return (
+    <div className="flex min-h-full flex-col items-center justify-center gap-4 px-6 py-16 text-center">
+      <span className="material-symbols-outlined text-5xl text-slate-400">wrong_location</span>
+      <div>
+        <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white">Halaman admin tidak ditemukan</h1>
+        <p className="mt-2 text-sm font-medium text-slate-500 dark:text-slate-400">Route ini belum terdaftar di dasbor admin.</p>
+      </div>
+      <Link
+        to="/"
+        className="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-background-dark hover:bg-primary/90"
+      >
+        Kembali ke Dashboard
+      </Link>
+    </div>
+  );
+}
+
 function DashboardLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -101,7 +119,7 @@ function DashboardLayout() {
               <Route path="settings/branding" element={<ClinicBranding />} />
               <Route path="users" element={<UserManagement />} />
               <Route path="announcements" element={<AnnouncementsPage />} />
-              <Route path="*" element={<Navigate to="/" replace />} />
+              <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>
         </div>

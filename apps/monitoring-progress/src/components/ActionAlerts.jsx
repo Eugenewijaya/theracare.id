@@ -114,10 +114,8 @@ const ActionAlerts = ({ store }) => {
     }, [store]);
 
     const pendingRequests = useMemo(() => {
-        try {
-            return JSON.parse(localStorage.getItem('adminRequests_pending') || '[]');
-        } catch { return []; }
-    }, []);
+        return (store?.pendingRequests || []).filter(request => request.status === 'pending');
+    }, [store]);
 
     const alerts = useMemo(() => {
         const generated = [];

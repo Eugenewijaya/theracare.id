@@ -23,15 +23,6 @@ function formatDate(date) {
     return new Date(`${date}T00:00:00`).toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-function readStoredTherapist() {
-    try {
-        const saved = sessionStorage.getItem('therapist_user') || localStorage.getItem('therapist_user');
-        return saved ? JSON.parse(saved) : null;
-    } catch {
-        return null;
-    }
-}
-
 export default function App({ mode = 'therapist' }) {
     const isAdmin = mode === 'admin';
     const [meetings, setMeetings] = useState([]);
@@ -71,7 +62,8 @@ export default function App({ mode = 'therapist' }) {
                 setChildren(childRes.data?.data || []);
                 setTherapists(therRes.data?.data || []);
             } else {
-                const therapist = readStoredTherapist();
+                const therapistRes = await therapistsApi.getMe();
+                const therapist = therapistRes.ok ? therapistRes.data?.data : null;
                 const [meetRes, sessionRes] = await Promise.all([
                     meetingsApi.getForTherapist(),
                     therapist?.id ? sessionsApi.getForTherapist(therapist.id) : Promise.resolve({ data: { data: [] } }),
