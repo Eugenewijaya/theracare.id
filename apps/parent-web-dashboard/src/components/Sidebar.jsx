@@ -1,15 +1,17 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { adminApi } from '../../../shared/api/client';
 
 const Sidebar = () => {
+    const navigate = useNavigate();
     const handleContactSupport = async () => {
         try {
-            const res = await adminApi.getSettings();
-            const settings = res.data?.data || {};
-            const phone = settings.adminWhatsApp || '6281234567890';
-            window.open(`https://wa.me/${phone}`, '_blank');
+            const res = await adminApi.getPublicSettings();
+            const settings = res.ok ? (res.data?.data || {}) : {};
+            const phone = String(settings.adminWhatsApp || '').replace(/\D/g, '');
+            if (phone) window.open(`https://wa.me/${phone}`, '_blank', 'noopener,noreferrer');
         } catch (e) {
-            window.open(`https://wa.me/6281234567890`, '_blank');
+            console.error(e);
         }
     };
     return (
@@ -28,18 +30,18 @@ const Sidebar = () => {
                     </div>
 
                     <nav className="flex flex-col gap-2">
-                        <a href="#" className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-primary/10 text-primary">
+                        <button type="button" onClick={() => navigate('/')} className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-primary/10 text-primary text-left">
                             <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>dashboard</span>
                             <p className="text-sm font-semibold leading-normal">Dashboard</p>
-                        </a>
-                        <a href="#" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-text-secondary-light dark:text-text-secondary-dark hover:bg-background-light dark:hover:bg-background-dark transition-colors">
+                        </button>
+                        <button type="button" onClick={() => navigate('/reschedule')} className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-text-secondary-light dark:text-text-secondary-dark hover:bg-background-light dark:hover:bg-background-dark transition-colors text-left">
                             <span className="material-symbols-outlined">calendar_month</span>
                             <p className="text-sm font-medium leading-normal">My Child's Schedule</p>
-                        </a>
-                        <a href="#" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-text-secondary-light dark:text-text-secondary-dark hover:bg-background-light dark:hover:bg-background-dark transition-colors">
+                        </button>
+                        <button type="button" onClick={() => navigate('/reports')} className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-text-secondary-light dark:text-text-secondary-dark hover:bg-background-light dark:hover:bg-background-dark transition-colors text-left">
                             <span className="material-symbols-outlined">assignment</span>
                             <p className="text-sm font-medium leading-normal">Progress Reports</p>
-                        </a>
+                        </button>
 
                     </nav>
                 </div>

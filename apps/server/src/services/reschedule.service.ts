@@ -45,13 +45,28 @@ export const rescheduleService = {
     parentId: string; childId: string; sessionId: string;
     reason?: string; details?: string; proposedSlots?: Array<{ date: string; time: string }>;
   }) {
+    const session = await db.query.therapySessions.findFirst({
+      where: eq(therapySessions.id, data.sessionId),
+    });
+    if (!session) throw httpError("Sesi tidak ditemukan.", 404);
+    if (session.childId !== data.childId) {
+      throw httpError("Sesi tidak sesuai dengan anak yang dipilih.", 403);
+    }
+
+    const existingRequests = await db.query.rescheduleRequests.findMany({
+      where: eq(rescheduleRequests.parentId, data.parentId),
+    });
+    const hasActiveRequest = existingRequests.some((request) =>
+      request.childId === data.childId && ["pending", "review"].includes(request.status)
+    );
+    if (hasActiveRequest) {
+      throw httpError("Masih ada permintaan reschedule aktif untuk anak ini.", 409);
+    }
+
     const id = generateId("RR");
     const [req] = await db.insert(rescheduleRequests).values({
       id, ...data, status: "pending",
     }).returning();
-    const session = await db.query.therapySessions.findFirst({
-      where: eq(therapySessions.id, data.sessionId),
-    });
     await notificationService.create({
       type: "reschedule_request",
       icon: "event_repeat",
@@ -60,19 +75,17 @@ export const rescheduleService = {
       targetRole: "admin",
       relatedId: id,
     });
-    if (session) {
-      const therapist = await db.query.therapists.findFirst({ where: eq(therapists.id, session.therapistId) });
-      if (therapist?.userId) {
-        await notificationService.create({
-          type: "reschedule_request",
-          icon: "event_repeat",
-          title: "Permintaan reschedule menunggu review",
-          message: `Permintaan perubahan jadwal masuk untuk sesi ${data.sessionId}.`,
-          targetRole: "therapist",
-          targetUserId: therapist.userId,
-          relatedId: id,
-        });
-      }
+    const therapist = await db.query.therapists.findFirst({ where: eq(therapists.id, session.therapistId) });
+    if (therapist?.userId) {
+      await notificationService.create({
+        type: "reschedule_request",
+        icon: "event_repeat",
+        title: "Permintaan reschedule menunggu review",
+        message: `Permintaan perubahan jadwal masuk untuk sesi ${data.sessionId}.`,
+        targetRole: "therapist",
+        targetUserId: therapist.userId,
+        relatedId: id,
+      });
     }
     return req;
   },

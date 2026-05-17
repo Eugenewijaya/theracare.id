@@ -2,6 +2,7 @@ import { Router } from "express";
 import { requireAuth, requireRole } from "../middleware/auth.middleware.js";
 import { sessionService } from "../services/session.service.js";
 import { therapistService } from "../services/therapist.service.js";
+import { reportService } from "../services/report.service.js";
 import { ok, created, notFound, badRequest, conflict } from "../utils/response.js";
 
 const router = Router();
@@ -24,6 +25,27 @@ async function canMutateSession(req: any, sessionId: string) {
   return { allowed: ownProfile?.id === session.therapistId, session };
 }
 
+async function canReadChildSessions(req: any, childId: string) {
+  if (req.user?.role === "admin") return true;
+  if (req.user?.role === "parent") return reportService.canParentAccessChild(req.user.id, childId);
+  if (req.user?.role === "therapist") return true;
+  return false;
+}
+
+async function canReadSession(req: any, sessionId: string) {
+  if (req.user?.role === "admin") return { allowed: true, session: null };
+  const session = await sessionService.getById(sessionId);
+  if (!session) return { allowed: true, session: null };
+  if (req.user?.role === "parent") {
+    return { allowed: await reportService.canParentAccessChild(req.user.id, session.childId), session };
+  }
+  if (req.user?.role === "therapist") {
+    const ownProfile = await therapistService.getByUserId(req.user.id);
+    return { allowed: ownProfile?.id === session.therapistId, session };
+  }
+  return { allowed: false, session };
+}
+
 router.get("/", requireAuth, requireRole("admin"), async (req, res, next) => {
   try { ok(res, await sessionService.getAllWithDetails()); } catch (e) { next(e); }
 });
@@ -38,15 +60,27 @@ router.get("/therapist/:id", requireAuth, async (req, res, next) => {
 });
 
 router.get("/child/:id/upcoming", requireAuth, async (req, res, next) => {
-  try { ok(res, await sessionService.getUpcomingForChild(req.params.id as string)); } catch (e) { next(e); }
+  try {
+    if (!(await canReadChildSessions(req, req.params.id as string))) {
+      return res.status(403).json({ success: false, error: "Akses jadwal anak ditolak" });
+    }
+    ok(res, await sessionService.getUpcomingForChild(req.params.id as string));
+  } catch (e) { next(e); }
 });
 
 router.get("/child/:id/completed", requireAuth, async (req, res, next) => {
-  try { ok(res, await sessionService.getCompletedForChild(req.params.id as string)); } catch (e) { next(e); }
+  try {
+    if (!(await canReadChildSessions(req, req.params.id as string))) {
+      return res.status(403).json({ success: false, error: "Akses riwayat sesi anak ditolak" });
+    }
+    ok(res, await sessionService.getCompletedForChild(req.params.id as string));
+  } catch (e) { next(e); }
 });
 
 router.get("/:id", requireAuth, async (req, res, next) => {
   try {
+    const access = await canReadSession(req, req.params.id as string);
+    if (!access.allowed) return res.status(403).json({ success: false, error: "Akses sesi ditolak" });
     const session = await sessionService.getById(req.params.id as string);
     if (!session) return notFound(res);
     ok(res, session);
@@ -109,11 +143,19 @@ router.delete("/:id", requireAuth, requireRole("admin"), async (req, res, next) 
 
 // ── Ratings ──
 router.get("/:id/rating", requireAuth, async (req, res, next) => {
-  try { ok(res, await sessionService.getRating(req.params.id as string)); } catch (e) { next(e); }
+  try {
+    const access = await canReadSession(req, req.params.id as string);
+    if (!access.allowed) return res.status(403).json({ success: false, error: "Akses rating sesi ditolak" });
+    if (access.session === null && req.user!.role !== "admin") return notFound(res);
+    ok(res, await sessionService.getRating(req.params.id as string));
+  } catch (e) { next(e); }
 });
 
 router.post("/:id/rating", requireAuth, requireRole("parent"), async (req, res, next) => {
   try {
+    const access = await canReadSession(req, req.params.id as string);
+    if (!access.allowed) return res.status(403).json({ success: false, error: "Akses rating sesi ditolak" });
+    if (access.session === null) return notFound(res);
     created(res, await sessionService.addRating({ sessionId: req.params.id as string, ...req.body }));
   } catch (e) { next(e); }
 });

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { sessionsApi, rescheduleApi } from '../../../shared/api/client';
+import { getCurrentParentProfile, getPrimaryChildId, PARENT_CHILD_SELECTION_EVENT } from '../../../shared/api/parentSession';
 
 const formatDate = (dateStr) => {
     if (!dateStr) return '';
@@ -20,17 +21,19 @@ const REASONS = [
     { value: 'other',          label: 'Other' },
 ];
 
-const getPrimaryChildId = (user = {}) => {
-    if (user.childId) return user.childId;
-    const firstChild = Array.isArray(user.children) ? user.children[0] : null;
-    return firstChild?.id || firstChild?.nita || (typeof firstChild === 'string' ? firstChild : '');
-};
-
 const formatDuration = (duration) => {
     if (!duration) return 'Durasi belum diisi';
     const text = String(duration);
     return text.toLowerCase().includes('min') ? text : `${text} mins`;
 };
+
+const formatStatus = (status) => ({
+    pending: 'Menunggu Admin',
+    review: 'Direview Terapis',
+    approved: 'Disetujui',
+    rejected: 'Ditolak',
+    cancelled: 'Dibatalkan',
+}[status] || status || '-');
 
 const RescheduleForm = () => {
     const [upcomingSessions, setUpcomingSessions] = useState([]);
@@ -43,35 +46,57 @@ const RescheduleForm = () => {
         { date: '', time: '' },
         { date: '', time: '' },
     ]);
+    const [parentUser, setParentUser] = useState(null);
+    const [requestHistory, setRequestHistory] = useState([]);
     const [pendingRequest, setPendingRequest] = useState(null);
     const [submitted, setSubmitted]           = useState(false);
+    const [submitting, setSubmitting]         = useState(false);
     const [error, setError]                   = useState('');
 
     useEffect(() => {
-        const load = async () => {
-            const saved = sessionStorage.getItem('parent_user');
-            if (!saved) return;
-            const user  = JSON.parse(saved);
-            const childId = getPrimaryChildId(user);
+        const load = async (preferredChildId = '') => {
+            setError('');
+            const user = await getCurrentParentProfile();
+            setParentUser(user);
+            const childId = preferredChildId || getPrimaryChildId(user);
             if (!childId) return;
 
-            try {
-                const sRes = await sessionsApi.getUpcomingForChild(childId);
+            const sRes = await sessionsApi.getUpcomingForChild(childId);
+            if (!sRes.ok) {
+                setUpcomingSessions([]);
+                setSelectedSessionId('');
+                setError(sRes.data?.error || 'Gagal memuat jadwal aktif anak.');
+            } else {
                 const sessions = sRes.data?.data || [];
                 setUpcomingSessions(sessions);
-                if (sessions.length > 0) setSelectedSessionId(sessions[0].id);
-            } catch(e) {}
+                if (sessions.length > 0) setSelectedSessionId(prev => prev || sessions[0].id);
+            }
 
             // Check for existing pending request
-            const parentId  = user.parentId;
-            try {
+            const parentId = user?.parentId;
+            if (parentId) {
                 const rRes = await rescheduleApi.getByParent(parentId);
+                if (!rRes.ok) {
+                    setRequestHistory([]);
+                    setPendingRequest(null);
+                    setError(rRes.data?.error || 'Gagal memuat status permintaan reschedule.');
+                    return;
+                }
                 const requests = rRes.data?.data || [];
-                const pending   = requests.find(r => r.status === 'pending');
+                const childRequests = requests.filter(r => !childId || r.childId === childId);
+                setRequestHistory(childRequests);
+                const pending = childRequests.find(r => ['pending', 'review'].includes(r.status));
                 setPendingRequest(pending || null);
-            } catch(e) {}
+            }
         };
         load();
+        const handleChildChanged = (event) => {
+            setSubmitted(false);
+            setSelectedSessionId('');
+            load(event.detail?.childId || '');
+        };
+        window.addEventListener(PARENT_CHILD_SELECTION_EVENT, handleChildChanged);
+        return () => window.removeEventListener(PARENT_CHILD_SELECTION_EVENT, handleChildChanged);
     }, []);
 
     const updateSlot = (index, field, value) => {
@@ -82,18 +107,20 @@ const RescheduleForm = () => {
 
     const handleSubmit = async () => {
         if (requestType === 'reschedule' && !selectedSessionId) { setError('Pilih sesi yang ingin direschedule.'); return; }
+        if (pendingRequest) { setError('Masih ada permintaan aktif. Tunggu hasil review sebelum mengirim permintaan baru.'); return; }
         if (!reason)             { setError('Pilih alasan perubahan jadwal atau sesi baru.'); return; }
         if (!slots[0].date || !slots[0].time) { setError('Masukkan minimal 1 preferensi waktu baru (Preference 1).'); return; }
         setError('');
 
-        const saved  = sessionStorage.getItem('parent_user');
-        const user   = saved ? JSON.parse(saved) : {};
+        const user = parentUser || await getCurrentParentProfile();
         const childId = getPrimaryChildId(user);
         if (!childId) { setError('Data anak tidak ditemukan untuk akun orang tua ini.'); return; }
+        if (!user?.parentId) { setError('Data orang tua tidak ditemukan. Silakan login ulang.'); return; }
         const proposedSlots = slots.filter(s => s.date && s.time);
 
         try {
-            await rescheduleApi.create({
+            setSubmitting(true);
+            const res = await rescheduleApi.create({
                 parentId:   user.parentId,
                 childId,
                 sessionId:  selectedSessionId,
@@ -101,9 +128,21 @@ const RescheduleForm = () => {
                 details,
                 proposedSlots,
             });
+            if (!res.ok) {
+                setError(res.data?.error || 'Gagal mengirim request');
+                return;
+            }
+            const rRes = await rescheduleApi.getByParent(user.parentId);
+            if (rRes.ok) {
+                const requests = (rRes.data?.data || []).filter(r => r.childId === childId);
+                setRequestHistory(requests);
+                setPendingRequest(requests.find(r => ['pending', 'review'].includes(r.status)) || null);
+            }
             setSubmitted(true);
         } catch(e) {
             setError('Gagal mengirim request');
+        } finally {
+            setSubmitting(false);
         }
     };
 
@@ -139,6 +178,27 @@ const RescheduleForm = () => {
                     <p className="text-sm font-medium text-yellow-800 dark:text-yellow-400">
                         Anda sudah memiliki permintaan reschedule yang sedang diproses. Silakan tunggu konfirmasi dari admin klinik.
                     </p>
+                </div>
+            )}
+
+            {requestHistory.length > 0 && (
+                <div className="mx-4 mb-6 rounded-xl border border-border-light dark:border-border-dark bg-white dark:bg-slate-900/30 overflow-hidden">
+                    <div className="px-4 py-3 border-b border-border-light dark:border-border-dark">
+                        <p className="text-sm font-bold">Riwayat Permintaan</p>
+                    </div>
+                    <div className="divide-y divide-border-light dark:divide-border-dark">
+                        {requestHistory.slice(0, 4).map(request => (
+                            <div key={request.id} className="flex flex-col gap-1 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+                                <div>
+                                    <p className="font-bold text-slate-900 dark:text-white">{request.session?.date || request.newDate || 'Tanggal menunggu review'}</p>
+                                    <p className="text-xs text-text-muted-light dark:text-text-muted-dark">{request.reviewNote || request.details || request.reason || 'Tidak ada catatan'}</p>
+                                </div>
+                                <span className="w-fit rounded-full bg-sky-50 px-3 py-1 text-xs font-bold text-sky-700 dark:bg-sky-900/30 dark:text-sky-300">
+                                    {formatStatus(request.status)}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
                 </div>
             )}
 
@@ -301,10 +361,10 @@ const RescheduleForm = () => {
                 </button>
                 <button
                     onClick={handleSubmit}
-                    disabled={requestType === 'reschedule' && upcomingSessions.length === 0}
+                    disabled={submitting || !!pendingRequest || (requestType === 'reschedule' && upcomingSessions.length === 0)}
                     className="px-6 py-2.5 rounded-lg bg-primary text-white text-sm font-bold hover:bg-primary/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                    Submit Request
+                    {submitting ? 'Submitting...' : 'Submit Request'}
                 </button>
             </div>
         </>

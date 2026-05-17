@@ -2,6 +2,7 @@ import { Router } from "express";
 import { requireAuth, requireRole } from "../middleware/auth.middleware.js";
 import { rescheduleService } from "../services/reschedule.service.js";
 import { therapistService } from "../services/therapist.service.js";
+import { parentService } from "../services/parent.service.js";
 import { ok, created, notFound, badRequest } from "../utils/response.js";
 
 const router = Router();
@@ -11,7 +12,17 @@ router.get("/", requireAuth, requireRole("admin"), async (req, res, next) => {
 });
 
 router.get("/parent/:id", requireAuth, async (req, res, next) => {
-  try { ok(res, await rescheduleService.getByParent(req.params.id as string)); } catch (e) { next(e); }
+  try {
+    if (req.user?.role === "parent") {
+      const parent = await parentService.getByUserId(req.user.id);
+      if (!parent || parent.id !== req.params.id) {
+        return res.status(403).json({ success: false, error: "Akses permintaan reschedule ditolak" });
+      }
+    } else if (req.user?.role !== "admin") {
+      return res.status(403).json({ success: false, error: "Akses permintaan reschedule ditolak" });
+    }
+    ok(res, await rescheduleService.getByParent(req.params.id as string));
+  } catch (e) { next(e); }
 });
 
 router.get("/therapist/:id", requireAuth, async (req, res, next) => {
@@ -22,6 +33,14 @@ router.post("/", requireAuth, requireRole("parent"), async (req, res, next) => {
   try {
     const { parentId, childId, sessionId } = req.body;
     if (!parentId || !childId || !sessionId) return badRequest(res, "Data tidak lengkap");
+    const parent = await parentService.getByUserId(req.user!.id);
+    if (!parent || parent.id !== parentId) {
+      return res.status(403).json({ success: false, error: "Akses akun orang tua ditolak" });
+    }
+    const ownsChild = (parent.children || []).some((child: any) => child.id === childId || child.nita === childId);
+    if (!ownsChild) {
+      return res.status(403).json({ success: false, error: "Anak tidak terhubung ke akun orang tua ini" });
+    }
     created(res, await rescheduleService.create(req.body), "Permintaan reschedule berhasil dikirim");
   } catch (e) { next(e); }
 });

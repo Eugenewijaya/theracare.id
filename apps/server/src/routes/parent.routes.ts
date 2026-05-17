@@ -27,6 +27,14 @@ router.get("/me/profile", requireAuth, requireRole("parent"), async (req, res, n
 
 router.get("/:id", requireAuth, async (req, res, next) => {
   try {
+    if (req.user?.role === "parent") {
+      const currentParent = await parentService.getByUserId(req.user.id);
+      if (!currentParent || currentParent.id !== req.params.id) {
+        return res.status(403).json({ success: false, error: "Akses profil orang tua ditolak" });
+      }
+    } else if (req.user?.role !== "admin") {
+      return res.status(403).json({ success: false, error: "Akses profil orang tua ditolak" });
+    }
     const parent = await parentService.getById(req.params.id as string);
     if (!parent) return notFound(res);
     ok(res, parent);
@@ -51,9 +59,20 @@ router.patch("/:id/status", requireAuth, requireRole("admin"), async (req, res, 
   } catch (e) { next(e); }
 });
 
-router.patch("/:id", requireAuth, requireRole("admin"), async (req, res, next) => {
+router.patch("/:id", requireAuth, async (req, res, next) => {
   try {
-    const result = await parentService.update(req.params.id as string, req.body);
+    if (req.user?.role !== "admin") {
+      if (req.user?.role !== "parent") {
+        return res.status(403).json({ success: false, error: "Akses ditolak" });
+      }
+      const currentParent = await parentService.getByUserId(req.user.id);
+      if (!currentParent || currentParent.id !== req.params.id) {
+        return res.status(403).json({ success: false, error: "Akses profil orang tua ditolak" });
+      }
+      req.body = req.body || {};
+      delete req.body.status;
+    }
+    const result = await parentService.update(req.params.id as string, req.body || {});
     if (!result) return notFound(res);
     ok(res, result);
   } catch (e) { next(e); }

@@ -1,27 +1,32 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { childrenApi, sessionsApi } from '../../../shared/api/client';
 import { uploadImageFile } from '../../../shared/uploadImage';
+import { getCurrentParentProfile, getPrimaryChildId, PARENT_CHILD_SELECTION_EVENT } from '../../../shared/api/parentSession';
 
 export default function ChildProfile() {
     const [child, setChild] = useState(null);
     const [completedSessions, setCompletedSessions] = useState([]);
     const [uploadingPhoto, setUploadingPhoto] = useState(false);
     const [photoError, setPhotoError] = useState('');
+    const [loadError, setLoadError] = useState('');
     const photoInputRef = useRef(null);
 
     useEffect(() => {
-        const loadProfile = async () => {
-            const saved = sessionStorage.getItem('parent_user');
-            if (!saved) return;
-            const user = JSON.parse(saved);
-            const childId = user.childId;
-            const parentId = user.parentId;
+        const loadProfile = async (preferredChildId = '') => {
+            setLoadError('');
+            const user = await getCurrentParentProfile();
+            const childId = preferredChildId || getPrimaryChildId(user);
+            const parentId = user?.parentId;
             if (!childId && !parentId) return;
 
             try {
                 let targetChildId = childId;
                 if (!targetChildId && parentId) {
                     const cres = await childrenApi.getByParent(parentId);
+                    if (!cres.ok) {
+                        setLoadError(cres.data?.error || 'Gagal memuat data anak.');
+                        return;
+                    }
                     const children = cres.data?.data || [];
                     if (children.length > 0) {
                         targetChildId = children[0].id || children[0].nita;
@@ -30,22 +35,35 @@ export default function ChildProfile() {
                 
                 if (targetChildId) {
                     const res = await childrenApi.getById(targetChildId);
+                    if (!res.ok) {
+                        setLoadError(res.data?.error || 'Gagal memuat profil anak.');
+                        setChild(null);
+                        return;
+                    }
                     setChild(res.data?.data || null);
                     
                     const sessRes = await sessionsApi.getCompletedForChild(targetChildId);
-                    setCompletedSessions(sessRes.data?.data || []);
+                    if (sessRes.ok) {
+                        setCompletedSessions(sessRes.data?.data || []);
+                    } else {
+                        setCompletedSessions([]);
+                        setLoadError(sessRes.data?.error || 'Gagal memuat riwayat sesi anak.');
+                    }
                 }
             } catch(e) { console.error(e); }
         };
 
         loadProfile();
+        const handleChildChanged = (event) => loadProfile(event.detail?.childId || '');
+        window.addEventListener(PARENT_CHILD_SELECTION_EVENT, handleChildChanged);
+        return () => window.removeEventListener(PARENT_CHILD_SELECTION_EVENT, handleChildChanged);
     }, []);
 
     if (!child) {
         return (
             <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-white dark:bg-slate-900">
                 <span className="material-symbols-outlined text-5xl text-slate-300 dark:text-slate-600 mb-4 animate-pulse">child_care</span>
-                <h2 className="text-xl font-bold text-slate-600 dark:text-slate-300">Memuat Profil Anak...</h2>
+                <h2 className="text-xl font-bold text-slate-600 dark:text-slate-300">{loadError || 'Memuat Profil Anak...'}</h2>
             </div>
         );
     }

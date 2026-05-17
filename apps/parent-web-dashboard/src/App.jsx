@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from './components/Header';
 import { sessionsApi, childrenApi, adminApi } from '../../shared/api/client';
+import { getCurrentParentProfile, getPrimaryChildId, PARENT_CHILD_SELECTION_EVENT } from '../../shared/api/parentSession';
 
 // ── Helpers ────────────────────────────────────────────────────────
 const formatDate = (dateStr) => {
@@ -52,42 +53,65 @@ function App() {
     const [upcomingSessions, setUpcomingSessions] = useState([]);
     const [completedSessions, setCompletedSessions] = useState([]);
     const [clinicSettings, setClinicSettings] = useState({});
+    const [loadError, setLoadError] = useState('');
 
     useEffect(() => {
-        const fetchData = async () => {
-            const saved = sessionStorage.getItem('parent_user');
-            if (!saved) return;
-            const user = JSON.parse(saved);
+        const fetchData = async (preferredChildId = '') => {
+            setLoadError('');
+            const user = await getCurrentParentProfile();
+            if (!user?.parentId) {
+                setLoadError('Sesi parent tidak ditemukan. Silakan login ulang.');
+                return;
+            }
             setParentUser(user);
 
-            const childId  = user.childId;
             const parentId = user.parentId;
+            let childId = preferredChildId || getPrimaryChildId(user);
+            const childRes = await childrenApi.getByParent(parentId);
+            if (!childRes.ok) {
+                setLoadError(childRes.data?.error || 'Gagal memuat data anak.');
+                setChild(null);
+                setUpcomingSessions([]);
+                setCompletedSessions([]);
+                return;
+            }
+
+            const children = childRes.data?.data || [];
+            const activeChild = children.find(c => c.id === childId || c.nita === childId) || children[0] || null;
+            childId = activeChild?.id || activeChild?.nita || '';
+            setChild(activeChild);
 
             if (childId) {
-                try {
-                    const upRes = await sessionsApi.getUpcomingForChild(childId);
+                const upRes = await sessionsApi.getUpcomingForChild(childId);
+                if (upRes.ok) {
                     setUpcomingSessions(upRes.data?.data || []);
-                    const compRes = await sessionsApi.getCompletedForChild(childId);
+                } else {
+                    setUpcomingSessions([]);
+                    setLoadError(upRes.data?.error || 'Gagal memuat jadwal anak.');
+                }
+
+                const compRes = await sessionsApi.getCompletedForChild(childId);
+                if (compRes.ok) {
                     setCompletedSessions(compRes.data?.data || []);
-                } catch(e) { console.error(e); }
+                } else {
+                    setCompletedSessions([]);
+                    setLoadError(compRes.data?.error || 'Gagal memuat riwayat sesi anak.');
+                }
+            } else {
+                setUpcomingSessions([]);
+                setCompletedSessions([]);
             }
 
-            if (parentId) {
-                try {
-                    const childRes = await childrenApi.getByParent(parentId);
-                    const children = childRes.data?.data || [];
-                    const activeChild = children.find(c => c.nita === childId) || children[0] || null;
-                    setChild(activeChild);
-                } catch(e) { console.error(e); }
-            }
-
-            try {
-                const setRes = await adminApi.getSettings();
+            const setRes = await adminApi.getPublicSettings();
+            if (setRes.ok) {
                 setClinicSettings(setRes.data?.data || {});
-            } catch(e) { console.error(e); }
+            }
         };
 
         fetchData();
+        const handleChildChanged = (event) => fetchData(event.detail?.childId || '');
+        window.addEventListener(PARENT_CHILD_SELECTION_EVENT, handleChildChanged);
+        return () => window.removeEventListener(PARENT_CHILD_SELECTION_EVENT, handleChildChanged);
     }, []);
 
     const nextSession    = upcomingSessions[0] || null;
@@ -95,6 +119,7 @@ function App() {
     const childName      = parentUser?.childName || child?.name || 'your child';
     const therapyPrograms = child?.therapyPrograms || [];
     const recentNotes    = completedSessions.slice(0, 2);
+    const whatsappNumber = String(clinicSettings.adminWhatsApp || '').replace(/\D/g, '');
 
     // Compute milestone chart data from completed sessions grouped by month
     const milestoneChartData = (() => {
@@ -122,6 +147,11 @@ function App() {
 
                 <div className="flex-1 p-4 sm:p-6 lg:p-8">
                     <div className="max-w-7xl mx-auto space-y-6">
+                        {loadError && (
+                            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 dark:border-amber-800/50 dark:bg-amber-900/20 dark:text-amber-300">
+                                {loadError}
+                            </div>
+                        )}
 
                         {/* ── Welcome Section ───────────────────────────────── */}
                         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 bg-surface-light dark:bg-surface-dark p-6 rounded-2xl shadow-sm border border-border-light dark:border-border-dark">
@@ -133,14 +163,26 @@ function App() {
                                 </p>
                             </div>
                             <div className="flex items-center gap-3 w-full sm:w-auto">
-                                <a
-                                    href={`https://wa.me/${clinicSettings.adminWhatsApp}`}
-                                    target="_blank" rel="noopener noreferrer"
-                                    className="flex items-center justify-center gap-2 text-sm font-semibold text-green-700 dark:text-green-400 bg-green-100 dark:bg-green-900/30 px-4 py-2 rounded-lg hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors flex-1 sm:flex-none"
-                                >
-                                    <span className="material-symbols-outlined text-sm">forum</span>
-                                    Hubungi Admin WA
-                                </a>
+                                {whatsappNumber ? (
+                                    <a
+                                        href={`https://wa.me/${whatsappNumber}`}
+                                        target="_blank" rel="noopener noreferrer"
+                                        className="flex items-center justify-center gap-2 text-sm font-semibold text-green-700 dark:text-green-400 bg-green-100 dark:bg-green-900/30 px-4 py-2 rounded-lg hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors flex-1 sm:flex-none"
+                                    >
+                                        <span className="material-symbols-outlined text-sm">forum</span>
+                                        Hubungi Admin WA
+                                    </a>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        disabled
+                                        className="flex items-center justify-center gap-2 text-sm font-semibold text-slate-400 bg-slate-100 dark:bg-slate-800 px-4 py-2 rounded-lg cursor-not-allowed flex-1 sm:flex-none"
+                                        title="Nomor WhatsApp admin belum diatur oleh admin klinik."
+                                    >
+                                        <span className="material-symbols-outlined text-sm">forum</span>
+                                        Admin WA belum tersedia
+                                    </button>
+                                )}
                                 <button
                                     onClick={() => navigate('/reports')}
                                     className="flex items-center justify-center gap-2 text-sm font-semibold text-primary bg-primary/10 px-4 py-2 rounded-lg hover:bg-primary/20 transition-colors flex-1 sm:flex-none"
@@ -204,10 +246,10 @@ function App() {
                                             </button>
                                             <button 
                                                 className="flex-1 py-2.5 bg-background-light dark:bg-background-dark border border-border-light dark:border-border-dark text-text-secondary-light dark:text-text-secondary-dark text-sm font-semibold rounded-lg opacity-70 cursor-not-allowed flex items-center justify-center gap-1"
-                                                title="Seluruh layanan saat ini dilakukan offline (Onsite). Fitur Teletherapy segera hadir!"
+                                                title="Seluruh layanan saat ini dilakukan onsite berdasarkan jadwal klinik."
                                             >
                                                 <span className="material-symbols-outlined text-[16px]">videocam_off</span>
-                                                Online (Coming Soon)
+                                                Onsite Only
                                             </button>
                                         </div>
                                     </>

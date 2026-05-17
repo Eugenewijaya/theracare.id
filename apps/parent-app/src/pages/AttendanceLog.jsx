@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { childrenApi, adminApi, sessionsApi, therapistsApi } from '../../../shared/api/client';
+import { getCurrentParentProfile, getPrimaryChildId, PARENT_CHILD_SELECTION_EVENT } from '../../../shared/api/parentSession';
 
 // Calculate end time from startTime + duration string (e.g. "09:00" + "60 mins")
 const calculateEndTime = (startTime, duration) => {
@@ -18,20 +19,24 @@ export default function AttendanceLog() {
     const [selectedProgram, setSelectedProgram] = useState('all');
     const [programs, setPrograms] = useState([]);
     const [attendanceRate, setAttendanceRate] = useState(0);
+    const [loadError, setLoadError] = useState('');
 
     useEffect(() => {
-        const loadData = async () => {
-            const saved = sessionStorage.getItem('parent_user');
-            if (!saved) return;
-            const user = JSON.parse(saved);
-            const childId = user.childId;
-            const parentId = user.parentId;
+        const loadData = async (preferredChildId = '') => {
+            setLoadError('');
+            const user = await getCurrentParentProfile();
+            const childId = preferredChildId || getPrimaryChildId(user);
+            const parentId = user?.parentId;
             if (!childId && !parentId) return;
 
             try {
                 let targetChildId = childId;
                 if (!targetChildId && parentId) {
                     const cres = await childrenApi.getByParent(parentId);
+                    if (!cres.ok) {
+                        setLoadError(cres.data?.error || 'Gagal memuat daftar anak.');
+                        return;
+                    }
                     const childrenList = cres.data?.data || [];
                     if (childrenList.length > 0) {
                         targetChildId = childrenList[0].id || childrenList[0].nita;
@@ -40,16 +45,26 @@ export default function AttendanceLog() {
 
                 if (targetChildId) {
                     const childRes = await childrenApi.getById(targetChildId);
+                    if (!childRes.ok) {
+                        setLoadError(childRes.data?.error || 'Gagal memuat profil anak.');
+                        setChild(null);
+                        return;
+                    }
                     setChild(childRes.data?.data || null);
                     
                     const progsRes = await adminApi.getPrograms();
-                    setPrograms(progsRes.data?.data || []);
+                    setPrograms(progsRes.ok ? (progsRes.data?.data || []) : []);
 
                     const sessionsRes = await sessionsApi.getCompletedForChild(targetChildId);
+                    if (!sessionsRes.ok) {
+                        setLoadError(sessionsRes.data?.error || 'Gagal memuat riwayat kehadiran.');
+                        setAttendanceLog([]);
+                        return;
+                    }
                     const childSessions = sessionsRes.data?.data || [];
                     
                     const therapistsRes = await therapistsApi.getAll();
-                    const therapistsList = therapistsRes.data?.data || [];
+                    const therapistsList = therapistsRes.ok ? (therapistsRes.data?.data || []) : [];
 
                     const logs = childSessions.map(s => {
                         let status = 'rescheduled';
@@ -86,6 +101,9 @@ export default function AttendanceLog() {
         };
 
         loadData();
+        const handleChildChanged = (event) => loadData(event.detail?.childId || '');
+        window.addEventListener(PARENT_CHILD_SELECTION_EVENT, handleChildChanged);
+        return () => window.removeEventListener(PARENT_CHILD_SELECTION_EVENT, handleChildChanged);
     }, []);
 
     const getStatusStyle = (status) => {
@@ -153,7 +171,7 @@ export default function AttendanceLog() {
         <div className="flex h-full items-center justify-center bg-slate-50 dark:bg-slate-900">
             <div className="flex flex-col items-center gap-4">
                 <span className="material-symbols-outlined text-4xl text-sky-400 animate-spin">autorenew</span>
-                <p className="text-sm font-semibold text-slate-500">Memuat data kehadiran...</p>
+                <p className="text-sm font-semibold text-slate-500">{loadError || 'Memuat data kehadiran...'}</p>
             </div>
         </div>
     );

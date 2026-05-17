@@ -3,6 +3,7 @@ import Header from './components/Header';
 import { sessionsApi, reportsApi, adminApi, childrenApi } from '../../shared/api/client';
 import { useClinicSettings } from '../../shared/clinicSettings';
 import { openReportPdf } from '../../shared/reportPdf';
+import { getCurrentParentProfile, getPrimaryChildId, PARENT_CHILD_SELECTION_EVENT, setActiveParentChild } from '../../shared/api/parentSession';
 
 // ── Constants ─────────────────────────────────────────────────────────
 const SCALE_MAP = { 1: 'Sangat Kurang', 2: 'Kurang', 3: 'Cukup', 4: 'Baik', 5: 'Sangat Baik' };
@@ -338,44 +339,47 @@ function App() {
 
     const typeColors = React.useMemo(() => buildTypeColors(programsList), [programsList]);
 
-    const loadReports = async () => {
-        const saved = sessionStorage.getItem('parent_user');
-        let childId = selectedChild;
+    const loadReports = async (preferredChildId = selectedChild) => {
+        const user = await getCurrentParentProfile();
+        let childId = preferredChildId || getPrimaryChildId(user);
         let availableChildren = childrenList;
 
-        if (saved && !childId) {
-            try {
-                const user = JSON.parse(saved);
-                let children = [];
-                if (user.parentId) {
-                    const childRes = await childrenApi.getByParent(user.parentId);
-                    children = childRes.data?.data || [];
-                } else if (user.childId) {
-                    const childRes = await childrenApi.getById(user.childId);
-                    children = childRes.data?.data ? [childRes.data.data] : [];
-                }
-                availableChildren = children;
-                
-                setChildrenList(children);
-                const pRes = await adminApi.getPrograms();
-                const progList = pRes.data?.data || [];
-                setProgramsList(progList);
-                if (children.length > 0) {
-                    const preferredChild = children.find(c => c.id === user.childId || c.nita === user.childId) || children[0];
-                    childId = preferredChild.id || preferredChild.nita;
-                    setSelectedChild(childId);
-                }
-            } catch { /* ignore */ }
-        } else {
-            try {
-                const pRes = await adminApi.getPrograms();
-                setProgramsList(pRes.data?.data || []);
-            } catch(e){}
+        if (!user?.parentId) {
+            setToast('Sesi parent tidak ditemukan. Silakan login ulang.');
+            setDailyReports([]);
+            setPeriodicReports([]);
+            return;
         }
 
-        if (!childId) return;
+        const childRes = await childrenApi.getByParent(user.parentId);
+        if (!childRes.ok) {
+            setToast(childRes.data?.error || 'Gagal memuat daftar anak.');
+            setChildrenList([]);
+            setDailyReports([]);
+            setPeriodicReports([]);
+            return;
+        }
 
-        const savedUser = saved ? (() => { try { return JSON.parse(saved); } catch { return {}; } })() : {};
+        const children = childRes.data?.data || [];
+        availableChildren = children;
+        setChildrenList(children);
+        const preferredChild = children.find(c => c.id === childId || c.nita === childId) || children[0] || null;
+        childId = preferredChild?.id || preferredChild?.nita || '';
+        if (childId && childId !== selectedChild) setSelectedChild(childId);
+
+        const pRes = await adminApi.getPrograms();
+        const progList = pRes.ok ? (pRes.data?.data || []) : [];
+        setProgramsList(progList);
+
+        if (preferredChild) {
+            setActiveParentChild(preferredChild, { ...user, children }, { notify: false });
+        }
+
+        if (!childId) {
+            setDailyReports([]);
+            setPeriodicReports([]);
+            return;
+        }
 
         try {
             const rRes = await reportsApi.getForChild(childId);
@@ -388,14 +392,19 @@ function App() {
             const visibleDailyReports = visibleReports.filter(report => report.type === 'harian');
 
             const sRes = await sessionsApi.getCompletedForChild(childId);
+            if (!sRes.ok) {
+                setToast(sRes.data?.error || 'Gagal memuat sesi selesai anak.');
+                setDailyReports([]);
+                setPeriodicReports([]);
+                return;
+            }
             const sessions = sRes.data?.data || [];
             const sessionMap = new Map(sessions.map(session => [session.id, session]));
             
-            const pRes = await adminApi.getPrograms();
-            const allProg = pRes.data?.data || [];
+            const allProg = progList;
             const childProfile =
                 availableChildren.find(c => c.id === childId || c.nita === childId) ||
-                (savedUser.children || []).find(c => c.id === childId || c.nita === childId);
+                (user.children || []).find(c => c.id === childId || c.nita === childId);
 
             const mapped = await Promise.all(visibleDailyReports.map(async savedReport => {
                 const s = savedReport.sessionId ? sessionMap.get(savedReport.sessionId) : null;
@@ -412,7 +421,7 @@ function App() {
                     sessionId:    savedReport.sessionId || s?.id || '',
                     childId,
                     childName:    savedReport.childName || s?.child?.name || childProfile?.name || 'Anak',
-                    parentId:     savedUser.parentId || childProfile?.parentId || s?.child?.parentId || '',
+                    parentId:     user.parentId || childProfile?.parentId || s?.child?.parentId || '',
                     date:         savedReport.date || s?.date,
                     type:         guessTherapyType(savedReport.sessionFocus || savedReport.program || s?.focus, allProg),
                     title:        savedReport.sessionFocus || s?.focus || 'Laporan Harian Terapi',
@@ -439,9 +448,10 @@ function App() {
 
     useEffect(() => {
         loadReports();
-        window.addEventListener('parentChildSelectionChanged', loadReports);
-        return () => window.removeEventListener('parentChildSelectionChanged', loadReports);
-    }, [selectedChild]);
+        const handleChildChanged = (event) => loadReports(event.detail?.childId || '');
+        window.addEventListener(PARENT_CHILD_SELECTION_EVENT, handleChildChanged);
+        return () => window.removeEventListener(PARENT_CHILD_SELECTION_EVENT, handleChildChanged);
+    }, []);
 
     // Filtered daily
     const filtered = dailyReports.filter(r => {
@@ -515,7 +525,13 @@ function App() {
                                 <span className="text-sm font-bold text-slate-500">Pilih Anak:</span>
                                 <select
                                     value={selectedChild}
-                                    onChange={e => setSelectedChild(e.target.value)}
+                                    onChange={e => {
+                                        const childId = e.target.value;
+                                        const selected = childrenList.find(child => child.id === childId || child.nita === childId);
+                                        setSelectedChild(childId);
+                                        if (selected) setActiveParentChild(selected);
+                                        else loadReports(childId);
+                                    }}
                                     className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg px-3 py-1.5 text-sm font-bold focus:ring-2 focus:ring-sky-500 appearance-none"
                                 >
                                     <option value="" disabled>Pilih profil...</option>

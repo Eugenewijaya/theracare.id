@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { parentsApi } from '../../../shared/api/client';
+import { getCurrentParentProfile, normalizeParentProfile, publishParentSession } from '../../../shared/api/parentSession';
 
 export default function Settings() {
     const [theme, setTheme] = useState('light');
-    const [notifEmail, setNotifEmail] = useState(true);
-    const [notifSms, setNotifSms] = useState(false);
-    const [parentData, setParentData] = useState({ name: '', email: '', phone: '' });
+    const [notifEmail] = useState(false);
+    const [notifSms] = useState(false);
+    const [parentData, setParentData] = useState({ id: '', parentId: '', name: '', email: '', phone: '' });
+    const [saving, setSaving] = useState(false);
     
     const [toast, setToast] = useState(null);
 
@@ -13,23 +15,15 @@ export default function Settings() {
         if (document.documentElement.classList.contains('dark')) setTheme('dark');
         
         const load = async () => {
-            const saved = sessionStorage.getItem('parent_user');
-            if (saved) {
-                try {
-                    const user = JSON.parse(saved);
-                    const res = await parentsApi.getById(user.parentId);
-                    const parent = res.data?.data;
-                    if (parent) {
-                        setParentData({
-                            name: parent.name || user.name || '',
-                            email: parent.email || '',
-                            phone: parent.phone || '',
-                        });
-                    } else if (user.name) {
-                        setParentData(prev => ({ ...prev, name: user.name }));
-                    }
-                } catch (e) {}
-            }
+            const user = await getCurrentParentProfile();
+            if (!user?.parentId) return;
+            setParentData({
+                id: user.id,
+                parentId: user.parentId,
+                name: user.name || '',
+                email: user.email || '',
+                phone: user.phone || '',
+            });
         };
         load();
     }, []);
@@ -40,9 +34,39 @@ export default function Settings() {
         setTheme(isDark ? 'dark' : 'light');
     };
     
-    const handleSave = (e) => {
+    const handleSave = async (e) => {
         e.preventDefault();
-        setToast('Pengaturan berhasil disimpan!');
+        const parentId = parentData.parentId || parentData.id;
+        if (!parentId) {
+            setToast('Profil parent belum siap. Silakan login ulang.');
+            setTimeout(() => setToast(null), 3000);
+            return;
+        }
+
+        setSaving(true);
+        const res = await parentsApi.update(parentId, {
+            name: parentData.name.trim(),
+            email: parentData.email.trim(),
+            phone: parentData.phone.trim(),
+        });
+        setSaving(false);
+
+        if (!res.ok) {
+            setToast(res.data?.error || 'Profil gagal disimpan.');
+            setTimeout(() => setToast(null), 3000);
+            return;
+        }
+
+        const updated = normalizeParentProfile(res.data?.data || parentData);
+        setParentData({
+            id: updated.id,
+            parentId: updated.parentId,
+            name: updated.name || '',
+            email: updated.email || '',
+            phone: updated.phone || '',
+        });
+        publishParentSession(updated);
+        setToast('Profil akun berhasil disimpan.');
         setTimeout(() => setToast(null), 3000);
     };
 
@@ -119,23 +143,23 @@ export default function Settings() {
                                 </h2>
                             </div>
                             <div className="p-6 flex flex-col gap-4">
-                                <label className="flex items-center justify-between cursor-pointer p-4 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+                                <label className="flex items-center justify-between cursor-not-allowed p-4 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50/60 dark:bg-slate-900/30 opacity-80">
                                     <div>
                                         <p className="text-sm font-bold text-slate-900 dark:text-white mb-0.5">Notifikasi Email</p>
-                                        <p className="text-xs text-slate-500 dark:text-slate-400">Terima pengingat jadwal dan laporan ke email.</p>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400">Dalam pengembangan. Email belum diaktifkan sampai domain pengiriman siap.</p>
                                     </div>
                                     <div className={`w-12 h-6 rounded-full transition-colors relative ${notifEmail ? 'bg-sky-500' : 'bg-slate-300 dark:bg-slate-600'}`}>
-                                        <input type="checkbox" className="sr-only" checked={notifEmail} onChange={() => setNotifEmail(!notifEmail)} />
+                                        <input type="checkbox" className="sr-only" checked={notifEmail} disabled readOnly />
                                         <div className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform ${notifEmail ? 'translate-x-6' : 'translate-x-0'}`}></div>
                                     </div>
                                 </label>
-                                <label className="flex items-center justify-between cursor-pointer p-4 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+                                <label className="flex items-center justify-between cursor-not-allowed p-4 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50/60 dark:bg-slate-900/30 opacity-80">
                                     <div>
                                         <p className="text-sm font-bold text-slate-900 dark:text-white mb-0.5">Notifikasi SMS / WhatsApp</p>
-                                        <p className="text-xs text-slate-500 dark:text-slate-400">Pemberitahuan darurat atau penjadwalan batal.</p>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400">Dalam pengembangan. Notifikasi aktif saat ini dikirim melalui pusat notifikasi aplikasi.</p>
                                     </div>
                                     <div className={`w-12 h-6 rounded-full transition-colors relative ${notifSms ? 'bg-sky-500' : 'bg-slate-300 dark:bg-slate-600'}`}>
-                                        <input type="checkbox" className="sr-only" checked={notifSms} onChange={() => setNotifSms(!notifSms)} />
+                                        <input type="checkbox" className="sr-only" checked={notifSms} disabled readOnly />
                                         <div className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform ${notifSms ? 'translate-x-6' : 'translate-x-0'}`}></div>
                                     </div>
                                 </label>
@@ -174,10 +198,11 @@ export default function Settings() {
                         <div className="flex justify-end mb-10">
                             <button 
                                 type="submit" 
-                                className="px-8 py-3 bg-gradient-to-r from-sky-500 to-cyan-500 hover:from-sky-600 hover:to-cyan-600 text-white font-bold rounded-xl shadow-lg shadow-sky-500/20 hover:shadow-sky-500/40 transition-all flex items-center gap-2"
+                                disabled={saving}
+                                className="px-8 py-3 bg-gradient-to-r from-sky-500 to-cyan-500 hover:from-sky-600 hover:to-cyan-600 text-white font-bold rounded-xl shadow-lg shadow-sky-500/20 hover:shadow-sky-500/40 transition-all flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-60"
                             >
                                 <span className="material-symbols-outlined text-[20px]">save</span>
-                                Simpan Perubahan
+                                {saving ? 'Menyimpan...' : 'Simpan Perubahan'}
                             </button>
                         </div>
                     </form>

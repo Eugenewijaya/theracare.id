@@ -12,16 +12,23 @@ export default function Announcements() {
     const [notificationMap, setNotificationMap] = useState({});
     const [unreadTotal, setUnreadTotal] = useState(0);
     const [expanded, setExpanded] = useState(null);
+    const [error, setError] = useState('');
 
     useEffect(() => {
         const load = async () => {
+            setError('');
             try {
                 const [res, notifRes] = await Promise.all([
                     adminApi.getAnnouncementsForRole('parent'),
                     notificationsApi.getAll(),
                 ]);
-                setAnnouncements(res.data?.data || []);
-                const notifs = notifRes.data?.data || [];
+                if (!res.ok) {
+                    setError(res.data?.error || 'Gagal memuat pengumuman.');
+                    setAnnouncements([]);
+                } else {
+                    setAnnouncements(res.data?.data || []);
+                }
+                const notifs = notifRes.ok ? (notifRes.data?.data || []) : [];
                 const byRelated = {};
                 notifs.forEach(n => {
                     if (n.relatedId) byRelated[n.relatedId] = n;
@@ -36,7 +43,8 @@ export default function Announcements() {
     const markNotificationRead = async (notificationId) => {
         if (!notificationId) return;
         try {
-            await notificationsApi.markRead(notificationId);
+            const res = await notificationsApi.markRead(notificationId);
+            if (!res.ok) return;
             setNotificationMap(prev => {
                 const next = {};
                 Object.entries(prev).forEach(([key, value]) => {
@@ -61,7 +69,8 @@ export default function Announcements() {
 
     const markAllRead = async () => {
         try {
-            await notificationsApi.markAllRead();
+            const res = await notificationsApi.markAllRead();
+            if (!res.ok) return;
             setNotificationMap(prev => Object.fromEntries(Object.entries(prev).map(([key, value]) => [key, { ...value, isRead: true }])));
             setUnreadTotal(0);
             window.dispatchEvent(new Event('notificationsUpdated'));
@@ -94,6 +103,11 @@ export default function Announcements() {
 
             <main className="flex-1 overflow-y-auto p-4 md:p-8">
                 <div className="max-w-3xl mx-auto flex flex-col gap-4">
+                    {error && (
+                        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
+                            {error}
+                        </div>
+                    )}
                     {announcements.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-20 gap-4 text-center">
                             <div className="w-20 h-20 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center">

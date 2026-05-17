@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { requireAuth, requireRole } from "../middleware/auth.middleware.js";
 import { childService } from "../services/child.service.js";
+import { parentService } from "../services/parent.service.js";
 import { ok, created, notFound, badRequest, conflict } from "../utils/response.js";
 
 const router = Router();
@@ -10,13 +11,24 @@ router.get("/", requireAuth, requireRole("admin"), async (req, res, next) => {
 });
 
 router.get("/by-parent/:parentId", requireAuth, async (req, res, next) => {
-  try { ok(res, await childService.getByParent(req.params.parentId as string)); } catch (e) { next(e); }
+  try {
+    if (req.user?.role === "parent") {
+      const parent = await parentService.getByUserId(req.user.id);
+      if (!parent || parent.id !== req.params.parentId) {
+        return res.status(403).json({ success: false, error: "Akses data anak ditolak" });
+      }
+    }
+    ok(res, await childService.getByParent(req.params.parentId as string));
+  } catch (e) { next(e); }
 });
 
 router.get("/:id", requireAuth, async (req, res, next) => {
   try {
     const child = await childService.getById(req.params.id as string);
     if (!child) return notFound(res);
+    if (req.user?.role === "parent" && child.parent?.userId !== req.user.id) {
+      return res.status(403).json({ success: false, error: "Akses data anak ditolak" });
+    }
     ok(res, child);
   } catch (e) { next(e); }
 });

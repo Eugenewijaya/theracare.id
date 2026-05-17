@@ -1,19 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { childrenApi } from '../../../shared/api/client';
+import { getCurrentParentProfile } from '../../../shared/api/parentSession';
 
 export default function ProgressSummary() {
     const [children, setChildren] = useState([]);
+    const [loadError, setLoadError] = useState('');
 
     useEffect(() => {
         const load = async () => {
-            const saved = sessionStorage.getItem('parent_user');
-            if (!saved) return;
-            const user = JSON.parse(saved);
-            const parentId = user.parentId;
+            setLoadError('');
+            const user = await getCurrentParentProfile();
+            const parentId = user?.parentId;
             if (!parentId) return;
 
             try {
                 const res = await childrenApi.getByParent(parentId);
+                if (!res.ok) {
+                    setLoadError(res.data?.error || 'Gagal memuat data progres anak.');
+                    setChildren([]);
+                    return;
+                }
                 setChildren(res.data?.data || []);
             } catch(e) {}
         };
@@ -51,7 +57,7 @@ export default function ProgressSummary() {
                             {children.length === 0 ? (
                                 <div className="text-center py-10 text-slate-500">
                                     <span className="material-symbols-outlined text-4xl mb-2">child_friendly</span>
-                                    <p>Belum ada anak yang terdaftar.</p>
+                                    <p>{loadError || 'Belum ada anak yang terdaftar.'}</p>
                                 </div>
                             ) : (
                                 children.map(child => (

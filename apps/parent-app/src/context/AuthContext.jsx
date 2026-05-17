@@ -1,55 +1,22 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { authApi, parentsApi } from '../../../shared/api/client';
+import {
+  logoutParent,
+  normalizeParentProfile,
+  publishParentSession,
+} from '../../../shared/api/parentSession';
 
 const AuthContext = createContext(null);
-const STORAGE_KEY = 'parent_user';
-
-function readStoredUser() {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY) || sessionStorage.getItem(STORAGE_KEY);
-    return saved ? JSON.parse(saved) : null;
-  } catch {
-    return null;
-  }
-}
-
-function storeUser(userData, remember = true) {
-  try {
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(userData));
-    if (remember) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(userData));
-    } else {
-      localStorage.removeItem(STORAGE_KEY);
-    }
-  } catch {}
-}
-
-function clearStoredUser() {
-  try {
-    localStorage.removeItem(STORAGE_KEY);
-    sessionStorage.removeItem(STORAGE_KEY);
-  } catch {}
-}
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(readStoredUser);
+  const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const applyParent = (parent, remember = true) => {
-    const userData = {
-      id: parent.id,
-      parentId: parent.parentId || parent.id,
-      userId: parent.userId,
-      name: parent.name,
-      role: 'parent',
-      avatar: parent.avatar || parent.user?.image || '',
-      phone: parent.phone,
-      email: parent.email,
-      children: parent.children || [],
-    };
+  const applyParent = (parent) => {
+    const userData = normalizeParentProfile(parent);
     setUser(userData);
-    storeUser(userData, remember);
+    publishParentSession(userData);
     return userData;
   };
 
@@ -63,10 +30,20 @@ export function AuthProvider({ children }) {
           const profileRes = await parentsApi.getMe();
           if (profileRes.ok && profileRes.data?.data) {
             applyParent(profileRes.data.data);
+          } else {
+            setUser(null);
+            publishParentSession(null);
           }
         } else {
           setUser(null);
-          clearStoredUser();
+          publishParentSession(null);
+        }
+      } catch (err) {
+        console.error(err);
+        if (!cancelled) {
+          setError('Gagal memverifikasi sesi');
+          setUser(null);
+          publishParentSession(null);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -96,7 +73,7 @@ export function AuthProvider({ children }) {
       if (res.ok) {
         const profileRes = await parentsApi.getMe();
         if (profileRes.ok && profileRes.data?.data) {
-          applyParent(profileRes.data.data, rememberMe);
+          applyParent(profileRes.data.data);
           return true;
         }
       }
@@ -110,11 +87,8 @@ export function AuthProvider({ children }) {
   };
 
   const logout = async () => {
-    try {
-      await authApi.signOut();
-    } catch(e) {}
+    await logoutParent();
     setUser(null);
-    clearStoredUser();
   };
 
   return (
