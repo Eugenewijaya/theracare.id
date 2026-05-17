@@ -60,9 +60,19 @@ export function clearPortalUser(role) {
   } catch {}
 }
 
+export function isPortalUserRemembered(role) {
+  const keys = [LEGACY_KEYS[role], modernKey(role)].filter(Boolean);
+  try {
+    return keys.some((key) => !!localStorage.getItem(key));
+  } catch {
+    return false;
+  }
+}
+
 export const readParentUser = () => readPortalUser('parent');
 export const readTherapistUser = () => readPortalUser('therapist');
 export const storeParentUser = (user, remember) => storePortalUser('parent', user, remember);
 export const storeTherapistUser = (user, remember) => storePortalUser('therapist', user, remember);
 export const clearParentUser = () => clearPortalUser('parent');
 export const clearTherapistUser = () => clearPortalUser('therapist');
+export const isParentUserRemembered = () => isPortalUserRemembered('parent');

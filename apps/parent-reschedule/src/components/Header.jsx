@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authApi, childrenApi, notificationsApi } from '../../../shared/api/client';
-import { clearParentUser, readParentUser, storeParentUser } from '../../../shared/sessionIdentity';
+import { clearParentUser, isParentUserRemembered, readParentUser, storeParentUser } from '../../../shared/sessionIdentity';
 import PortalProfileMenu from '../../../shared/ui/PortalProfileMenu';
 
 const Header = ({ title = "Reschedule", onLogout }) => {
@@ -62,13 +62,14 @@ const Header = ({ title = "Reschedule", onLogout }) => {
 
     const handleChildChange = (e) => {
         const childId = e.target.value;
+        setActiveChildId(childId);
         const user = readParentUser();
         if (user) {
             const selected = children.find(c => c.nita === childId);
             if (selected) {
                 user.childId = selected.nita;
                 user.childName = selected.name;
-                storeParentUser(user, !!localStorage.getItem('parent_user'));
+                storeParentUser(user, isParentUserRemembered());
                 window.dispatchEvent(new CustomEvent('parentChildSelectionChanged'));
             }
         }

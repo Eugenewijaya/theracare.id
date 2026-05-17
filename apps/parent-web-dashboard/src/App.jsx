@@ -193,6 +193,8 @@ function App({ onLogout }) {
         const max = Math.max(...last6.map(b => b.count), 1);
         return last6.map(b => ({ ...b, pct: Math.round((b.count / max) * 100) }));
     })();
+    const adminWhatsApp = String(clinicSettings.adminWhatsApp || '').replace(/\D/g, '');
+    const canContactAdmin = adminWhatsApp.length >= 8;
 
     return (
         <div className="flex flex-col w-full bg-background-light dark:bg-background-dark font-sans text-slate-900 dark:text-slate-100 min-h-full">
@@ -212,14 +214,26 @@ function App({ onLogout }) {
                                 </p>
                             </div>
                             <div className="flex items-center gap-3 w-full sm:w-auto">
-                                <a
-                                    href={`https://wa.me/${clinicSettings.adminWhatsApp}`}
-                                    target="_blank" rel="noopener noreferrer"
-                                    className="flex items-center justify-center gap-2 text-sm font-semibold text-green-700 dark:text-green-400 bg-green-100 dark:bg-green-900/30 px-4 py-2 rounded-lg hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors flex-1 sm:flex-none"
-                                >
-                                    <span className="material-symbols-outlined text-sm">forum</span>
-                                    Hubungi Admin WA
-                                </a>
+                                {canContactAdmin ? (
+                                    <a
+                                        href={`https://wa.me/${adminWhatsApp}`}
+                                        target="_blank" rel="noopener noreferrer"
+                                        className="flex items-center justify-center gap-2 text-sm font-semibold text-green-700 dark:text-green-400 bg-green-100 dark:bg-green-900/30 px-4 py-2 rounded-lg hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors flex-1 sm:flex-none"
+                                    >
+                                        <span className="material-symbols-outlined text-sm">forum</span>
+                                        Hubungi Admin WA
+                                    </a>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        disabled
+                                        title="Nomor WhatsApp admin belum dikonfigurasi di pengaturan klinik."
+                                        className="flex items-center justify-center gap-2 text-sm font-semibold text-slate-400 bg-slate-100 dark:bg-slate-800 px-4 py-2 rounded-lg cursor-not-allowed flex-1 sm:flex-none"
+                                    >
+                                        <span className="material-symbols-outlined text-sm">forum</span>
+                                        Admin WA belum aktif
+                                    </button>
+                                )}
                                 <button
                                     onClick={() => navigate('/reports')}
                                     className="flex items-center justify-center gap-2 text-sm font-semibold text-primary bg-primary/10 px-4 py-2 rounded-lg hover:bg-primary/20 transition-colors flex-1 sm:flex-none"
@@ -287,13 +301,10 @@ function App({ onLogout }) {
                                             <button onClick={() => navigate('/reschedule')} className="flex-1 py-2.5 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark text-sm font-semibold rounded-lg hover:bg-background-light dark:hover:bg-background-dark transition-colors">
                                                 Reschedule
                                             </button>
-                                            <button 
-                                                className="flex-1 py-2.5 bg-background-light dark:bg-background-dark border border-border-light dark:border-border-dark text-text-secondary-light dark:text-text-secondary-dark text-sm font-semibold rounded-lg opacity-70 cursor-not-allowed flex items-center justify-center gap-1"
-                                                title="Seluruh layanan saat ini dilakukan offline (Onsite). Fitur Teletherapy segera hadir!"
-                                            >
-                                                <span className="material-symbols-outlined text-[16px]">videocam_off</span>
-                                                Online (Coming Soon)
-                                            </button>
+                                            <div className="flex-1 py-2.5 bg-background-light dark:bg-background-dark border border-border-light dark:border-border-dark text-text-secondary-light dark:text-text-secondary-dark text-sm font-semibold rounded-lg flex items-center justify-center gap-1">
+                                                <span className="material-symbols-outlined text-[16px]">location_on</span>
+                                                Sesi onsite
+                                            </div>
                                         </div>
                                     </>
                                 ) : (

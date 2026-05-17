@@ -1,31 +1,31 @@
-import React from 'react';
-import Header from './components/Header';
-import WelcomeHeader from './components/WelcomeHeader';
-import ActivePrograms from './components/ActivePrograms';
-import LatestReports from './components/LatestReports';
-import UpcomingSchedule from './components/UpcomingSchedule';
-import QuickActions from './components/QuickActions';
+import React, { lazy, Suspense } from 'react';
+import { BrowserRouter, Route, Routes } from 'react-router-dom';
 
-function App() {
+const ParentWebDashboard = lazy(() => import('../../parent-web-dashboard/src/App.jsx'));
+const ParentReportsArchive = lazy(() => import('../../parent-reports-archive/src/App.jsx'));
+const ParentReschedule = lazy(() => import('../../parent-reschedule/src/App.jsx'));
+
+function Loading() {
     return (
-        <>
-            <Header />
-            <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col lg:flex-row gap-8">
-                {/* Left Column (Main Content) */}
-                <div className="flex-1 flex flex-col gap-8">
-                    <WelcomeHeader />
-                    <ActivePrograms />
-                    <LatestReports />
-                </div>
-
-                {/* Right Column (Sidebar) */}
-                <aside className="w-full lg:w-80 flex flex-col gap-6">
-                    <UpcomingSchedule />
-                    <QuickActions />
-                </aside>
-            </main>
-        </>
+        <div className="flex min-h-screen items-center justify-center bg-background-light text-slate-500 dark:bg-background-dark dark:text-slate-400">
+            <div className="flex flex-col items-center gap-3">
+                <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary" />
+                <p className="text-sm font-semibold">Memuat Parent Portal...</p>
+            </div>
+        </div>
     );
 }
 
-export default App;
+export default function App() {
+    return (
+        <BrowserRouter>
+            <Suspense fallback={<Loading />}>
+                <Routes>
+                    <Route path="/" element={<ParentWebDashboard />} />
+                    <Route path="/reports" element={<ParentReportsArchive />} />
+                    <Route path="/reschedule" element={<ParentReschedule />} />
+                </Routes>
+            </Suspense>
+        </BrowserRouter>
+    );
+}

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authApi, childrenApi, notificationsApi } from '../../../shared/api/client';
-import { clearParentUser, readParentUser, storeParentUser } from '../../../shared/sessionIdentity';
+import { clearParentUser, isParentUserRemembered, readParentUser, storeParentUser } from '../../../shared/sessionIdentity';
 import PortalProfileMenu from '../../../shared/ui/PortalProfileMenu';
 
 const Header = ({ title = "Dashboard", onLogout }) => {
@@ -76,7 +76,7 @@ const Header = ({ title = "Dashboard", onLogout }) => {
             if (selected) {
                 user.childId   = selected.nita;
                 user.childName = selected.name;
-                storeParentUser(user, !!localStorage.getItem('parent_user'));
+                storeParentUser(user, isParentUserRemembered());
                 window.dispatchEvent(new CustomEvent('parentChildSelectionChanged'));
             }
         }
