@@ -111,13 +111,13 @@ export default function Sidebar({ isOpen, onClose }) {
           <ClinicLogoMark logoUrl={logoUrl} name={clinicName} color={primaryColor} className="h-10 w-10" />
           <div className="min-w-0 flex-1">
             <h1 className="text-sm font-bold text-slate-900 dark:text-slate-100 leading-tight truncate">{clinicName}</h1>
-            <p className="text-xs text-slate-500 dark:text-slate-400">Parent Portal</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Portal Orang Tua</p>
           </div>
           {/* Close btn on mobile */}
           <button
             onClick={onClose}
             className="lg:hidden p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:text-slate-200 dark:hover:bg-slate-800 transition-colors"
-            aria-label="Close menu"
+            aria-label="Tutup menu"
           >
             <span className="material-symbols-outlined text-[20px]">close</span>
           </button>
@@ -131,8 +131,8 @@ export default function Sidebar({ isOpen, onClose }) {
             {!(user?.avatar && user.avatar.length > 1) && (user?.name || 'P').charAt(0).toUpperCase()}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">{user?.name || 'Parent'}</p>
-            <p className="text-xs text-slate-500 dark:text-slate-400 break-words leading-snug">Parent / Guardian</p>
+            <p className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">{user?.name || 'Orang Tua'}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 break-words leading-snug">Orang Tua / Wali</p>
           </div>
           <span className="material-symbols-outlined text-slate-300 dark:text-slate-600 text-[16px] opacity-0 group-hover:opacity-100 transition-opacity">chevron_right</span>
         </NavLink>

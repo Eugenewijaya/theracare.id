@@ -308,19 +308,16 @@ export default function ProgressSummary() {
     const [reportsByChild, setReportsByChild] = useState({});
     const [selectedChildId, setSelectedChildId] = useState('');
     const [loading, setLoading] = useState(true);
-    const [refreshing, setRefreshing] = useState(false);
     const [error, setError] = useState('');
 
     const load = useCallback(async ({ silent = false } = {}) => {
-        if (silent) setRefreshing(true);
-        else setLoading(true);
+        if (!silent) setLoading(true);
         setError('');
         const user = readParentUser();
         const parentId = user?.parentId || user?.id;
         if (!parentId && !Array.isArray(user?.children)) {
             setError('Data parent belum lengkap. Silakan login ulang.');
             setLoading(false);
-            setRefreshing(false);
             return;
         }
 
@@ -378,7 +375,6 @@ export default function ProgressSummary() {
             setError('Gagal memuat ringkasan kemajuan anak.');
         } finally {
             setLoading(false);
-            setRefreshing(false);
         }
     }, []);
 
@@ -441,7 +437,6 @@ export default function ProgressSummary() {
                     </div>
 
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                        {refreshing && <span className="text-xs font-bold text-slate-400">Memperbarui data...</span>}
                         {children.length > 1 && (
                             <select
                                 value={selectedChildId}

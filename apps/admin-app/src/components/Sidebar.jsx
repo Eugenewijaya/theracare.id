@@ -118,7 +118,7 @@ export default function Sidebar({ isOpen, onClose }) {
             {!isCollapsed && (
               <div className="min-w-0 flex-1">
                 <h1 className="text-sm font-bold text-white leading-tight truncate">{clinicName || 'TheraCare'}</h1>
-                <p className="text-xs opacity-70 truncate" style={{ color: brandColor }}>Admin Panel</p>
+                <p className="text-xs opacity-70 truncate" style={{ color: brandColor }}>Panel Admin</p>
               </div>
             )}
             {/* Close btn on mobile */}
@@ -126,7 +126,7 @@ export default function Sidebar({ isOpen, onClose }) {
               <button
                 onClick={onClose}
                 className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
-                aria-label="Close menu"
+                aria-label="Tutup menu"
               >
                 <span className="material-symbols-outlined text-[20px]">close</span>
               </button>
@@ -205,19 +205,19 @@ export default function Sidebar({ isOpen, onClose }) {
             <button 
               onClick={() => setSidebarCollapsed(!sidebarCollapsed)} 
               className={`flex items-center gap-3 py-2 rounded-lg text-sm font-medium text-slate-400 hover:bg-white/5 hover:text-slate-200 transition-colors ${isCollapsed ? 'justify-center px-0' : 'px-3'}`}
-              title={isCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+              title={isCollapsed ? "Perlebar sidebar" : "Ringkas sidebar"}
             >
               <span className="material-symbols-outlined text-[20px]">
                 {sidebarCollapsed ? 'keyboard_double_arrow_right' : 'keyboard_double_arrow_left'}
               </span>
-              {!isCollapsed && <span>Collapse Sidebar</span>}
+              {!isCollapsed && <span>Ringkas Sidebar</span>}
             </button>
           )}
 
           <button 
             onClick={handleLogout} 
             className={`flex items-center gap-3 py-2 rounded-lg text-sm font-medium text-slate-400 hover:bg-red-500/10 hover:text-red-400 transition-colors ${isCollapsed ? 'justify-center px-0' : 'px-3'}`}
-            title={isCollapsed ? "Sign Out" : undefined}
+            title={isCollapsed ? "Keluar" : undefined}
           >
             <span className="material-symbols-outlined text-[20px]">logout</span>
             {!isCollapsed && <span>Keluar</span>}

@@ -1,24 +1,25 @@
 import React from 'react';
+import { useClinicSettings } from '../../../shared/clinicSettings';
+import ClinicLogoMark from '../../../shared/ui/ClinicLogoMark';
 
 const navItems = [
-    { id: 'general', label: 'General', icon: 'settings' },
+    { id: 'general', label: 'Umum', icon: 'settings' },
     { id: 'branding', label: 'Branding', icon: 'palette' },
     { id: 'schedule', label: 'Jadwal Off', icon: 'event_busy' },
-    { id: 'notifications', label: 'Notifications', icon: 'notifications' },
+    { id: 'notifications', label: 'Notifikasi', icon: 'notifications' },
+    { id: 'language', label: 'Bahasa', icon: 'translate' },
 ];
 
 const Sidebar = ({ activeSection, onSectionChange }) => {
+    const { clinicName, primaryColor, logoUrl } = useClinicSettings();
+
     return (
         <aside className="w-64 shrink-0 flex flex-col gap-6 hidden md:flex pb-20">
             <div className="flex gap-3 items-center">
-                <div
-                    className="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-12 shadow-sm"
-                    title="Clinic building logo icon"
-                    style={{ backgroundImage: 'url("https://lh3.googleusercontent.com/aida-public/AB6AXuABLapYY7o16LlpiNy42xaFxCAMJ-uR3UJGr_1vJJ1V21JI1R9752vaY_ybXXn2oqeYOUQS0HxjkodKDgPqinev0D2NulHKMVFidNtHKTZxw6h_BKMskUTHtvLRXJYab7n660H2tGP2bAjRswbPuXqKIYPW6em4YBX-XCnDszpKeN9YlO96iXPJ6lJCrgW51tmHLeXv8aoFDjCMA4YkJX_i_Q5U9xoQzVIX6b-LI3DPs7KoJIm8GSCWV6Yt07D9Yp0_UI3vQE5iTg")' }}
-                ></div>
+                <ClinicLogoMark logoUrl={logoUrl} name={clinicName} color={primaryColor} className="size-12 rounded-full shadow-sm" />
                 <div className="flex flex-col">
-                    <h1 className="text-base font-bold leading-normal">Global Settings</h1>
-                    <p className="text-slate-500 dark:text-slate-400 text-xs font-normal leading-normal">Manage configurations</p>
+                    <h1 className="text-base font-bold leading-normal">Pengaturan Global</h1>
+                    <p className="text-slate-500 dark:text-slate-400 text-xs font-normal leading-normal">Kelola konfigurasi</p>
                 </div>
             </div>
 

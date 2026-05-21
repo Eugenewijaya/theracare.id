@@ -126,7 +126,7 @@ export default function ChildProfile() {
                                 disabled={uploadingPhoto}
                                 className="rounded-full border border-sky-200 bg-white px-3 py-1.5 text-xs font-bold text-sky-700 shadow-sm hover:bg-sky-50 disabled:cursor-wait disabled:opacity-70 dark:border-sky-800 dark:bg-slate-900 dark:text-sky-300"
                             >
-                                {uploadingPhoto ? 'Uploading...' : 'Upload Foto'}
+                                {uploadingPhoto ? 'Mengunggah...' : 'Upload Foto'}
                             </button>
                             {photoError && <p className="max-w-[10rem] text-center text-xs font-semibold text-red-500">{photoError}</p>}
                         </div>

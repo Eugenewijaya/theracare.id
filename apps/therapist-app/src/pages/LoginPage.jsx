@@ -41,12 +41,12 @@ export default function LoginPage() {
   return (
     <LoginExperience
       portalKey="therapist"
-      portalName="Therapist Portal"
+      portalName="Portal Terapis"
       subtitle="Akses jadwal, laporan, dan progres terapi."
       description="Portal klinis untuk melihat sesi hari ini, membuat laporan, memantau perkembangan anak, dan menerima pengumuman."
       formTitle="Masuk sebagai terapis"
       formDescription="Gunakan NIT dan password yang dibuat oleh admin."
-      submitLabel="Masuk ke Therapist Portal"
+      submitLabel="Masuk ke Portal Terapis"
       remember={remember}
       onRememberChange={setRemember}
       error={error || authError}

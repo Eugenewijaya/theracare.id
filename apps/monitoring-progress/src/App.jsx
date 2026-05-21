@@ -61,7 +61,7 @@ function buildMonitoringReportHtml(store) {
     <title>Monitoring Program Progress</title>
     <style>
         * { box-sizing: border-box; }
-        body { margin: 0; background: #f8fafc; color: #0f172a; font-family: Inter, Arial, sans-serif; }
+        body { margin: 0; background: #f8fafc; color: #0f172a; font-family: 'Plus Jakarta Sans', Arial, sans-serif; }
         .page { width: min(960px, 100%); margin: 0 auto; padding: 32px; background: #fff; min-height: 100vh; }
         .header { display: flex; align-items: center; justify-content: space-between; gap: 24px; border-bottom: 2px solid #e2e8f0; padding-bottom: 20px; }
         .brand { display: flex; align-items: center; gap: 16px; min-width: 0; }

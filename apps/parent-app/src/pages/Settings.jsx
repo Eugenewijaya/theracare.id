@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { parentsApi } from '../../../shared/api/client';
 import { readParentUser } from '../../../shared/sessionIdentity';
+import LanguageSettingsPanel from '../../../shared/ui/LanguageSettingsPanel';
 
 export default function Settings() {
     const [theme, setTheme] = useState('light');
@@ -70,6 +71,7 @@ export default function Settings() {
 
                 <div className="max-w-3xl mx-auto flex flex-col gap-6">
                     <form onSubmit={handleSave} className="flex flex-col gap-6">
+                        <LanguageSettingsPanel />
                         
                         {/* Profile Info Card */}
                         <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">

@@ -41,9 +41,9 @@ export default function TherapistLeaveRequestsPage() {
   const [gatePassword, setGatePassword] = useState('');
   const [gateError, setGateError] = useState('');
 
-  const load = async ({ silent = false } = {}) => {
+  const load = async ({ silent = false, indicate = !silent } = {}) => {
     if (!silent) setLoading(true);
-    setRefreshing(true);
+    if (indicate) setRefreshing(true);
     try {
       const res = await leaveRequestsApi.getAll();
       setRequests(res.data?.data || []);
@@ -52,7 +52,7 @@ export default function TherapistLeaveRequestsPage() {
       setToast({ type: 'error', message: 'Gagal memuat pengajuan cuti.' });
     } finally {
       if (!silent) setLoading(false);
-      setRefreshing(false);
+      if (indicate) setRefreshing(false);
     }
   };
 
@@ -229,12 +229,12 @@ export default function TherapistLeaveRequestsPage() {
             </div>
             <button
               type="button"
-              onClick={() => load({ silent: true })}
+              onClick={() => load({ silent: true, indicate: true })}
               disabled={refreshing}
               className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60 dark:border-primary/20 dark:bg-primary/10 dark:text-slate-200"
             >
               <span className={`material-symbols-outlined text-[20px] ${refreshing ? 'animate-spin' : ''}`}>refresh</span>
-              Refresh
+              Perbarui
             </button>
           </div>
 

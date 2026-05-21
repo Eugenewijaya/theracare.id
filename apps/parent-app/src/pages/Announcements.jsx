@@ -305,7 +305,7 @@ export default function Announcements() {
               className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
             >
               <IconBadge compact icon="refresh" className="bg-slate-100 text-slate-600" />
-              Refresh
+              Perbarui
             </button>
             <button
               type="button"

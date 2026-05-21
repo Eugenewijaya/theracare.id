@@ -34,7 +34,7 @@ export default function LoginPage() {
   return (
     <LoginExperience
       portalKey="admin"
-      portalName="Admin Portal"
+      portalName="Portal Admin"
       subtitle="Kelola operasional klinik dari satu tempat."
       description="Akses dashboard admin untuk registrasi keluarga, jadwal terapi, laporan, notifikasi, dan branding klinik."
       formTitle="Masuk sebagai admin"

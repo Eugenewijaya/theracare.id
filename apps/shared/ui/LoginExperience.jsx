@@ -28,16 +28,16 @@ const TONES = {
 };
 
 const LEGAL_LINKS = [
-  { label: 'Privacy Policy', href: '/privacy' },
-  { label: 'Terms', href: '/terms' },
+  { label: 'Kebijakan Privasi', href: '/privacy' },
+  { label: 'Syarat', href: '/terms' },
   { label: 'Copyright', href: '/copyright' },
   { label: 'Support', href: 'mailto:support@theracare.id' },
 ];
 
 const MOTION_CARDS = [
-  { icon: 'verified_user', title: 'Secure session', detail: 'Role-based access' },
-  { icon: 'clinical_notes', title: 'Reports ready', detail: 'Synced to portal' },
-  { icon: 'event_available', title: 'Schedule active', detail: 'Live therapy workflow' },
+  { icon: 'verified_user', title: 'Sesi aman', detail: 'Akses sesuai role' },
+  { icon: 'clinical_notes', title: 'Laporan siap', detail: 'Sinkron ke portal' },
+  { icon: 'event_available', title: 'Jadwal aktif', detail: 'Workflow terapi live' },
 ];
 
 export default function LoginExperience({
@@ -84,7 +84,7 @@ export default function LoginExperience({
         <section className="relative flex min-h-[420px] flex-col justify-between overflow-hidden bg-slate-900 px-6 py-7 text-white sm:px-10 lg:min-h-screen">
           <img
             src={centerPhotoSrc}
-            alt="Temporary special needs center welcome visual"
+            alt="Visual sambutan center"
             className="login-photo-motion absolute inset-0 h-full w-full object-cover opacity-95"
           />
           <div className="absolute inset-0 bg-slate-950/20" />
@@ -111,7 +111,7 @@ export default function LoginExperience({
                 onClick={() => setStarted(true)}
                 className="login-cta mt-7 inline-flex items-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-extrabold text-slate-950 shadow-xl shadow-slate-950/20 transition hover:-translate-y-0.5 hover:bg-slate-100 focus:outline-none focus:ring-4 focus:ring-white/35"
               >
-                Get Started
+                Mulai
                 <span className="material-symbols-outlined text-[18px] login-arrow">arrow_forward</span>
               </button>
             )}
@@ -131,7 +131,7 @@ export default function LoginExperience({
 
           <div className="pointer-events-none absolute bottom-24 right-8 z-10 hidden w-52 rounded-2xl border border-white/25 bg-white/15 p-4 backdrop-blur-md lg:block login-progress-card">
             <div className="flex items-center justify-between text-[11px] font-black uppercase tracking-[0.18em] text-white/70">
-              <span>Portal sync</span>
+              <span>Sinkron portal</span>
               <span>Live</span>
             </div>
             <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/20">
@@ -147,7 +147,7 @@ export default function LoginExperience({
           <div className="relative z-10 flex items-center justify-center gap-2 text-[11px] font-semibold text-white/70 login-fade-up login-delay-2">
             <span>TheraCare Therapy Platform</span>
             <span className="h-1 w-1 rounded-full bg-white/40" />
-            <span>Secure Access</span>
+            <span>Akses Aman</span>
           </div>
         </section>
 
@@ -159,13 +159,13 @@ export default function LoginExperience({
                   <span className="material-symbols-outlined text-[24px]" style={{ fontVariationSettings: "'FILL' 1" }}>{tone.icon}</span>
                 </div>
                 <h2 className="mt-5 text-2xl font-black tracking-tight text-slate-950">Mulai akses portal</h2>
-                <p className="mt-2 text-sm leading-6 text-slate-500">Klik Get Started untuk membuka form login. Pilihan ini akan disimpan di browser.</p>
+                <p className="mt-2 text-sm leading-6 text-slate-500">Klik Mulai untuk membuka form login. Pilihan ini akan disimpan di browser.</p>
                 <button
                   type="button"
                   onClick={() => setStarted(true)}
                   className={`login-cta mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-extrabold text-white shadow-lg transition hover:-translate-y-0.5 focus:outline-none focus:ring-4 ${tone.button}`}
                 >
-                  Get Started
+                  Mulai
                   <span className="material-symbols-outlined text-[18px] login-arrow">arrow_forward</span>
                 </button>
               </div>
@@ -219,7 +219,7 @@ export default function LoginExperience({
             )}
 
             <footer className="mt-6 text-center">
-              <p className="text-xs font-semibold text-slate-400">Copyright 2026 Evid Wijaya. All rights reserved.</p>
+              <p className="text-xs font-semibold text-slate-400">Copyright 2026 Evid Wijaya. Seluruh hak cipta dilindungi.</p>
               <nav className="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs font-bold text-slate-500">
                 {LEGAL_LINKS.map((link) => (
                   <a key={link.href} href={link.href} className="hover:text-slate-900">

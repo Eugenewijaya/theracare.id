@@ -308,7 +308,7 @@ export default function UserManagementPage() {
                             className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-primary/20 dark:bg-primary/5 dark:text-slate-200"
                         >
                             <span className={`material-symbols-outlined text-[18px] ${loading ? 'animate-spin' : ''}`}>refresh</span>
-                            Refresh
+                            Perbarui
                         </button>
                     </div>
 

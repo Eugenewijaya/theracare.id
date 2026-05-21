@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { syncApi } from '../api/client';
 import { emitTheraCareUpdate, THERACARE_UPDATE_STORAGE_KEY } from '../autoRefresh';
 
@@ -29,7 +29,8 @@ export default function AutoRefreshHost({
   const draftUntilRef = useRef(0);
   const lastVersionRef = useRef('');
   const onRefreshRef = useRef(onRefresh);
-  const [deferredUpdate, setDeferredUpdate] = useState(null);
+  const pendingUpdateRef = useRef(null);
+  const pendingTimerRef = useRef(null);
   const userKey = getUserKey(user, role);
 
   useEffect(() => {
@@ -43,10 +44,34 @@ export default function AutoRefreshHost({
   }, []);
 
   const runRefresh = useCallback((payload) => {
+    pendingUpdateRef.current = null;
+    if (pendingTimerRef.current) {
+      window.clearTimeout(pendingTimerRef.current);
+      pendingTimerRef.current = null;
+    }
     if (typeof onRefreshRef.current === 'function') {
       onRefreshRef.current(payload);
     }
   }, []);
+
+  const scheduleSilentRefresh = useCallback((payload) => {
+    pendingUpdateRef.current = payload;
+    if (pendingTimerRef.current) window.clearTimeout(pendingTimerRef.current);
+
+    const remainingDraftMs = Math.max(0, draftUntilRef.current - Date.now());
+    const delayMs = Math.min(Math.max(remainingDraftMs + 250, 1500), DRAFT_GRACE_MS);
+
+    pendingTimerRef.current = window.setTimeout(() => {
+      pendingTimerRef.current = null;
+      const nextPayload = pendingUpdateRef.current;
+      if (!nextPayload) return;
+      if (hasActiveDraft()) {
+        scheduleSilentRefresh(nextPayload);
+        return;
+      }
+      runRefresh(nextPayload);
+    }, delayMs);
+  }, [hasActiveDraft, runRefresh]);
 
   const pollVersion = useCallback(async ({ force = false } = {}) => {
     if (!enabled || !userKey || userKey === 'anonymous') return;
@@ -75,13 +100,13 @@ export default function AutoRefreshHost({
       const payload = { version, reason: data.reason || '' };
       if (typeof onRefreshRef.current === 'function') {
         if (hasActiveDraft()) {
-          setDeferredUpdate(payload);
+          scheduleSilentRefresh(payload);
           return;
         }
         runRefresh(payload);
       }
     }
-  }, [enabled, hasActiveDraft, runRefresh, userKey]);
+  }, [enabled, hasActiveDraft, runRefresh, scheduleSilentRefresh, userKey]);
 
   useEffect(() => {
     if (!enabled || typeof document === 'undefined') return undefined;
@@ -140,74 +165,15 @@ export default function AutoRefreshHost({
 
     return () => {
       window.clearInterval(interval);
+      if (pendingTimerRef.current) {
+        window.clearTimeout(pendingTimerRef.current);
+        pendingTimerRef.current = null;
+      }
       window.removeEventListener('focus', handleFocus);
       window.removeEventListener('storage', handleStorage);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, [enabled, pollIntervalMs, pollVersion, userKey]);
 
-  if (!deferredUpdate) return null;
-
-  return (
-    <div
-      role="status"
-      aria-live="polite"
-      style={{
-        position: 'fixed',
-        right: 16,
-        bottom: 16,
-        zIndex: 9999,
-        width: 'min(360px, calc(100vw - 32px))',
-        padding: 14,
-        borderRadius: 18,
-        border: '1px solid rgba(37, 99, 235, 0.18)',
-        background: 'rgba(255, 255, 255, 0.96)',
-        boxShadow: '0 18px 48px rgba(15, 23, 42, 0.18)',
-        color: '#0f172a',
-        fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-      }}
-    >
-      <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 4 }}>Update baru tersedia</div>
-      <div style={{ fontSize: 13, color: '#64748b', lineHeight: 1.45 }}>
-        Form sedang aktif, jadi update belum dimuat otomatis.
-      </div>
-      <div style={{ display: 'flex', gap: 8, marginTop: 12, justifyContent: 'flex-end' }}>
-        <button
-          type="button"
-          onClick={() => setDeferredUpdate(null)}
-          style={{
-            border: '1px solid #e2e8f0',
-            background: '#fff',
-            color: '#334155',
-            borderRadius: 999,
-            padding: '8px 12px',
-            fontWeight: 700,
-            cursor: 'pointer',
-          }}
-        >
-          Nanti
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            const payload = deferredUpdate;
-            draftUntilRef.current = 0;
-            setDeferredUpdate(null);
-            runRefresh(payload);
-          }}
-          style={{
-            border: '1px solid #2563eb',
-            background: '#2563eb',
-            color: '#fff',
-            borderRadius: 999,
-            padding: '8px 12px',
-            fontWeight: 800,
-            cursor: 'pointer',
-          }}
-        >
-          Muat sekarang
-        </button>
-      </div>
-    </div>
-  );
+  return null;
 }

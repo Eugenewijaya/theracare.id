@@ -76,7 +76,7 @@ function buildNotificationHtml(input: NotificationEmailInput, recipientName: str
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>${escapeHtml(input.title)}</title>
   </head>
-  <body style="margin:0;background:#f5f7fb;font-family:Inter,Arial,sans-serif;color:#0f172a;">
+  <body style="margin:0;background:#f5f7fb;font-family: 'Plus Jakarta Sans', Arial, sans-serif;color:#0f172a;">
     <div style="display:none;max-height:0;overflow:hidden;opacity:0;">${escapeHtml(preheader)}</div>
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f5f7fb;padding:28px 12px;">
       <tr>

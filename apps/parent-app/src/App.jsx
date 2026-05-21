@@ -14,6 +14,7 @@ import LegalPage from '../../shared/ui/LegalPage';
 import ClinicLogoMark from '../../shared/ui/ClinicLogoMark';
 import NotificationToastHost from '../../shared/ui/NotificationToastHost';
 import AutoRefreshHost from '../../shared/ui/AutoRefreshHost';
+import LanguageRuntime from '../../shared/ui/LanguageRuntime';
 import FriendlyLoader from '../../shared/ui/FriendlyLoader';
 import { getNotificationDestination } from '../../shared/notifications';
 
@@ -52,7 +53,7 @@ function MobileTopBar({ onMenuOpen }) {
       <button
         onClick={onMenuOpen}
         className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-600 transition-colors hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
-        aria-label="Open menu"
+        aria-label="Buka menu"
       >
         <span className="material-symbols-outlined text-[22px]">menu</span>
       </button>
@@ -135,11 +136,12 @@ export default function App() {
 
   return (
     <BrowserRouter>
+      <LanguageRuntime />
       <Routes>
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/privacy" element={<LegalPage type="privacy" portalName="Parent Portal" />} />
-        <Route path="/terms" element={<LegalPage type="terms" portalName="Parent Portal" />} />
-        <Route path="/copyright" element={<LegalPage type="copyright" portalName="Parent Portal" />} />
+        <Route path="/privacy" element={<LegalPage type="privacy" portalName="Portal Orang Tua" />} />
+        <Route path="/terms" element={<LegalPage type="terms" portalName="Portal Orang Tua" />} />
+        <Route path="/copyright" element={<LegalPage type="copyright" portalName="Portal Orang Tua" />} />
         <Route path="/*" element={<ProtectedRoute><DashboardLayout /></ProtectedRoute>} />
       </Routes>
     </BrowserRouter>

@@ -14,11 +14,13 @@ const ChildProgress = lazy(() => import('../../child-progress/src/App'));
 import Announcements from './pages/Announcements';
 import ScheduleUpdates from './pages/ScheduleUpdates';
 import LeaveRequests from './pages/LeaveRequests';
+import Settings from './pages/Settings';
 import { setClinicPortalTitle, useClinicSettings } from '../../shared/clinicSettings';
 import LegalPage from '../../shared/ui/LegalPage';
 import ClinicLogoMark from '../../shared/ui/ClinicLogoMark';
 import NotificationToastHost from '../../shared/ui/NotificationToastHost';
 import AutoRefreshHost from '../../shared/ui/AutoRefreshHost';
+import LanguageRuntime from '../../shared/ui/LanguageRuntime';
 import FriendlyLoader from '../../shared/ui/FriendlyLoader';
 import { getNotificationDestination } from '../../shared/notifications';
 
@@ -53,7 +55,7 @@ function MobileTopBar({ onMenuOpen }) {
       <button
         onClick={onMenuOpen}
         className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-600 transition-colors hover:bg-slate-200/60 dark:text-slate-400 dark:hover:bg-slate-800/60"
-        aria-label="Open menu"
+        aria-label="Buka menu"
       >
         <span className="material-symbols-outlined text-[22px]">menu</span>
       </button>
@@ -122,6 +124,7 @@ function DashboardLayout() {
               <Route path="announcements" element={<Announcements />} />
               <Route path="schedule-updates" element={<ScheduleUpdates />} />
               <Route path="leave-requests" element={<LeaveRequests />} />
+              <Route path="settings" element={<Settings />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Suspense>
@@ -138,11 +141,12 @@ export default function App() {
 
   return (
     <BrowserRouter>
+      <LanguageRuntime />
       <Routes>
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/privacy" element={<LegalPage type="privacy" portalName="Therapist Portal" />} />
-        <Route path="/terms" element={<LegalPage type="terms" portalName="Therapist Portal" />} />
-        <Route path="/copyright" element={<LegalPage type="copyright" portalName="Therapist Portal" />} />
+        <Route path="/privacy" element={<LegalPage type="privacy" portalName="Portal Terapis" />} />
+        <Route path="/terms" element={<LegalPage type="terms" portalName="Portal Terapis" />} />
+        <Route path="/copyright" element={<LegalPage type="copyright" portalName="Portal Terapis" />} />
         <Route path="/*" element={<ProtectedRoute><DashboardLayout /></ProtectedRoute>} />
       </Routes>
     </BrowserRouter>

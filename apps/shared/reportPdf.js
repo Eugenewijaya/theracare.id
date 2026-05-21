@@ -244,7 +244,7 @@ function buildReportHtml(reportInput, settingsInput) {
       margin: 0;
       background: #f8fafc;
       color: #0f172a;
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+      font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
       line-height: 1.5;
     }
     .document {

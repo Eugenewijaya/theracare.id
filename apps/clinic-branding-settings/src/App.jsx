@@ -4,10 +4,41 @@ import Sidebar from './components/Sidebar';
 import { adminApi } from '../../shared/api/client';
 import { DEFAULT_CLINIC_SETTINGS, useClinicSettings } from '../../shared/clinicSettings';
 import { confirmAction } from '../../shared/ui/confirmDialog';
+import LanguageSettingsPanel from '../../shared/ui/LanguageSettingsPanel';
 
 const ASSET_ACCEPT = 'image/png,image/jpeg,image/webp,image/svg+xml,image/gif,image/x-icon,image/vnd.microsoft.icon,.ico';
 const ACCEPTED_ASSET_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml', 'image/gif', 'image/x-icon', 'image/vnd.microsoft.icon'];
 const MAX_ASSET_SIZE = 5 * 1024 * 1024;
+const SECTION_META = {
+    general: {
+        title: 'Pengaturan Umum',
+        description: 'Kelola jam operasional, kontak, dan preferensi sistem center.',
+    },
+    branding: {
+        title: 'Branding & Tampilan',
+        description: 'Kelola identitas visual center, logo, warna brand, dan tampilan global.',
+    },
+    schedule: {
+        title: 'Jadwal Off Center',
+        description: 'Kelola tanggal merah Indonesia, jadwal off center, dan tutup sementara yang terhubung ke notifikasi portal.',
+    },
+    notifications: {
+        title: 'Notifikasi',
+        description: 'Atur kanal dan pemicu notifikasi otomatis untuk tim klinis dan keluarga.',
+    },
+    language: {
+        title: 'Bahasa Tampilan',
+        description: 'Atur bahasa portal untuk admin, terapis, dan orang tua.',
+    },
+};
+
+const MOBILE_SECTIONS = [
+    { id: 'general', label: 'Umum', icon: 'settings' },
+    { id: 'branding', label: 'Branding', icon: 'palette' },
+    { id: 'schedule', label: 'Jadwal Off', icon: 'event_busy' },
+    { id: 'notifications', label: 'Notifikasi', icon: 'notifications' },
+    { id: 'language', label: 'Bahasa', icon: 'translate' },
+];
 
 function inferContentType(file) {
     if (file.type) return file.type;
@@ -46,7 +77,7 @@ function AssetUploadButton({ id, label, uploading, onFile }) {
                 className={`inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-slate-300 dark:border-slate-700 px-3 py-2 text-xs font-black text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 ${uploading ? 'pointer-events-none opacity-60' : ''}`}
             >
                 <span className="material-symbols-outlined text-[16px]">{uploading ? 'progress_activity' : 'upload_file'}</span>
-                {uploading ? 'Uploading...' : label}
+                {uploading ? 'Mengunggah...' : label}
             </label>
         </div>
     );
@@ -320,7 +351,7 @@ function App() {
             const existingDates = new Set(closures.filter((item) => item.type === 'public_holiday').map((item) => item.startDate));
             setHolidayCandidates(holidays);
             setSelectedHolidayDates(holidays.filter((item) => !existingDates.has(item.date)).map((item) => item.date));
-            showToast(`${holidays.length} tanggal merah tahun ${holidayYear} berhasil ditarik. Pilih lalu klik Apply.`, 'info');
+            showToast(`${holidays.length} tanggal merah tahun ${holidayYear} berhasil ditarik. Pilih lalu klik Terapkan.`, 'info');
         } catch (e) {
             showToast(e.message || 'Gagal menarik tanggal merah Indonesia', 'error');
         } finally {
@@ -490,22 +521,14 @@ function App() {
 
                 <main className="flex-1 flex flex-col pb-10">
                     <div className="flex flex-col gap-2 mb-8">
-                        <h2 className="text-[32px] font-bold leading-tight capitalize">{activeSection.replace('-', ' ')} Settings</h2>
+                        <h2 className="text-[32px] font-bold leading-tight">{SECTION_META[activeSection]?.title || 'Pengaturan'}</h2>
                         <p className="text-slate-500 dark:text-slate-400 text-base font-normal leading-normal">
-                            {activeSection === 'branding' && "Manage your center's visual identity, including naming, logos, colors, and global appearance."}
-                            {activeSection === 'general' && "Manage general center settings such as operating hours, contact info, and system preferences."}
-                            {activeSection === 'schedule' && "Kelola tanggal merah Indonesia, jadwal off center, dan tutup sementara yang terhubung ke notifikasi portal."}
-                            {activeSection === 'notifications' && "Configure how and when automatic notifications are sent to staff and families."}
+                            {SECTION_META[activeSection]?.description}
                         </p>
                     </div>
 
                     <div className="mb-6 grid grid-cols-2 gap-2 md:hidden">
-                        {[
-                            { id: 'general', label: 'General', icon: 'settings' },
-                            { id: 'branding', label: 'Branding', icon: 'palette' },
-                            { id: 'schedule', label: 'Jadwal Off', icon: 'event_busy' },
-                            { id: 'notifications', label: 'Notifikasi', icon: 'notifications' },
-                        ].map((item) => (
+                        {MOBILE_SECTIONS.map((item) => (
                             <button
                                 key={item.id}
                                 type="button"
@@ -527,23 +550,23 @@ function App() {
                         <div className="flex flex-col gap-8">
                             {/* General Identity Section */}
                             <section className="flex flex-col gap-4">
-                                <h3 className="text-lg font-bold border-b border-slate-200 dark:border-slate-700 pb-2">General Identity</h3>
+                                <h3 className="text-lg font-bold border-b border-slate-200 dark:border-slate-700 pb-2">Identitas Umum</h3>
                                 <div className="rounded-xl bg-white dark:bg-slate-900 p-6 shadow-sm border border-slate-100 dark:border-slate-800">
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                                         <div>
-                                        <label htmlFor="clinic-name" className="block text-sm font-bold mb-2">Center Name</label>
+                                        <label htmlFor="clinic-name" className="block text-sm font-bold mb-2">Nama Center</label>
                                         <input
                                             id="clinic-name"
                                             type="text"
                                             value={clinicName}
                                             onChange={(e) => setClinicName(e.target.value)}
                                             className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm shadow-sm focus:border-primary focus:ring-primary dark:focus:border-primary outline-none px-3 py-2.5 text-slate-900 dark:text-white"
-                                            placeholder="Enter full center name"
+                                            placeholder="Masukkan nama lengkap center"
                                         />
-                                        <p className="text-slate-500 dark:text-slate-400 text-xs mt-2">This name appears on portals, headers, and official communications.</p>
+                                        <p className="text-slate-500 dark:text-slate-400 text-xs mt-2">Nama ini tampil di portal, header, dan komunikasi resmi.</p>
                                         </div>
                                         <div>
-                                            <label htmlFor="center-subtitle" className="block text-sm font-bold mb-2">Center Description</label>
+                                            <label htmlFor="center-subtitle" className="block text-sm font-bold mb-2">Deskripsi Center</label>
                                             <input
                                                 id="center-subtitle"
                                                 type="text"
@@ -552,7 +575,7 @@ function App() {
                                                 className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm shadow-sm focus:border-primary focus:ring-primary dark:focus:border-primary outline-none px-3 py-2.5 text-slate-900 dark:text-white"
                                                 placeholder="Pusat Terapi Anak dan Keluarga"
                                             />
-                                            <p className="text-slate-500 dark:text-slate-400 text-xs mt-2">Shown under the logo in PDF reports.</p>
+                                            <p className="text-slate-500 dark:text-slate-400 text-xs mt-2">Ditampilkan di bawah logo pada laporan PDF.</p>
                                         </div>
                                     </div>
                                 </div>
@@ -560,14 +583,14 @@ function App() {
 
                             {/* Logos Section */}
                             <section className="flex flex-col gap-4">
-                                <h3 className="text-lg font-bold border-b border-slate-200 dark:border-slate-700 pb-2">Logos & Iconography</h3>
+                                <h3 className="text-lg font-bold border-b border-slate-200 dark:border-slate-700 pb-2">Logo & Ikon</h3>
                                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                                     <div className="flex flex-col gap-4 rounded-xl bg-white dark:bg-slate-900 p-6 shadow-sm border border-slate-100 dark:border-slate-800">
                                         <div className="flex justify-between items-start">
                                             <div>
-                                                <p className="text-base font-bold leading-tight mb-1">Center Logo</p>
-                                                <p className="text-slate-500 dark:text-slate-400 text-xs">Used on main navigation, portals, and PDF reports.</p>
-                                                <p className="text-slate-500 dark:text-slate-400 text-xs mt-1">Upload akan langsung tersimpan ke branding. URL manual tetap bisa disimpan lewat Save Changes.</p>
+                                                <p className="text-base font-bold leading-tight mb-1">Logo Center</p>
+                                                <p className="text-slate-500 dark:text-slate-400 text-xs">Dipakai di navigasi utama, portal, dan laporan PDF.</p>
+                                                <p className="text-slate-500 dark:text-slate-400 text-xs mt-1">Upload akan langsung tersimpan ke branding. URL manual tetap bisa disimpan lewat tombol Simpan Perubahan.</p>
                                             </div>
                                         </div>
                                         <div className="flex flex-col gap-2">
@@ -583,7 +606,7 @@ function App() {
                                             {logoUrl ? (
                                                 <img src={logoUrl} alt={`${clinicName} logo`} className="max-h-20 max-w-[80%] object-contain" />
                                             ) : (
-                                                <span className="text-xl font-bold text-slate-400 dark:text-slate-600">{clinicName || 'Your Logo Here'}</span>
+                                                    <span className="text-xl font-bold text-slate-400 dark:text-slate-600">{clinicName || 'Logo Center'}</span>
                                             )}
                                         </div>
                                     </div>
@@ -592,7 +615,7 @@ function App() {
                                         <div className="flex justify-between items-start">
                                             <div>
                                                 <p className="text-base font-bold leading-tight mb-1">Favicon</p>
-                                                <p className="text-slate-500 dark:text-slate-400 text-xs">Shown in browser tabs.</p>
+                                                <p className="text-slate-500 dark:text-slate-400 text-xs">Ditampilkan di tab browser.</p>
                                                 <p className="text-slate-500 dark:text-slate-400 text-xs mt-1">Upload PNG/ICO langsung disimpan untuk semua portal.</p>
                                             </div>
                                         </div>
@@ -619,8 +642,8 @@ function App() {
                                     <div className="flex flex-col gap-4 rounded-xl bg-white dark:bg-slate-900 p-6 shadow-sm border border-slate-100 dark:border-slate-800">
                                         <div className="flex justify-between items-start">
                                             <div>
-                                                <p className="text-base font-bold leading-tight mb-1">Center Photo</p>
-                                                <p className="text-slate-500 dark:text-slate-400 text-xs">Used as the welcome visual on portal login pages.</p>
+                                                <p className="text-base font-bold leading-tight mb-1">Foto Center</p>
+                                                <p className="text-slate-500 dark:text-slate-400 text-xs">Dipakai sebagai visual pembuka di halaman login portal.</p>
                                                 <p className="text-slate-500 dark:text-slate-400 text-xs mt-1">Upload foto center langsung aktif di semua portal.</p>
                                             </div>
                                         </div>
@@ -757,7 +780,7 @@ function App() {
                                         className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
                                     >
                                         <span className={`material-symbols-outlined text-[20px] ${closureLoading ? 'animate-spin' : ''}`}>refresh</span>
-                                        Refresh Status
+                                        Perbarui Status
                                     </button>
                                 </div>
                             </section>
@@ -768,7 +791,7 @@ function App() {
                                         <div>
                                             <h3 className="text-lg font-black text-slate-900 dark:text-white">Tarik Tanggal Merah Indonesia</h3>
                                             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                                                Data otomatis ditarik dari API hari libur Indonesia. Admin tetap memilih dan meng-apply tanggal yang ingin dijadikan off center.
+                                                Data otomatis ditarik dari API hari libur Indonesia. Admin tetap memilih dan menerapkan tanggal yang ingin dijadikan off center.
                                             </p>
                                         </div>
                                         <div className="flex shrink-0 items-center gap-2">
@@ -817,7 +840,7 @@ function App() {
                                                         <p className="text-sm font-black text-slate-900 dark:text-white">{holiday.title}</p>
                                                         <p className="text-xs font-semibold text-slate-500">{formatDate(holiday.date)} {holiday.isCollectiveLeave ? '- Cuti Bersama' : ''}</p>
                                                     </div>
-                                                    {alreadyApplied && <span className="rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-black text-emerald-700">Applied</span>}
+                                                    {alreadyApplied && <span className="rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-black text-emerald-700">Sudah diterapkan</span>}
                                                 </label>
                                             );
                                         })}
@@ -834,7 +857,7 @@ function App() {
                                             className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 text-sm font-black text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-slate-900"
                                         >
                                             <span className="material-symbols-outlined text-[19px]">done_all</span>
-                                            Apply Off Center
+                                            Terapkan Jadwal Off
                                         </button>
                                     </div>
                                 </div>
@@ -930,12 +953,12 @@ function App() {
                     {activeSection === 'notifications' && (
                         <div className="flex flex-col gap-6">
                             <div className="rounded-xl bg-white dark:bg-slate-900 p-6 shadow-sm border border-slate-100 dark:border-slate-800 flex flex-col gap-5">
-                                <h3 className="text-base font-bold text-slate-900 dark:text-white">Notification Channels</h3>
+                                <h3 className="text-base font-bold text-slate-900 dark:text-white">Kanal Notifikasi</h3>
                                 {[
-                                    { label: 'New Registration Alert', desc: 'Notify admin when a new child registration is submitted.' },
-                                    { label: 'Session Reminder (24h)', desc: 'Remind parent and therapist 24 hours before a session.' },
-                                    { label: 'Reschedule Request', desc: 'Alert admin when a parent submits a reschedule request.' },
-                                    { label: 'Report Uploaded', desc: 'Notify parent when a therapist uploads a progress report.' },
+                                    { label: 'Pendaftaran Baru', desc: 'Beri tahu admin ketika pendaftaran anak baru masuk.' },
+                                    { label: 'Pengingat Sesi (24 jam)', desc: 'Ingatkan orang tua dan terapis 24 jam sebelum sesi.' },
+                                    { label: 'Permintaan Reschedule', desc: 'Beri tahu admin ketika orang tua mengajukan penjadwalan ulang.' },
+                                    { label: 'Laporan Diunggah', desc: 'Beri tahu orang tua ketika terapis mengunggah laporan perkembangan.' },
                                 ].map((item, i) => (
                                     <div key={i} className="flex items-center justify-between py-3 border-b border-slate-100 dark:border-slate-800 last:border-0">
                                         <div>
@@ -950,6 +973,13 @@ function App() {
                                     </div>
                                 ))}
                             </div>
+                        </div>
+                    )}
+
+                    {/* LANGUAGE SECTION */}
+                    {activeSection === 'language' && (
+                        <div className="flex flex-col gap-6">
+                            <LanguageSettingsPanel />
                         </div>
                     )}
 
@@ -971,14 +1001,14 @@ function App() {
                         onClick={handleCancel}
                         className="px-6 py-2.5 rounded-lg text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                     >
-                        Cancel
+                        Batal
                     </button>
                     <button
                         onClick={handleSave}
                         className="px-6 py-2.5 rounded-lg text-sm font-medium bg-primary text-white hover:bg-primary/90 transition-colors shadow-sm flex items-center gap-2"
                     >
                         <span className="material-symbols-outlined text-[18px]">save</span>
-                        Save Changes
+                        Simpan Perubahan
                     </button>
                 </div>
             </div>

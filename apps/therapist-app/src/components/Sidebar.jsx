@@ -16,6 +16,7 @@ const navItems = [
   { path: '/meetings', icon: 'groups', label: 'Pertemuan Orang Tua' },
   { path: '/child-progress', icon: 'trending_up', label: 'Kemajuan Anak' },
   { path: '/announcements', icon: 'notifications', label: 'Notifikasi', badgeType: 'notification' },
+  { path: '/settings', icon: 'settings', label: 'Pengaturan' },
 ];
 
 const SCHEDULE_NOTIFICATION_TYPES = [
@@ -121,13 +122,13 @@ export default function Sidebar({ isOpen, onClose }) {
           </div>
           <div className="min-w-0 flex-1">
             <h1 className="text-base font-extrabold text-slate-900 dark:text-white tracking-tight leading-tight truncate">{clinicName}</h1>
-            <p className="text-[11px] font-semibold text-teal-600 dark:text-teal-400 uppercase tracking-wider">Therapist</p>
+            <p className="text-[11px] font-semibold text-teal-600 dark:text-teal-400 uppercase tracking-wider">Terapis</p>
           </div>
           {/* Close btn on mobile */}
           <button
             onClick={onClose}
             className="lg:hidden p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 dark:hover:text-slate-200 dark:hover:bg-slate-800/60 transition-colors"
-            aria-label="Close menu"
+            aria-label="Tutup menu"
           >
             <span className="material-symbols-outlined text-[20px]">close</span>
           </button>
@@ -136,12 +137,12 @@ export default function Sidebar({ isOpen, onClose }) {
         {/* User Profile Hook */}
         <NavLink to="/performance" className="flex min-w-0 items-center gap-3.5 bg-white dark:bg-slate-950 p-3 rounded-2xl border border-slate-200/60 dark:border-slate-800/60 shadow-sm hover:border-teal-300 dark:hover:border-teal-700 transition-colors">
           <div className="size-10 rounded-full bg-gradient-to-br from-teal-100 to-cyan-100 dark:from-teal-900/40 dark:to-cyan-900/40 text-teal-700 dark:text-teal-400 flex items-center justify-center font-bold text-lg ring-2 ring-white dark:ring-slate-900 shadow-sm relative overflow-hidden">
-            {user?.avatar ? <img src={user.avatar} alt={user?.name || 'Therapist'} className="w-full h-full object-cover" /> : user?.name?.charAt(0) || 'T'}
+            {user?.avatar ? <img src={user.avatar} alt={user?.name || 'Terapis'} className="w-full h-full object-cover" /> : user?.name?.charAt(0) || 'T'}
             <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 rounded-full ring-2 ring-white dark:ring-slate-950"></div>
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold text-slate-900 dark:text-white truncate">{user?.name || 'Therapist'}</p>
-            <p className="text-xs font-medium text-slate-500 dark:text-slate-400 truncate">{user?.specialty || 'Clinical Team'}</p>
+            <p className="text-sm font-bold text-slate-900 dark:text-white truncate">{user?.name || 'Terapis'}</p>
+            <p className="text-xs font-medium text-slate-500 dark:text-slate-400 truncate">{user?.specialty || 'Tim Klinis'}</p>
           </div>
           {totalUnread > 0 && (
             <span className="bg-red-500 text-white text-[10px] font-black min-w-[20px] h-[20px] px-1.5 rounded-full flex items-center justify-center leading-none animate-pulse">

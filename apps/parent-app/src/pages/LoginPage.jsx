@@ -46,12 +46,12 @@ export default function LoginPage() {
   return (
     <LoginExperience
       portalKey="parent"
-      portalName="Parent Portal"
+      portalName="Portal Orang Tua"
       subtitle="Pantau perkembangan anak dengan lebih jelas."
       description="Lihat jadwal terapi, laporan perkembangan, reschedule, dan pengumuman klinik dari satu portal keluarga."
       formTitle="Masuk sebagai orang tua"
       formDescription="Gunakan nomor HP, Parent ID, atau NITA anak yang didaftarkan admin."
-      submitLabel="Masuk ke Parent Portal"
+      submitLabel="Masuk ke Portal Orang Tua"
       remember={remember}
       onRememberChange={setRemember}
       error={error || authError}
