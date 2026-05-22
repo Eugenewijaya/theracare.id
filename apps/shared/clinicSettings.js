@@ -25,6 +25,11 @@ export const DEFAULT_CLINIC_SETTINGS = {
 
 const PUBLIC_KEYS = Object.keys(DEFAULT_CLINIC_SETTINGS);
 
+function hasClinicSettingsPayload(value) {
+  if (!value || typeof value !== 'object') return false;
+  return PUBLIC_KEYS.some((key) => Object.prototype.hasOwnProperty.call(value, key));
+}
+
 function readJson(key) {
   try {
     return JSON.parse(localStorage.getItem(key) || '{}');
@@ -140,10 +145,12 @@ export function useClinicSettings() {
       setLoading(false);
     });
 
-    const onSettings = (event) => {
-      const next = normalizeClinicSettings(event.detail || getCachedClinicSettings());
+    const onSettings = (event = {}) => {
+      const hasSettingsPayload = hasClinicSettingsPayload(event.detail);
+      const next = normalizeClinicSettings(hasSettingsPayload ? event.detail : getCachedClinicSettings());
       setSettings(next);
       applyClinicTheme(next);
+      if (!hasSettingsPayload) refresh();
     };
     const onStorage = (event) => {
       if ([CLINIC_SETTINGS_KEY, LEGACY_ADMIN_SETTINGS_KEY].includes(event.key)) {
