@@ -56,6 +56,33 @@ export function useAuthSession(requiredRole = null) {
     return () => { cancelled = true; };
   }, [requiredRole]);
 
+  const refreshSession = useCallback(async (remember = true) => {
+    const runId = ++authRunRef.current;
+    try {
+      const res = await authApi.getSession();
+      if (runId !== authRunRef.current) return null;
+      if (res.ok && res.data?.session?.userId) {
+        const nextUser = res.data.user;
+        if (requiredRole && nextUser.role !== requiredRole) {
+          setUser(null);
+          clearStoredUser(requiredRole);
+          setError('Akses ditolak - role tidak sesuai');
+          return null;
+        }
+        setUser(nextUser);
+        storeUser(requiredRole, nextUser, remember);
+        return nextUser;
+      }
+      setUser(null);
+      clearStoredUser(requiredRole);
+      return null;
+    } catch {
+      return null;
+    } finally {
+      if (runId === authRunRef.current) setLoading(false);
+    }
+  }, [requiredRole]);
+
   const login = useCallback(async (email, password, rememberMe = true) => {
     const runId = ++authRunRef.current;
     setError('');
@@ -98,6 +125,7 @@ export function useAuthSession(requiredRole = null) {
     error,
     login,
     logout,
+    refreshSession,
     isAuthenticated: !!user,
   };
 }

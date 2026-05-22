@@ -13,8 +13,20 @@ function normalizePhone(phone?: string) {
   return digits;
 }
 
+function normalizeEmail(email?: string) {
+  return (email || "").trim().toLowerCase();
+}
+
 function parentLoginEmail(phone?: string, email?: string) {
   return email?.trim() || `${normalizePhone(phone)}@parent.theracare.id`;
+}
+
+function isGeneratedParentEmail(email?: string) {
+  return normalizeEmail(email).endsWith("@parent.theracare.id");
+}
+
+function publicParentEmail(email?: string) {
+  return isGeneratedParentEmail(email) ? "" : email || "";
 }
 
 function formatParent(parent: any) {
@@ -25,7 +37,7 @@ function formatParent(parent: any) {
     parentId: parent.id,
     userId: parent.userId,
     name: parent.user?.name || parent.name || "",
-    email: parent.user?.email || parent.email || "",
+    email: publicParentEmail(parent.user?.email || parent.email),
     phone: parent.user?.phone || parent.phone || "",
     status: parent.user?.status || parent.status || "active",
     children: parent.children || [],
@@ -36,6 +48,7 @@ async function findLoginParent(identifier: string) {
   const raw = (identifier || "").trim();
   const upper = raw.toUpperCase();
   const wantedPhone = normalizePhone(raw);
+  const wantedEmail = normalizeEmail(raw);
   if (!raw && !wantedPhone) return null;
 
   const all = await db.query.parents.findMany({ with: { user: true, children: true } });
@@ -43,10 +56,8 @@ async function findLoginParent(identifier: string) {
     if (p.user?.status && p.user.status !== "active") return false;
     const parentIdMatch = (p.id || "").toUpperCase() === upper;
     const phoneMatch = Boolean(wantedPhone) && normalizePhone(p.user?.phone || "") === wantedPhone;
-    const childMatch = (p.children || []).some((child: any) =>
-      (child.id || "").toUpperCase() === upper || (child.nita || "").toUpperCase() === upper
-    );
-    return parentIdMatch || phoneMatch || childMatch;
+    const emailMatch = Boolean(wantedEmail) && normalizeEmail(p.user?.email) === wantedEmail;
+    return parentIdMatch || phoneMatch || emailMatch;
   }) || null;
 }
 
@@ -113,7 +124,7 @@ export const parentService = {
     return {
       parentId: parent.id,
       loginId: raw,
-      email: parent.user?.email,
+      email: publicParentEmail(parent.user?.email),
       name: parent.user?.name,
       phone: parent.user?.phone,
       children: parent.children || [],
@@ -169,14 +180,24 @@ export const parentService = {
   },
 
   async update(id: string, updates: { name?: string; email?: string; phone?: string; address?: string; status?: string }) {
-    const parent = await db.query.parents.findFirst({ where: eq(parents.id, id) });
+    const parent = await db.query.parents.findFirst({ where: eq(parents.id, id), with: { user: true } });
     if (!parent) return null;
 
     const userUpdates: any = {};
     if (typeof updates.name === "string") userUpdates.name = updates.name.trim();
-    if (typeof updates.email === "string" && updates.email.trim()) userUpdates.email = updates.email.trim();
     if (typeof updates.phone === "string") userUpdates.phone = updates.phone.trim();
     if (typeof updates.status === "string") userUpdates.status = updates.status;
+    if (typeof updates.email === "string") {
+      const nextEmail = updates.email.trim();
+      if (nextEmail) {
+        userUpdates.email = nextEmail;
+      } else if (typeof updates.phone === "string" || isGeneratedParentEmail(parent.user?.email)) {
+        const nextPhone = userUpdates.phone ?? parent.user?.phone ?? "";
+        if (normalizePhone(nextPhone)) userUpdates.email = parentLoginEmail(nextPhone);
+      }
+    } else if (typeof updates.phone === "string" && isGeneratedParentEmail(parent.user?.email)) {
+      if (normalizePhone(updates.phone)) userUpdates.email = parentLoginEmail(updates.phone);
+    }
     if (Object.keys(userUpdates).length > 0) {
       await db.update(user).set({ ...userUpdates, updatedAt: new Date() }).where(eq(user.id, parent.userId));
     }

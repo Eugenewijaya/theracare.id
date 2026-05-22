@@ -24,7 +24,7 @@ export default function LoginPage() {
     setError('');
 
     if (!identifier.trim()) {
-      setError('Masukkan nomor HP, Parent ID, atau NITA.');
+      setError('Masukkan nomor telepon, Parent ID, atau email orang tua.');
       return;
     }
     if (!password.trim()) {
@@ -39,7 +39,7 @@ export default function LoginPage() {
     if (success) {
       navigate(redirectTo, { replace: true });
     } else {
-      setError(authError || 'ID login atau password tidak valid. Pastikan sesuai dengan data registrasi.');
+      setError(authError || 'Identitas login atau password tidak valid. Pastikan sesuai dengan data orang tua yang terdaftar.');
     }
   };
 
@@ -50,7 +50,7 @@ export default function LoginPage() {
       subtitle="Pantau perkembangan anak dengan lebih jelas."
       description="Lihat jadwal terapi, laporan perkembangan, reschedule, dan pengumuman klinik dari satu portal keluarga."
       formTitle="Masuk sebagai orang tua"
-      formDescription="Gunakan nomor HP, Parent ID, atau NITA anak yang didaftarkan admin."
+      formDescription="Gunakan nomor telepon, Parent ID, atau email orang tua yang didaftarkan admin."
       submitLabel="Masuk ke Portal Orang Tua"
       remember={remember}
       onRememberChange={setRemember}
@@ -58,14 +58,14 @@ export default function LoginPage() {
       isLoading={isLoading}
       onSubmit={handleSubmit}
     >
-      <LoginInput id="identifier" label="Nomor HP / Parent ID / NITA" icon="badge">
+      <LoginInput id="identifier" label="Nomor Telepon / Parent ID / Email" icon="badge">
         <input
           id="identifier"
           type="text"
           value={identifier}
           onChange={(event) => setIdentifier(event.target.value.trim())}
-          placeholder="08xx, P-0001, atau NITA"
-          className={`${loginInputClassName} font-mono tracking-wide`}
+          placeholder="08xx, P-0001, atau email"
+          className={loginInputClassName}
           autoComplete="username"
           disabled={isLoading}
         />

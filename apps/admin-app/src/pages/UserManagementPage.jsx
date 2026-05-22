@@ -25,6 +25,9 @@ export default function UserManagementPage() {
     const [isUnlocked, setIsUnlocked] = useState(() => getSessionUnlockState(USER_MANAGEMENT_UNLOCK_KEY));
     const [gatePassword, setGatePassword] = useState('');
     const [gateError, setGateError] = useState('');
+    const [editingParent, setEditingParent] = useState(null);
+    const [editParentForm, setEditParentForm] = useState({ name: '', phone: '', email: '', address: '' });
+    const [isSavingParent, setIsSavingParent] = useState(false);
 
     const load = async () => {
         setLoading(true);
@@ -173,6 +176,53 @@ export default function UserManagementPage() {
         }
     };
 
+    const openParentEditor = (parent) => {
+        setEditingParent(parent);
+        setEditParentForm({
+            name: parent.name || '',
+            phone: parent.phone || '',
+            email: parent.email || '',
+            address: parent.address || '',
+        });
+    };
+
+    const handleSaveParent = async (event) => {
+        event.preventDefault();
+        if (!editingParent) return;
+        const next = {
+            name: editParentForm.name.trim(),
+            phone: editParentForm.phone.trim(),
+            email: editParentForm.email.trim(),
+            address: editParentForm.address.trim(),
+        };
+        if (!next.name) {
+            showToast('Nama orang tua wajib diisi.', 'warning');
+            return;
+        }
+        if (!next.phone && !next.email) {
+            showToast('Isi nomor telepon atau email agar akun orang tua tetap bisa login.', 'warning');
+            return;
+        }
+
+        setIsSavingParent(true);
+        try {
+            const res = await parentsApi.update(editingParent.id, next);
+            if (res.ok && res.data?.data) {
+                const updated = res.data.data;
+                setParents(prev => prev.map(item => item.id === updated.id ? updated : item));
+                setEditingParent(null);
+                showToast('Data login orang tua diperbarui.');
+            } else {
+                showToast(`Gagal menyimpan: ${res.data?.error || res.data?.message || 'Error'}`, 'error');
+            }
+        } catch (error) {
+            console.error('Failed to update parent login identity', error);
+            showToast('Gagal menyimpan data orang tua.', 'error');
+        } finally {
+            setIsSavingParent(false);
+        }
+    };
+
     const handleDelete = async (user, type) => {
         const label = type === 'parents' ? 'parent' : 'therapist';
         const confirmed = await confirmAction({
@@ -212,6 +262,7 @@ export default function UserManagementPage() {
     const filtered = currentData.filter(u => {
         const matchSearch = (u.name || '').toLowerCase().includes(search.toLowerCase()) || 
                             (u.phone || '').includes(search) || 
+                            (u.email || '').toLowerCase().includes(search.toLowerCase()) ||
                             (u.id || '').toLowerCase().includes(search.toLowerCase());
         const matchStatus = statusFilter ? (u.status || 'active') === statusFilter : true;
         return matchSearch && matchStatus;
@@ -235,6 +286,101 @@ export default function UserManagementPage() {
                             <span className="material-symbols-outlined text-[18px]">close</span>
                         </button>
                     </div>
+                </div>
+            )}
+
+            {editingParent && (
+                <div className="fixed inset-0 z-[950] flex items-end justify-center bg-slate-950/45 p-4 backdrop-blur-sm sm:items-center">
+                    <form
+                        onSubmit={handleSaveParent}
+                        className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-primary/20 dark:bg-slate-900"
+                    >
+                        <div className="flex items-start justify-between gap-4">
+                            <div>
+                                <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">Parent Login</p>
+                                <h2 className="mt-1 text-xl font-black text-slate-900 dark:text-white">Edit Data Orang Tua</h2>
+                                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                                    Nomor telepon dan email di sini langsung menjadi identitas login parent portal.
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setEditingParent(null)}
+                                className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                                aria-label="Tutup"
+                            >
+                                <span className="material-symbols-outlined text-[20px]">close</span>
+                            </button>
+                        </div>
+
+                        <div className="mt-5 grid gap-4">
+                            <label className="block">
+                                <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Parent ID</span>
+                                <input
+                                    value={editingParent.id || ''}
+                                    disabled
+                                    className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-slate-100 px-3 text-sm font-semibold text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400"
+                                />
+                            </label>
+                            <label className="block">
+                                <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Nama Orang Tua</span>
+                                <input
+                                    value={editParentForm.name}
+                                    onChange={(event) => setEditParentForm(prev => ({ ...prev, name: event.target.value }))}
+                                    className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                                />
+                            </label>
+                            <div className="grid gap-4 sm:grid-cols-2">
+                                <label className="block">
+                                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Nomor Telepon</span>
+                                    <input
+                                        type="tel"
+                                        value={editParentForm.phone}
+                                        onChange={(event) => setEditParentForm(prev => ({ ...prev, phone: event.target.value }))}
+                                        placeholder="08xx"
+                                        className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                                    />
+                                </label>
+                                <label className="block">
+                                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Email</span>
+                                    <input
+                                        type="email"
+                                        value={editParentForm.email}
+                                        onChange={(event) => setEditParentForm(prev => ({ ...prev, email: event.target.value }))}
+                                        placeholder="parent@email.com"
+                                        className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                                    />
+                                </label>
+                            </div>
+                            <label className="block">
+                                <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Alamat</span>
+                                <textarea
+                                    value={editParentForm.address}
+                                    onChange={(event) => setEditParentForm(prev => ({ ...prev, address: event.target.value }))}
+                                    rows={3}
+                                    className="mt-2 w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                                />
+                            </label>
+                        </div>
+
+                        <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                            <button
+                                type="button"
+                                onClick={() => setEditingParent(null)}
+                                className="h-11 rounded-xl border border-slate-200 px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                            >
+                                Batal
+                            </button>
+                            <button
+                                type="submit"
+                                disabled={isSavingParent}
+                                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-primary px-5 text-sm font-black text-white transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                                {isSavingParent && <span className="material-symbols-outlined text-[18px] animate-spin">progress_activity</span>}
+                                Simpan Perubahan
+                            </button>
+                        </div>
+                    </form>
                 </div>
             )}
 
@@ -352,7 +498,7 @@ export default function UserManagementPage() {
                     <div className="flex flex-col sm:flex-row gap-3">
                         <div className="flex-1 flex items-center gap-2 bg-white dark:bg-primary/5 border border-slate-200 dark:border-primary/20 rounded-lg px-3 h-10">
                             <span className="material-symbols-outlined text-slate-400 text-[18px]">search</span>
-                            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or phone..."
+                            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Cari nama, nomor telepon, email, atau ID..."
                                 className="flex-1 bg-transparent text-sm text-slate-900 dark:text-slate-100 outline-none placeholder:text-slate-400" />
                         </div>
                         <select value={statusFilter} onChange={e => setStatus(e.target.value)}
@@ -366,14 +512,14 @@ export default function UserManagementPage() {
                     {/* Table */}
                     <div className="bg-white dark:bg-primary/5 border border-slate-200 dark:border-primary/20 rounded-xl overflow-hidden shadow-sm">
                         <div className="overflow-x-auto">
-                            <table className="w-full min-w-[1240px] table-fixed text-left">
+                            <table className="w-full min-w-[1400px] table-fixed text-left">
                                 <colgroup>
                                     <col className="w-[220px]" />
-                                    <col className="w-[230px]" />
+                                    <col className="w-[320px]" />
                                     <col className="w-[170px]" />
                                     <col className="w-[270px]" />
                                     <col className="w-[120px]" />
-                                    <col className="w-[230px]" />
+                                    <col className="w-[290px]" />
                                 </colgroup>
                                 <thead>
                                     <tr className="border-b border-slate-200 dark:border-primary/20 bg-slate-50 dark:bg-background-dark/50">
@@ -428,6 +574,16 @@ export default function UserManagementPage() {
                                                 <td className="px-5 py-4 align-middle">
                                                     <p className="text-sm text-slate-700 dark:text-slate-300 break-words">{user.phone || '-'}</p>
                                                     {user.email && <p className="text-xs text-slate-400 break-all">{user.email}</p>}
+                                                    {activeTab === 'parents' && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => openParentEditor(user)}
+                                                            className="mt-2 inline-flex items-center gap-1 rounded-lg bg-blue-50 px-2.5 py-1.5 text-xs font-black text-blue-700 transition-colors hover:bg-blue-100"
+                                                        >
+                                                            <span className="material-symbols-outlined text-[14px]">edit</span>
+                                                            Edit kontak login
+                                                        </button>
+                                                    )}
                                                 </td>
                                                 <td className="px-5 py-4 align-middle">
                                                     {activeTab === 'parents' ? (
@@ -477,6 +633,14 @@ export default function UserManagementPage() {
                                                 </td>
                                                 <td className="px-5 py-4 align-middle">
                                                     <div className="flex flex-nowrap items-center justify-end gap-2">
+                                                        {activeTab === 'parents' && (
+                                                            <button type="button" onClick={() => openParentEditor(user)}
+                                                                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 transition-colors hover:bg-blue-100"
+                                                                title="Edit data login parent">
+                                                                <span className="material-symbols-outlined text-[14px]">edit</span>
+                                                                <span>Edit Login</span>
+                                                            </button>
+                                                        )}
                                                         <button onClick={() => handleReset(user, activeTab)}
                                                             className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
                                                             title="Reset Password">

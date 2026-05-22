@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { authApi, parentsApi } from '../../../shared/api/client';
-import { clearParentUser, readParentUser, storeParentUser } from '../../../shared/sessionIdentity';
+import { clearParentUser, isParentUserRemembered, readParentUser, storeParentUser } from '../../../shared/sessionIdentity';
 
 const AuthContext = createContext(null);
 
@@ -39,6 +39,27 @@ export function AuthProvider({ children }) {
     return userData;
   };
 
+  const refreshProfile = async () => {
+    const runId = ++authRunRef.current;
+    try {
+      const profileRes = await parentsApi.getMe();
+      if (runId !== authRunRef.current) return null;
+      if (profileRes.ok && profileRes.data?.data) {
+        return applyParent(profileRes.data.data, isParentUserRemembered());
+      }
+      if (profileRes.status === 401 || profileRes.status === 403) {
+        setUser(null);
+        clearStoredUser();
+      }
+      return null;
+    } catch (err) {
+      console.error(err);
+      return null;
+    } finally {
+      if (runId === authRunRef.current) setLoading(false);
+    }
+  };
+
   useEffect(() => {
     let cancelled = false;
     const runId = ++authRunRef.current;
@@ -50,7 +71,7 @@ export function AuthProvider({ children }) {
           const profileRes = await parentsApi.getMe();
           if (cancelled || runId !== authRunRef.current) return;
           if (profileRes.ok && profileRes.data?.data) {
-            applyParent(profileRes.data.data);
+            applyParent(profileRes.data.data, isParentUserRemembered());
           }
         } else {
           setUser(null);
@@ -64,8 +85,8 @@ export function AuthProvider({ children }) {
   }, []);
 
   /**
-   * Login using parent phone number, Parent ID, or child NITA as username.
-   * @param {string} identifier - Nomor HP, Parent ID, atau NITA yang terdaftar
+   * Login using a parent-owned identifier: phone number, Parent ID, or email.
+   * @param {string} identifier - Nomor telepon, Parent ID, atau email orang tua
    * @param {string} password - Password sementara atau password aktif parent
    * @returns {boolean} true if login successful
    */
@@ -82,7 +103,7 @@ export function AuthProvider({ children }) {
         if (runId === authRunRef.current) setLoading(false);
         return true;
       }
-      setError(res.data?.error || res.data?.message || 'ID login atau password tidak valid');
+      setError(res.data?.error || res.data?.message || 'Identitas login atau password tidak valid');
       if (runId === authRunRef.current) setLoading(false);
       return false;
     } catch (err) {
@@ -104,7 +125,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, error, login, logout, isAuthenticated: !!user }}>
+    <AuthContext.Provider value={{ user, loading, error, login, logout, refreshProfile, isAuthenticated: !!user }}>
       {children}
     </AuthContext.Provider>
   );

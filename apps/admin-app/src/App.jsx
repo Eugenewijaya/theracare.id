@@ -88,7 +88,7 @@ function MobileTopBar({ onMenuOpen }) {
 function DashboardLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  const { user } = useAuth();
+  const { refreshSession, user } = useAuth();
   const navigate = useNavigate();
 
   return (
@@ -99,7 +99,10 @@ function DashboardLayout() {
         <AutoRefreshHost
           user={user}
           role="admin"
-          onRefresh={() => setRefreshKey((key) => key + 1)}
+          onRefresh={() => {
+            refreshSession?.();
+            setRefreshKey((key) => key + 1);
+          }}
         />
         <NotificationToastHost
           user={user}

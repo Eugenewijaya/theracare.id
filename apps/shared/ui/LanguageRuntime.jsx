@@ -14,6 +14,14 @@ const SKIP_SELECTOR = [
   '.notranslate',
   '.material-symbols-outlined',
 ].join(',');
+const ATTRIBUTE_SKIP_SELECTOR = [
+  'script',
+  'style',
+  '[contenteditable="true"]',
+  '[data-no-translate]',
+  '.notranslate',
+  '.material-symbols-outlined',
+].join(',');
 
 function shouldSkipNode(node) {
   const element = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
@@ -31,7 +39,7 @@ function applyTextTranslation(node, language) {
 }
 
 function applyElementAttributes(element, language) {
-  if (!element || shouldSkipNode(element)) return;
+  if (!element || element.closest(ATTRIBUTE_SKIP_SELECTOR)) return;
   TRANSLATABLE_ATTRIBUTES.forEach((attribute) => {
     const value = element.getAttribute(attribute);
     if (!value) return;

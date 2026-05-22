@@ -3,22 +3,45 @@ import { parentsApi } from '../../../shared/api/client';
 import { readParentUser } from '../../../shared/sessionIdentity';
 import LanguageSettingsPanel from '../../../shared/ui/LanguageSettingsPanel';
 
+const PARENT_SETTINGS_KEY = 'theracare_parent_portal_preferences';
+
+function readPreferences() {
+    try {
+        return JSON.parse(localStorage.getItem(PARENT_SETTINGS_KEY) || '{}');
+    } catch {
+        return {};
+    }
+}
+
 export default function Settings() {
     const [theme, setTheme] = useState('light');
-    const [notifEmail, setNotifEmail] = useState(true);
-    const [notifSms, setNotifSms] = useState(false);
+    const [notifEmail, setNotifEmail] = useState(() => readPreferences().notifEmail ?? true);
+    const [notifSms, setNotifSms] = useState(() => readPreferences().notifSms ?? false);
     const [parentData, setParentData] = useState({ name: '', email: '', phone: '' });
+    const [profileNotice, setProfileNotice] = useState('');
     
     const [toast, setToast] = useState(null);
 
     useEffect(() => {
-        if (document.documentElement.classList.contains('dark')) setTheme('dark');
+        const prefs = readPreferences();
+        if (prefs.theme === 'dark' || (!prefs.theme && document.documentElement.classList.contains('dark'))) {
+            document.documentElement.classList.add('dark');
+            setTheme('dark');
+        } else if (prefs.theme === 'light') {
+            document.documentElement.classList.remove('dark');
+            setTheme('light');
+        }
         
         const load = async () => {
             const user = readParentUser();
             if (user) {
                 try {
                     const res = await parentsApi.getById(user.parentId);
+                    if (!res.ok) {
+                        setProfileNotice(res.data?.error || 'Profil orang tua belum bisa dimuat dari server.');
+                        if (user.name) setParentData(prev => ({ ...prev, name: user.name }));
+                        return;
+                    }
                     const parent = res.data?.data;
                     if (parent) {
                         setParentData({
@@ -29,7 +52,10 @@ export default function Settings() {
                     } else if (user.name) {
                         setParentData(prev => ({ ...prev, name: user.name }));
                     }
-                } catch (e) {}
+                } catch (e) {
+                    setProfileNotice('Profil orang tua belum bisa dimuat dari server.');
+                    if (user.name) setParentData(prev => ({ ...prev, name: user.name }));
+                }
             }
         };
         load();
@@ -43,7 +69,10 @@ export default function Settings() {
     
     const handleSave = (e) => {
         e.preventDefault();
-        setToast('Pengaturan berhasil disimpan!');
+        try {
+            localStorage.setItem(PARENT_SETTINGS_KEY, JSON.stringify({ notifEmail, notifSms, theme }));
+        } catch {}
+        setToast('Preferensi berhasil disimpan.');
         setTimeout(() => setToast(null), 3000);
     };
 
@@ -80,6 +109,14 @@ export default function Settings() {
                                     <span className="material-symbols-outlined text-sm text-slate-400">person</span> 
                                     Profil Akun
                                 </h2>
+                                <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+                                    Data login dikelola admin dan akan diperbarui otomatis ketika kontak orang tua berubah.
+                                </p>
+                                {profileNotice && (
+                                    <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+                                        {profileNotice}
+                                    </p>
+                                )}
                             </div>
                             <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-5">
                                 <div>
@@ -87,8 +124,8 @@ export default function Settings() {
                                     <input 
                                         type="text" 
                                         value={parentData.name} 
-                                        onChange={e => setParentData({...parentData, name: e.target.value})}
-                                        className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 text-slate-900 dark:text-white text-sm transition-all"
+                                        readOnly
+                                        className="w-full cursor-default px-4 py-2.5 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl outline-none text-slate-900 dark:text-white text-sm transition-all"
                                     />
                                 </div>
                                 <div>
@@ -96,8 +133,9 @@ export default function Settings() {
                                     <input 
                                         type="email" 
                                         value={parentData.email} 
-                                        onChange={e => setParentData({...parentData, email: e.target.value})}
-                                        className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 text-slate-900 dark:text-white text-sm transition-all"
+                                        readOnly
+                                        placeholder="Belum diatur admin"
+                                        className="w-full cursor-default px-4 py-2.5 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl outline-none text-slate-900 dark:text-white text-sm transition-all"
                                     />
                                 </div>
                                 <div className="md:col-span-2">
@@ -105,8 +143,8 @@ export default function Settings() {
                                     <input 
                                         type="tel" 
                                         value={parentData.phone} 
-                                        onChange={e => setParentData({...parentData, phone: e.target.value})}
-                                        className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 text-slate-900 dark:text-white text-sm transition-all md:w-1/2"
+                                        readOnly
+                                        className="w-full cursor-default px-4 py-2.5 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl outline-none text-slate-900 dark:text-white text-sm transition-all md:w-1/2"
                                     />
                                 </div>
                             </div>
@@ -179,7 +217,7 @@ export default function Settings() {
                                 className="px-8 py-3 bg-gradient-to-r from-sky-500 to-cyan-500 hover:from-sky-600 hover:to-cyan-600 text-white font-bold rounded-xl shadow-lg shadow-sky-500/20 hover:shadow-sky-500/40 transition-all flex items-center gap-2"
                             >
                                 <span className="material-symbols-outlined text-[20px]">save</span>
-                                Simpan Perubahan
+                                Simpan Preferensi
                             </button>
                         </div>
                     </form>

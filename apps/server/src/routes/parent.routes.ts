@@ -21,7 +21,7 @@ router.get("/", requireAuth, requireRole("admin"), async (req, res, next) => {
 router.get("/login-identity/:identifier", async (req, res, next) => {
   try {
     const identity = await parentService.getLoginIdentity(req.params.identifier as string);
-    if (!identity) return notFound(res, "Nomor HP, Parent ID, atau NITA belum terdaftar atau akun ditangguhkan");
+    if (!identity) return notFound(res, "Nomor telepon, Parent ID, atau email orang tua belum terdaftar atau akun ditangguhkan");
     ok(res, identity);
   } catch (e) { next(e); }
 });
@@ -29,9 +29,9 @@ router.get("/login-identity/:identifier", async (req, res, next) => {
 router.post("/portal-login", async (req, res, next) => {
   try {
     const { identifier, password } = req.body || {};
-    if (!identifier || !password) return badRequest(res, "ID login dan password wajib diisi");
+    if (!identifier || !password) return badRequest(res, "Identitas login dan password wajib diisi");
     const result = await parentService.portalLogin(identifier, password);
-    if (!result) return res.status(401).json({ success: false, error: "ID login atau password tidak valid" });
+    if (!result) return res.status(401).json({ success: false, error: "Identitas login atau password tidak valid" });
     ok(res, result, "Login berhasil");
   } catch (e) { next(e); }
 });

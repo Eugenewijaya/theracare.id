@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Header from './components/Header';
 import SettingsSidebar from './components/SettingsSidebar';
 import { adminApi, notificationsApi } from '../../shared/api/client';
+import { readPortalUser } from '../../shared/sessionIdentity';
 
 const tabs = ['Semua', 'Notifikasi Baru', 'Admin', 'Parent / Orang Tua', 'Terapis', 'Umum / Global'];
 const roleOptions = [
@@ -54,12 +55,7 @@ function audienceLabel(item) {
 }
 
 function readStoredAdmin() {
-    try {
-        const saved = localStorage.getItem('theracare_auth_admin') || sessionStorage.getItem('theracare_auth_admin');
-        return saved ? JSON.parse(saved) : null;
-    } catch {
-        return null;
-    }
+    return readPortalUser('admin');
 }
 
 function App() {

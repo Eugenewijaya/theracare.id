@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { authApi, therapistsApi } from '../../../shared/api/client';
-import { clearTherapistUser, readTherapistUser, storeTherapistUser } from '../../../shared/sessionIdentity';
+import { clearTherapistUser, isPortalUserRemembered, readTherapistUser, storeTherapistUser } from '../../../shared/sessionIdentity';
 
 const AuthContext = createContext(null);
 
@@ -53,6 +53,27 @@ export function AuthProvider({ children }) {
     return userData;
   };
 
+  const refreshProfile = async () => {
+    const runId = ++authRunRef.current;
+    try {
+      const profileRes = await therapistsApi.getMe();
+      if (runId !== authRunRef.current) return null;
+      if (profileRes.ok && profileRes.data?.data) {
+        return applyTherapist(profileRes.data.data, isPortalUserRemembered('therapist'));
+      }
+      if (profileRes.status === 401 || profileRes.status === 403) {
+        setUser(null);
+        clearStoredUser();
+      }
+      return null;
+    } catch (err) {
+      console.error(err);
+      return null;
+    } finally {
+      if (runId === authRunRef.current) setLoading(false);
+    }
+  };
+
   useEffect(() => {
     let cancelled = false;
     const runId = ++authRunRef.current;
@@ -64,7 +85,7 @@ export function AuthProvider({ children }) {
           const profileRes = await therapistsApi.getMe();
           if (cancelled || runId !== authRunRef.current) return;
           if (profileRes.ok && profileRes.data?.data) {
-            applyTherapist(profileRes.data.data);
+            applyTherapist(profileRes.data.data, isPortalUserRemembered('therapist'));
           }
         } else {
           setUser(null);
@@ -110,7 +131,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, error, login, logout, isAuthenticated: !!user }}>
+    <AuthContext.Provider value={{ user, loading, error, login, logout, refreshProfile, isAuthenticated: !!user }}>
       {children}
     </AuthContext.Provider>
   );

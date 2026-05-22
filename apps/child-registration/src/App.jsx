@@ -275,7 +275,7 @@ function App() {
                                 </div>
                             ))}
                         </div>
-                        <p className="text-xs text-slate-400 mt-2">NITA digunakan sebagai ID login anak dan primary key sistem.</p>
+                        <p className="text-xs text-slate-400 mt-2">NITA digunakan sebagai identitas data anak dan relasi terapi, bukan login portal orang tua.</p>
                     </div>
                 )}
                 <button onClick={handleReset}
