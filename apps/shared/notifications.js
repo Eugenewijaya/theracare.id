@@ -33,10 +33,25 @@ export function sortNotifications(notifications = []) {
   return [...notifications].sort((a, b) => getNotificationTimestamp(b) - getNotificationTimestamp(a));
 }
 
+export function getNotificationActor(notification) {
+  const role = String(notification?.actorRole || notification?.createdByRole || notification?.senderRole || '').toLowerCase();
+  const name = notification?.actorName || notification?.createdByName || notification?.senderName || '';
+  if (role === 'admin') return { role, label: name ? `Admin: ${name}` : 'Admin' };
+  if (role === 'therapist') return { role, label: name ? `Terapis: ${name}` : 'Terapis' };
+  if (role === 'parent') return { role, label: name ? `Orang Tua: ${name}` : 'Orang Tua' };
+  if (role === 'system') return { role, label: 'Sistem' };
+  return { role: 'system', label: 'Sistem' };
+}
+
 export function getNotificationDestination(notification, role = 'user') {
   const type = String(notification?.type || '').toLowerCase();
   const icon = String(notification?.icon || '').toLowerCase();
   const userRole = String(role || '').toLowerCase();
+
+  if (type.includes('account') || type.includes('security') || type.includes('developer') || type.includes('system')) {
+    if (userRole === 'admin') return '/notifications';
+    return '/announcements?tab=system';
+  }
 
   if (type.startsWith('announcement')) {
     if (userRole === 'admin') return '/notifications';

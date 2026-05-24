@@ -11,5 +11,8 @@
     "drizzle-kit": "^0.31.10",
     "drizzle-orm": "^0.45.2",
     "pg": "^8.20.0"
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4"
   }
 }

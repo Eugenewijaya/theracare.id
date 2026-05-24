@@ -252,7 +252,7 @@ export const childService = {
   },
 
   async create(parentId: string, data: {
-    firstName: string; lastName: string; dob?: string;
+    firstName: string; lastName?: string; dob?: string;
     gender?: string; school?: string; diagnosis?: string;
     therapyProgramsList?: Array<{
       type: string; totalSessions: number; goal?: string; icon?: string; colorClass?: string; colorHex?: string; programId?: string;
@@ -262,14 +262,16 @@ export const childService = {
   }) {
     const lastSeq = await this.getLastSequence();
     const nita = generateNITA(lastSeq + 1);
+    const firstName = data.firstName.trim();
+    const lastName = data.lastName?.trim() || "";
 
     const [child] = await db.insert(children).values({
       id: nita,
       nita,
       parentId,
-      firstName: data.firstName,
-      lastName: data.lastName,
-      name: `${data.firstName} ${data.lastName}`,
+      firstName,
+      lastName,
+      name: `${firstName} ${lastName}`.trim(),
       dob: data.dob,
       gender: data.gender,
       school: data.school,

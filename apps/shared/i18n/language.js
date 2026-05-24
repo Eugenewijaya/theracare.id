@@ -105,6 +105,40 @@ const ENTRIES = [
   ['in_app', { id: 'In-App', en: 'In-App', zh: '应用内' }],
   ['email', { id: 'Email', en: 'Email', zh: '电子邮件' }],
   ['whatsapp', { id: 'WhatsApp', en: 'WhatsApp', zh: 'WhatsApp' }],
+  ['center_information', { id: 'Informasi Center', en: 'Center Information', zh: '\u4e2d\u5fc3\u4fe1\u606f' }],
+  ['center_identity_saved_globally', { id: 'Identitas center tersimpan sebagai informasi publik untuk semua portal.', en: 'Center identity is saved as public information for every portal.', zh: '\u4e2d\u5fc3\u8eab\u4efd\u4f1a\u4f5c\u4e3a\u6240\u6709\u95e8\u6237\u7684\u516c\u5171\u4fe1\u606f\u4fdd\u5b58\u3002' }],
+  ['center_name_helper', { id: 'Nama ini tampil di portal, header, dan komunikasi resmi.', en: 'This name appears in portals, headers, and official communication.', zh: '\u6b64\u540d\u79f0\u4f1a\u663e\u793a\u5728\u95e8\u6237\u3001\u9875\u7709\u548c\u6b63\u5f0f\u901a\u77e5\u4e2d\u3002' }],
+  ['center_description_helper', { id: 'Ditampilkan di bawah logo pada laporan PDF.', en: 'Shown below the logo in PDF reports.', zh: '\u663e\u793a\u5728 PDF \u62a5\u544a\u7684\u6807\u5fd7\u4e0b\u65b9\u3002' }],
+  ['operating_hours_weekday', { id: 'Jam Operasional (Hari Kerja)', en: 'Operating Hours (Weekday)', zh: '\u8425\u4e1a\u65f6\u95f4\uff08\u5de5\u4f5c\u65e5\uff09' }],
+  ['operating_hours_weekend', { id: 'Jam Operasional (Akhir Pekan)', en: 'Operating Hours (Weekend)', zh: '\u8425\u4e1a\u65f6\u95f4\uff08\u5468\u672b\uff09' }],
+  ['contact_email', { id: 'Email Kontak', en: 'Contact Email', zh: '\u8054\u7cfb\u90ae\u7bb1' }],
+  ['contact_phone', { id: 'Nomor Kontak', en: 'Contact Phone', zh: '\u8054\u7cfb\u7535\u8bdd' }],
+  ['admin_whatsapp', { id: 'WhatsApp Admin', en: 'Admin WhatsApp', zh: '\u7ba1\u7406\u5458 WhatsApp' }],
+  ['center_address', { id: 'Alamat Center', en: 'Center Address', zh: '\u4e2d\u5fc3\u5730\u5740' }],
+  ['website', { id: 'Website', en: 'Website', zh: '\u7f51\u7ad9' }],
+  ['use_country_code', { id: 'Gunakan kode negara tanpa +, contoh: 6281234567890', en: 'Use the country code without +, for example: 6281234567890', zh: '\u4f7f\u7528\u4e0d\u5e26 + \u7684\u56fd\u5bb6\u4ee3\u7801\uff0c\u4f8b\u5982\uff1a6281234567890' }],
+  ['favicon', { id: 'Favicon', en: 'Favicon', zh: 'Favicon' }],
+  ['upload_favicon', { id: 'Upload Favicon', en: 'Upload Favicon', zh: '\u4e0a\u4f20 Favicon' }],
+  ['used_for_buttons', { id: 'Dipakai untuk tombol, tautan, dan status aktif.', en: 'Used for buttons, links, and active states.', zh: '\u7528\u4e8e\u6309\u94ae\u3001\u94fe\u63a5\u548c\u6fc0\u6d3b\u72b6\u6001\u3002' }],
+  ['welcome_center_preview', { id: 'Selamat datang kembali di center. Janji temu berikutnya sudah siap.', en: 'Welcome back to the center. Your next appointment is ready.', zh: '\u6b22\u8fce\u56de\u5230\u4e2d\u5fc3\u3002\u60a8\u7684\u4e0b\u4e00\u4e2a\u9884\u7ea6\u5df2\u51c6\u5907\u597d\u3002' }],
+  ['book_now', { id: 'Buat Jadwal', en: 'Book Now', zh: '\u7acb\u5373\u9884\u7ea6' }],
+  ['details', { id: 'Detail', en: 'Details', zh: '\u8be6\u60c5' }],
+  ['view_full_schedule', { id: 'Lihat jadwal lengkap', en: 'View full schedule', zh: '\u67e5\u770b\u5b8c\u6574\u65e5\u7a0b' }],
+  ['request_management', { id: 'Manajemen Permintaan', en: 'Request Management', zh: '\u8bf7\u6c42\u7ba1\u7406' }],
+  ['request_management_helper', { id: 'Kelola dan respons permintaan perubahan jadwal dari orang tua.', en: 'Manage and respond to schedule change requests from parents', zh: '\u7ba1\u7406\u5e76\u56de\u5e94\u5bb6\u957f\u7684\u6539\u671f\u8bf7\u6c42' }],
+  ['pending', { id: 'Menunggu', en: 'Pending', zh: '\u5f85\u5904\u7406' }],
+  ['under_review', { id: 'Dalam Review', en: 'Under Review', zh: '\u5ba1\u6838\u4e2d' }],
+  ['resolved_history', { id: 'Riwayat Selesai', en: 'Resolved History', zh: '\u5df2\u89e3\u51b3\u5386\u53f2' }],
+  ['approve_selected', { id: 'Setujui Pilihan', en: 'Approve Selected', zh: '\u6279\u51c6\u6240\u9009' }],
+  ['reject', { id: 'Tolak', en: 'Reject', zh: '\u62d2\u7edd' }],
+  ['process', { id: 'Proses', en: 'Process', zh: '\u5904\u7406' }],
+  ['confirm', { id: 'Konfirmasi', en: 'Confirm', zh: '\u786e\u8ba4' }],
+  ['success', { id: 'Berhasil', en: 'Success', zh: '\u6210\u529f' }],
+  ['ok', { id: 'OK', en: 'OK', zh: 'OK' }],
+  ['notification', { id: 'Notifikasi', en: 'Notification', zh: '\u901a\u77e5' }],
+  ['confirmation', { id: 'Konfirmasi', en: 'Confirmation', zh: '\u786e\u8ba4' }],
+  ['no_pending_requests', { id: 'Tidak ada permintaan yang menunggu.', en: 'No pending requests', zh: '\u6ca1\u6709\u5f85\u5904\u7406\u8bf7\u6c42' }],
+  ['no_requests_under_review', { id: 'Tidak ada permintaan dalam review.', en: 'No requests under review', zh: '\u6ca1\u6709\u5ba1\u6838\u4e2d\u7684\u8bf7\u6c42' }],
 ];
 
 const phraseToKey = new Map();
@@ -146,6 +180,22 @@ export function translatePhrase(value, language = readLanguage()) {
   const key = phraseToKey.get(normalized);
   if (!key) return null;
   return keyToEntry.get(key)?.[normalizeLanguage(language)] || null;
+}
+
+export function translateText(value, language = readLanguage()) {
+  const source = String(value || '');
+  if (!source.trim()) return null;
+
+  const direct = translatePhrase(source, language);
+  if (direct) return direct;
+
+  const punctuationMatch = source.match(/^(.+?)(\s*[:：.!?])$/);
+  if (punctuationMatch) {
+    const translated = translatePhrase(punctuationMatch[1], language);
+    if (translated) return `${translated}${punctuationMatch[2]}`;
+  }
+
+  return null;
 }
 
 export function getLanguageMeta(language = readLanguage()) {

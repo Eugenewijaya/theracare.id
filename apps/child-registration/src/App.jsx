@@ -78,7 +78,6 @@ function App() {
         2: () => {
             const e = {};
             if (!currentChild.firstName?.trim()) e.firstName = 'First name is required.';
-            if (!currentChild.lastName?.trim())  e.lastName  = 'Last name is required.';
             if (!currentChild.dob)               e.dob       = 'Date of birth is required.';
             setErrors(e);
             return !Object.keys(e).length;
@@ -296,7 +295,7 @@ function App() {
     const isStepValid = (() => {
         if (step === 0) return regMode !== null;
         if (step === 1) return !!parentData.name?.trim() && !!parentData.phone?.trim() && !!parentData.address?.trim();
-        if (step === 2) return !!currentChild.firstName?.trim() && !!currentChild.lastName?.trim() && !!currentChild.dob;
+        if (step === 2) return !!currentChild.firstName?.trim() && !!currentChild.dob;
         if (step === 3) return !!currentChild.program && !!currentChild.therapistId && !!currentChild.periodStartDate && Number(currentChild.totalSessions || 0) > 0;
         return true;
     })();
@@ -310,7 +309,6 @@ function App() {
         }
         if (step === 2) {
             if (!currentChild.firstName?.trim()) issues.push('Nama depan anak wajib diisi.');
-            if (!currentChild.lastName?.trim()) issues.push('Nama belakang anak wajib diisi.');
             if (!currentChild.dob) issues.push('Tanggal lahir anak wajib diisi.');
         }
         if (step === 3) {

@@ -1,13 +1,29 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { adminApi, notificationsApi, rescheduleApi } from '../../../shared/api/client';
 import { readTherapistUser } from '../../../shared/sessionIdentity';
 import {
     formatNotificationTime,
+    getNotificationActor,
     getNotificationIcon,
     getNotificationMessage,
     getNotificationTitle,
     isNotificationRead,
+    sortNotifications,
 } from '../../../shared/notifications';
+
+const WORKFLOW_NOTIFICATION_KEYWORDS = [
+    'announcement',
+    'schedule',
+    'reschedule',
+    'substitute',
+    'session',
+    'report',
+    'leave',
+    'meeting',
+    'program',
+    'center_closure',
+];
 
 const formatDate = (dateStr) => {
     if (!dateStr) return '';
@@ -21,14 +37,22 @@ const formatDateSimple = (dateStr) => {
     return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
 };
 
+const isSystemNotification = (notification, announcementIds) => {
+    if (notification.relatedId && announcementIds.has(notification.relatedId)) return false;
+    const type = String(notification.type || '').toLowerCase();
+    if (!type) return true;
+    return !WORKFLOW_NOTIFICATION_KEYWORDS.some((keyword) => type.includes(keyword));
+};
+
 export default function Announcements() {
+    const [searchParams, setSearchParams] = useSearchParams();
     const [announcements, setAnnouncements] = useState([]);
     const [systemNotifications, setSystemNotifications] = useState([]);
     const [reschedules, setReschedules] = useState([]);
     const [notificationMap, setNotificationMap] = useState({});
     const [unreadTotal, setUnreadTotal] = useState(0);
     const [expanded, setExpanded] = useState(null);
-    const [activeTab, setActiveTab] = useState('announcements'); // 'announcements' | 'reschedules'
+    const [activeTab, setActiveTab] = useState('announcements'); // 'announcements' | 'system' | 'reschedules'
 
     const load = async () => {
         try {
@@ -45,7 +69,7 @@ export default function Announcements() {
                 if (n.relatedId) byRelated[n.relatedId] = n;
             });
             setNotificationMap(byRelated);
-            setSystemNotifications(notifs.filter(n => !n.relatedId || !announcementIds.has(n.relatedId)));
+            setSystemNotifications(sortNotifications(notifs.filter(n => isSystemNotification(n, announcementIds))));
             setUnreadTotal(notifs.filter(n => !isNotificationRead(n)).length);
 
             const user = readTherapistUser();
@@ -68,7 +92,18 @@ export default function Announcements() {
         };
     }, []);
 
+    useEffect(() => {
+        const tab = searchParams.get('tab');
+        setActiveTab(['announcements', 'system', 'reschedules'].includes(tab || '') ? tab : 'announcements');
+    }, [searchParams]);
+
+    const changeTab = (tab) => {
+        setActiveTab(tab);
+        setSearchParams(tab === 'announcements' ? {} : { tab });
+    };
+
     const pendingReschedules = reschedules.filter(r => r.status === 'pending').length;
+    const unreadSystemNotifications = systemNotifications.filter(n => !isNotificationRead(n)).length;
 
     const markNotificationRead = async (notificationId) => {
         if (!notificationId) return;
@@ -118,7 +153,7 @@ export default function Announcements() {
                 </div>
                 <div className="min-w-0">
                     <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white leading-tight">Notifikasi &amp; Pengumuman</h1>
-                    <p className="text-xs sm:text-sm font-medium text-slate-500 dark:text-slate-400">Pengumuman klinik dan request reschedule dari orang tua.</p>
+                    <p className="text-xs sm:text-sm font-medium text-slate-500 dark:text-slate-400">Pengumuman klinik, pemberitahuan sistem, dan request reschedule dari orang tua.</p>
                 </div>
                 {unreadTotal > 0 && (
                     <button
@@ -133,9 +168,9 @@ export default function Announcements() {
 
             {/* Tabs */}
             <div className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-4 sm:px-8">
-                <div className="flex gap-0">
+                <div className="flex gap-0 overflow-x-auto">
                     <button
-                        onClick={() => setActiveTab('announcements')}
+                        onClick={() => changeTab('announcements')}
                         className={`px-5 py-3 text-sm font-bold border-b-2 transition-colors ${activeTab === 'announcements' ? 'border-teal-500 text-teal-600 dark:text-teal-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}`}
                     >
                         <span className="flex items-center gap-2">
@@ -144,7 +179,21 @@ export default function Announcements() {
                         </span>
                     </button>
                     <button
-                        onClick={() => setActiveTab('reschedules')}
+                        onClick={() => changeTab('system')}
+                        className={`px-5 py-3 text-sm font-bold border-b-2 transition-colors relative ${activeTab === 'system' ? 'border-teal-500 text-teal-600 dark:text-teal-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}`}
+                    >
+                        <span className="flex items-center gap-2">
+                            <span className="material-symbols-outlined text-[18px]">admin_panel_settings</span>
+                            Pemberitahuan Sistem
+                            {unreadSystemNotifications > 0 && (
+                                <span className="bg-red-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full leading-none">
+                                    {unreadSystemNotifications}
+                                </span>
+                            )}
+                        </span>
+                    </button>
+                    <button
+                        onClick={() => changeTab('reschedules')}
                         className={`px-5 py-3 text-sm font-bold border-b-2 transition-colors relative ${activeTab === 'reschedules' ? 'border-teal-500 text-teal-600 dark:text-teal-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}`}
                     >
                         <span className="flex items-center gap-2">
@@ -164,7 +213,7 @@ export default function Announcements() {
                 <div className="max-w-3xl mx-auto flex flex-col gap-4">
                     {/* Pengumuman Tab */}
                     {activeTab === 'announcements' && (
-                        announcements.length === 0 && systemNotifications.length === 0 ? (
+                        announcements.length === 0 ? (
                             <div className="flex flex-col items-center justify-center py-20 gap-4 text-center">
                                 <div className="w-20 h-20 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
                                     <span className="material-symbols-outlined text-4xl text-slate-400">notifications_none</span>
@@ -174,46 +223,6 @@ export default function Announcements() {
                             </div>
                         ) : (
                             <>
-                                {systemNotifications.map((notification) => {
-                                    const isRead = isNotificationRead(notification);
-                                    return (
-                                        <div
-                                            key={notification.id}
-                                            className={`bg-white dark:bg-slate-800 rounded-2xl border overflow-hidden shadow-sm transition-shadow ${isRead ? 'border-slate-200 dark:border-slate-700' : 'border-teal-200 dark:border-teal-800/60'}`}
-                                        >
-                                            <div className="p-5">
-                                                <div className="flex items-start justify-between gap-4">
-                                                    <div className="flex min-w-0 flex-1 items-start gap-4">
-                                                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-100 to-cyan-100 dark:from-sky-900/30 dark:to-cyan-900/30 flex items-center justify-center shrink-0">
-                                                            <span className="material-symbols-outlined text-sky-600 dark:text-sky-400 text-[20px]">{getNotificationIcon(notification)}</span>
-                                                        </div>
-                                                        <div className="min-w-0 flex-1">
-                                                            <div className="mb-1 flex items-center gap-2">
-                                                                {!isRead && <span className="size-2.5 rounded-full bg-red-500 shrink-0" title="Belum dibaca" />}
-                                                                <h2 className="text-base font-bold text-slate-900 dark:text-white leading-tight">{getNotificationTitle(notification)}</h2>
-                                                            </div>
-                                                            {getNotificationMessage(notification) && (
-                                                                <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">
-                                                                    {getNotificationMessage(notification)}
-                                                                </p>
-                                                            )}
-                                                            <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">{formatNotificationTime(notification)}</p>
-                                                        </div>
-                                                    </div>
-                                                    {!isRead && (
-                                                        <button
-                                                            onClick={() => markNotificationRead(notification.id)}
-                                                            className="shrink-0 rounded-xl border border-teal-100 bg-teal-50 px-3 py-2 text-[11px] font-black text-teal-700 hover:bg-teal-100 dark:border-teal-800/50 dark:bg-teal-900/20 dark:text-teal-300"
-                                                        >
-                                                            Dibaca
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-
                                 {announcements.map((ann) => (
                                     <div
                                         key={ann.id}
@@ -257,6 +266,80 @@ export default function Announcements() {
                                     </div>
                                 ))}
                             </>
+                        )
+                    )}
+
+                    {/* System Notifications Tab */}
+                    {activeTab === 'system' && (
+                        systemNotifications.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center py-20 gap-4 text-center">
+                                <div className="w-20 h-20 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+                                    <span className="material-symbols-outlined text-4xl text-slate-400">verified_user</span>
+                                </div>
+                                <p className="text-lg font-bold text-slate-600 dark:text-slate-300">Belum ada pemberitahuan sistem</p>
+                                <p className="max-w-md text-sm text-slate-400 dark:text-slate-500">Riwayat keamanan akun, perubahan dari admin, dan pembaruan sistem akan muncul di sini.</p>
+                            </div>
+                        ) : (
+                            systemNotifications.map((notification) => {
+                                const isRead = isNotificationRead(notification);
+                                const actor = getNotificationActor(notification);
+                                const actorTone = actor.role === 'admin'
+                                        ? 'bg-sky-50 text-sky-700 dark:bg-sky-900/20 dark:text-sky-300'
+                                        : 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200';
+                                return (
+                                    <div
+                                        key={notification.id}
+                                        className={`bg-white dark:bg-slate-800 rounded-2xl border overflow-hidden shadow-sm transition-shadow ${isRead ? 'border-slate-200 dark:border-slate-700' : 'border-teal-200 dark:border-teal-800/60'}`}
+                                    >
+                                        <div className="p-5">
+                                            <div className="flex items-start justify-between gap-4">
+                                                <div className="flex min-w-0 flex-1 items-start gap-4">
+                                                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-100 to-cyan-100 dark:from-sky-900/30 dark:to-cyan-900/30 flex items-center justify-center shrink-0">
+                                                        <span className="material-symbols-outlined text-sky-600 dark:text-sky-400 text-[20px]">{getNotificationIcon(notification)}</span>
+                                                    </div>
+                                                    <div className="min-w-0 flex-1">
+                                                        <div className="mb-1 flex flex-wrap items-center gap-2">
+                                                            {!isRead && <span className="size-2.5 rounded-full bg-red-500 shrink-0" title="Belum dibaca" />}
+                                                            <h2 className="text-base font-bold text-slate-900 dark:text-white leading-tight">{getNotificationTitle(notification)}</h2>
+                                                            <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${actorTone}`}>
+                                                                {actor.label}
+                                                            </span>
+                                                        </div>
+                                                        {getNotificationMessage(notification) && (
+                                                            <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+                                                                {getNotificationMessage(notification)}
+                                                            </p>
+                                                        )}
+                                                        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-400 dark:text-slate-500">
+                                                            <span className="inline-flex items-center gap-1">
+                                                                <span className="material-symbols-outlined text-[14px]">schedule</span>
+                                                                {formatNotificationTime(notification)}
+                                                            </span>
+                                                            <span className="inline-flex items-center gap-1">
+                                                                <span className="material-symbols-outlined text-[14px]">manage_accounts</span>
+                                                                Diupdate oleh {actor.label}
+                                                            </span>
+                                                        </div>
+                                                        {notification.actorSummary && (
+                                                            <p className="mt-2 rounded-xl bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-500 dark:bg-slate-900/60 dark:text-slate-400">
+                                                                Log: {notification.actorSummary}
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                {!isRead && (
+                                                    <button
+                                                        onClick={() => markNotificationRead(notification.id)}
+                                                        className="shrink-0 rounded-xl border border-teal-100 bg-teal-50 px-3 py-2 text-[11px] font-black text-teal-700 hover:bg-teal-100 dark:border-teal-800/50 dark:bg-teal-900/20 dark:text-teal-300"
+                                                    >
+                                                        Dibaca
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })
                         )
                     )}
 

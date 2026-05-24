@@ -1,5 +1,11 @@
 import { useEffect } from 'react';
-import { getLanguageMeta, LANGUAGE_CHANGED_EVENT, readLanguage, translatePhrase } from '../i18n/language';
+import {
+  getLanguageMeta,
+  LANGUAGE_CHANGED_EVENT,
+  LANGUAGE_STORAGE_KEY,
+  readLanguage,
+  translateText,
+} from '../i18n/language';
 
 const TRANSLATABLE_ATTRIBUTES = ['placeholder', 'title', 'aria-label', 'alt'];
 const SKIP_SELECTOR = [
@@ -7,13 +13,16 @@ const SKIP_SELECTOR = [
   'style',
   'textarea',
   'input',
-  'select',
-  'option',
   '[contenteditable="true"]',
   '[data-no-translate]',
   '.notranslate',
   '.material-symbols-outlined',
 ].join(',');
+
+const textOriginals = new WeakMap();
+const textTranslations = new WeakMap();
+const attributeOriginals = new WeakMap();
+const attributeTranslations = new WeakMap();
 const ATTRIBUTE_SKIP_SELECTOR = [
   'script',
   'style',
@@ -31,11 +40,19 @@ function shouldSkipNode(node) {
 function applyTextTranslation(node, language) {
   if (!node?.nodeValue || !node.nodeValue.trim() || shouldSkipNode(node)) return;
   const raw = node.nodeValue;
+  const previousOriginal = textOriginals.get(node);
+  const previousTranslation = textTranslations.get(node);
+  const sourceChanged = !previousOriginal || (previousTranslation && raw !== previousTranslation && raw !== previousOriginal);
+  const original = sourceChanged ? raw : previousOriginal;
+  textOriginals.set(node, original);
+
   const leading = raw.match(/^\s*/)?.[0] || '';
   const trailing = raw.match(/\s*$/)?.[0] || '';
-  const text = raw.trim().replace(/\s+/g, ' ');
-  const translated = translatePhrase(text, language);
-  if (translated && translated !== text) node.nodeValue = `${leading}${translated}${trailing}`;
+  const text = String(original || '').trim().replace(/\s+/g, ' ');
+  const translated = translateText(text, language);
+  const next = translated && translated !== text ? `${leading}${translated}${trailing}` : original;
+  textTranslations.set(node, next);
+  if (next !== raw) node.nodeValue = next;
 }
 
 function applyElementAttributes(element, language) {
@@ -43,8 +60,23 @@ function applyElementAttributes(element, language) {
   TRANSLATABLE_ATTRIBUTES.forEach((attribute) => {
     const value = element.getAttribute(attribute);
     if (!value) return;
-    const translated = translatePhrase(value, language);
-    if (translated && translated !== value) element.setAttribute(attribute, translated);
+    let originals = attributeOriginals.get(element);
+    let translations = attributeTranslations.get(element);
+    if (!originals) {
+      originals = {};
+      attributeOriginals.set(element, originals);
+    }
+    if (!translations) {
+      translations = {};
+      attributeTranslations.set(element, translations);
+    }
+    if (!originals[attribute] || (translations[attribute] && value !== translations[attribute] && value !== originals[attribute])) {
+      originals[attribute] = value;
+    }
+    const translated = translateText(originals[attribute], language);
+    const next = translated || originals[attribute];
+    translations[attribute] = next;
+    if (next !== value) element.setAttribute(attribute, next);
   });
 }
 
@@ -89,6 +121,11 @@ export default function LanguageRuntime() {
       language = event.detail?.language || readLanguage();
       schedule(document.body);
     };
+    const handleStorage = (event) => {
+      if (event.key !== LANGUAGE_STORAGE_KEY) return;
+      language = readLanguage();
+      schedule(document.body);
+    };
 
     const observer = new MutationObserver((mutations) => {
       if (muted) return;
@@ -107,11 +144,13 @@ export default function LanguageRuntime() {
     schedule(document.body);
     observer.observe(document.body, { childList: true, subtree: true, characterData: true });
     window.addEventListener(LANGUAGE_CHANGED_EVENT, handleLanguage);
+    window.addEventListener('storage', handleStorage);
 
     return () => {
       if (frame) cancelAnimationFrame(frame);
       observer.disconnect();
       window.removeEventListener(LANGUAGE_CHANGED_EVENT, handleLanguage);
+      window.removeEventListener('storage', handleStorage);
     };
   }, []);
 

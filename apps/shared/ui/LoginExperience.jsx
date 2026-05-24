@@ -59,6 +59,13 @@ export default function LoginExperience({
   const tone = TONES[portalKey] || TONES.admin;
   const { settings } = useClinicSettings();
   const centerPhotoSrc = settings.centerPhotoUrl || photoSrc;
+  const centerLogoSrc = settings.logoUrl || platformLogoUrl;
+  const centerName = settings.clinicName || 'TheraCare';
+  const centerSubtitle = settings.centerSubtitle || 'TheraCare Therapy Platform';
+  const supportEmail = settings.centerEmail || 'support@theracare.id';
+  const legalLinks = LEGAL_LINKS.map((link) => (
+    link.label === 'Support' ? { ...link, href: `mailto:${supportEmail}` } : link
+  ));
   const startedKey = `theracare.login.started.${portalKey}`;
   const [started, setStarted] = useState(() => {
     try {
@@ -93,9 +100,10 @@ export default function LoginExperience({
           <div className="relative z-10 flex items-center justify-center">
             <div className="flex flex-col items-center text-center">
               <div className="login-logo-orbit relative">
-                <img src={platformLogoUrl} alt="TheraCare platform logo" className="relative z-10 h-24 w-auto max-w-[220px] object-contain login-float" />
+                <img src={centerLogoSrc} alt={`${centerName} logo`} className="relative z-10 h-24 w-auto max-w-[220px] object-contain login-float" />
               </div>
-              <p className="login-fade-up mt-4 text-xs font-bold uppercase tracking-[0.28em] text-white/80">TheraCare Platform</p>
+              <p className="login-fade-up mt-4 text-xs font-bold uppercase tracking-[0.28em] text-white/80">{centerName}</p>
+              <p className="mt-2 max-w-xs text-xs font-semibold leading-5 text-white/70">{centerSubtitle}</p>
             </div>
           </div>
 
@@ -145,7 +153,7 @@ export default function LoginExperience({
           </div>
 
           <div className="relative z-10 flex items-center justify-center gap-2 text-[11px] font-semibold text-white/70 login-fade-up login-delay-2">
-            <span>TheraCare Therapy Platform</span>
+            <span>{centerName}</span>
             <span className="h-1 w-1 rounded-full bg-white/40" />
             <span>Akses Aman</span>
           </div>
@@ -172,7 +180,7 @@ export default function LoginExperience({
             ) : (
               <div className="login-panel-enter rounded-2xl border border-slate-200 bg-white p-7 shadow-xl shadow-slate-200/60">
                 <div className="mb-6 flex flex-col items-center text-center">
-                  <img src={platformLogoUrl} alt="TheraCare platform logo" className="h-20 w-auto max-w-[220px] object-contain" />
+                  <img src={centerLogoSrc} alt={`${centerName} logo`} className="h-20 w-auto max-w-[220px] object-contain" />
                   <p className={`mt-4 text-xs font-black uppercase tracking-[0.22em] ${tone.accent}`}>{portalName}</p>
                   <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950">{formTitle}</h2>
                   <p className="mt-1 max-w-xs text-sm leading-6 text-slate-500">{formDescription}</p>
@@ -221,7 +229,7 @@ export default function LoginExperience({
             <footer className="mt-6 text-center">
               <p className="text-xs font-semibold text-slate-400">Copyright 2026 Evid Wijaya. Seluruh hak cipta dilindungi.</p>
               <nav className="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs font-bold text-slate-500">
-                {LEGAL_LINKS.map((link) => (
+                {legalLinks.map((link) => (
                   <a key={link.href} href={link.href} className="hover:text-slate-900">
                     {link.label}
                   </a>

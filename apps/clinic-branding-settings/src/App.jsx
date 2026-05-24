@@ -126,7 +126,7 @@ function App() {
     const [logoUrl, setLogoUrl] = useState(settings.logoUrl);
     const [faviconUrl, setFaviconUrl] = useState(settings.faviconUrl);
     const [centerPhotoUrl, setCenterPhotoUrl] = useState(settings.centerPhotoUrl);
-    const [adminWhatsApp, setAdminWhatsApp] = useState('');
+    const [adminWhatsApp, setAdminWhatsApp] = useState(settings.adminWhatsApp || settings.centerPhone || '');
     const [uploadingAsset, setUploadingAsset] = useState('');
     const [toast, setToast] = useState(null);
     const [closures, setClosures] = useState([]);
@@ -149,19 +149,6 @@ function App() {
         reopensAt: '',
         note: '',
     });
-
-    useEffect(() => {
-        const loadSettings = async () => {
-            try {
-                const res = await adminApi.getSettings();
-                const settings = res.data?.data || {};
-                if (settings.adminWhatsApp) {
-                    setAdminWhatsApp(settings.adminWhatsApp);
-                }
-            } catch(e) {}
-        };
-        loadSettings();
-    }, []);
 
     const loadClosures = async ({ silent = false } = {}) => {
         if (!silent) setClosureLoading(true);
@@ -190,6 +177,7 @@ function App() {
         setCenterSubtitle(settings.centerSubtitle);
         setCenterAddress(settings.centerAddress);
         setCenterPhone(settings.centerPhone);
+        setAdminWhatsApp(settings.adminWhatsApp || settings.centerPhone || '');
         setCenterEmail(settings.centerEmail);
         setCenterWebsite(settings.centerWebsite);
         setOperatingHoursWeekday(settings.operatingHoursWeekday);
@@ -204,6 +192,7 @@ function App() {
         settings.centerSubtitle,
         settings.centerAddress,
         settings.centerPhone,
+        settings.adminWhatsApp,
         settings.centerEmail,
         settings.centerWebsite,
         settings.operatingHoursWeekday,
@@ -270,6 +259,7 @@ function App() {
                 centerSubtitle,
                 centerAddress,
                 centerPhone,
+                adminWhatsApp,
                 centerEmail,
                 centerWebsite,
                 operatingHoursWeekday,
@@ -280,7 +270,6 @@ function App() {
                 faviconUrl,
                 centerPhotoUrl
             });
-            await adminApi.updateSettings({ adminWhatsApp });
             showToast(`Pengaturan berhasil disimpan!`);
         } catch (e) {
             showToast(e.message || 'Gagal menyimpan pengaturan', 'error');
@@ -293,6 +282,7 @@ function App() {
         setCenterSubtitle(latest.centerSubtitle);
         setCenterAddress(latest.centerAddress);
         setCenterPhone(latest.centerPhone);
+        setAdminWhatsApp(latest.adminWhatsApp || latest.centerPhone || '');
         setCenterEmail(latest.centerEmail);
         setCenterWebsite(latest.centerWebsite);
         setOperatingHoursWeekday(latest.operatingHoursWeekday);
@@ -302,13 +292,6 @@ function App() {
         setLogoUrl(latest.logoUrl);
         setFaviconUrl(latest.faviconUrl);
         setCenterPhotoUrl(latest.centerPhotoUrl);
-        try {
-            const res = await adminApi.getSettings();
-            const settings = res.data?.data || {};
-            if (settings.adminWhatsApp) {
-                setAdminWhatsApp(settings.adminWhatsApp);
-            }
-        } catch(e){}
         showToast('Pengaturan dikembalikan ke nilai terakhir yang disimpan.', 'info');
     };
 
@@ -327,6 +310,7 @@ function App() {
             setCenterSubtitle(next.centerSubtitle);
             setCenterAddress(next.centerAddress);
             setCenterPhone(next.centerPhone);
+            setAdminWhatsApp(next.adminWhatsApp || next.centerPhone || '');
             setCenterEmail(next.centerEmail);
             setCenterWebsite(next.centerWebsite);
             setOperatingHoursWeekday(next.operatingHoursWeekday);
@@ -550,7 +534,10 @@ function App() {
                         <div className="flex flex-col gap-8">
                             {/* General Identity Section */}
                             <section className="flex flex-col gap-4">
-                                <h3 className="text-lg font-bold border-b border-slate-200 dark:border-slate-700 pb-2">Identitas Umum</h3>
+                                <div className="border-b border-slate-200 pb-2 dark:border-slate-700">
+                                    <h3 className="text-lg font-bold">Identitas Umum</h3>
+                                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Identitas center tersimpan sebagai informasi publik untuk semua portal.</p>
+                                </div>
                                 <div className="rounded-xl bg-white dark:bg-slate-900 p-6 shadow-sm border border-slate-100 dark:border-slate-800">
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                                         <div>
@@ -669,19 +656,19 @@ function App() {
 
                             {/* Colors Section */}
                             <section className="flex flex-col gap-4">
-                                <h3 className="text-lg font-bold border-b border-slate-200 dark:border-slate-700 pb-2">Brand Colors</h3>
+                                <h3 className="text-lg font-bold border-b border-slate-200 dark:border-slate-700 pb-2">Warna Brand</h3>
                                 <div className="rounded-xl bg-white dark:bg-slate-900 p-6 shadow-sm border border-slate-100 dark:border-slate-800 flex flex-col md:flex-row gap-8">
                                     <div className="flex-1 flex flex-col gap-6">
                                         <div>
-                                            <label htmlFor="primary-color" className="block text-sm font-bold mb-2">Primary Brand Color</label>
+                                            <label htmlFor="primary-color" className="block text-sm font-bold mb-2">Warna Brand Utama</label>
                                             <div className="flex items-center gap-4">
                                                 <input type="color" id="primary-color" value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} className="size-10 rounded cursor-pointer border-0 p-0 bg-transparent" />
                                                 <input type="text" value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} className="flex-1 max-w-[120px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm px-3 py-2 outline-none uppercase text-slate-900 dark:text-white" />
                                             </div>
-                                            <p className="text-slate-500 dark:text-slate-400 text-xs mt-2">Used for buttons, links, and active states.</p>
+                                            <p className="text-slate-500 dark:text-slate-400 text-xs mt-2">Dipakai untuk tombol, tautan, dan status aktif.</p>
                                         </div>
                                         <div>
-                                            <label htmlFor="secondary-color" className="block text-sm font-bold mb-2">Secondary Accent</label>
+                                            <label htmlFor="secondary-color" className="block text-sm font-bold mb-2">Aksen Sekunder</label>
                                             <div className="flex items-center gap-4">
                                                 <input type="color" id="secondary-color" value={secondaryColor} onChange={(e) => setSecondaryColor(e.target.value)} className="size-10 rounded cursor-pointer border-0 p-0 bg-transparent" />
                                                 <input type="text" value={secondaryColor} onChange={(e) => setSecondaryColor(e.target.value)} className="flex-1 max-w-[120px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm px-3 py-2 outline-none uppercase text-slate-900 dark:text-white" />
@@ -691,19 +678,19 @@ function App() {
 
                                     {/* Live Preview */}
                                     <div className="flex-1 bg-slate-50 dark:bg-slate-800/30 rounded-lg p-6 border border-slate-200 dark:border-slate-700 flex flex-col gap-4">
-                                        <p className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-2">Live Preview — {clinicName}</p>
+                                        <p className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-2">Pratinjau Langsung - {clinicName}</p>
                                         <div className="bg-white dark:bg-slate-900 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden text-slate-900 dark:text-slate-100">
                                             <div className="px-4 py-3 text-white flex justify-between items-center transition-colors" style={{ backgroundColor: primaryColor }}>
                                                 <span className="font-medium text-sm truncate pr-2">{clinicName}</span>
                                                 <span className="material-symbols-outlined text-[18px]">menu</span>
                                             </div>
                                             <div className="p-5 flex flex-col gap-4">
-                                                <p className="text-sm">Welcome back to the center. Your next appointment is ready.</p>
+                                                <p className="text-sm">Selamat datang kembali di center. Janji temu berikutnya sudah siap.</p>
                                                 <div className="flex gap-2">
-                                                    <button className="text-white text-xs font-medium px-4 py-2 rounded-lg transition-colors border-0" style={{ backgroundColor: primaryColor }}>Book Now</button>
-                                                    <button className="text-xs font-medium px-4 py-2 rounded-lg border transition-colors bg-transparent" style={{ borderColor: primaryColor, color: primaryColor }}>Details</button>
+                                                    <button className="text-white text-xs font-medium px-4 py-2 rounded-lg transition-colors border-0" style={{ backgroundColor: primaryColor }}>Buat Jadwal</button>
+                                                    <button className="text-xs font-medium px-4 py-2 rounded-lg border transition-colors bg-transparent" style={{ borderColor: primaryColor, color: primaryColor }}>Detail</button>
                                                 </div>
-                                                <a href="#" className="text-xs underline mt-2 transition-colors" style={{ color: primaryColor }}>View full schedule</a>
+                                                <a href="#" className="text-xs underline mt-2 transition-colors" style={{ color: primaryColor }}>Lihat jadwal lengkap</a>
                                             </div>
                                         </div>
                                     </div>
@@ -716,22 +703,22 @@ function App() {
                     {activeSection === 'general' && (
                         <div className="flex flex-col gap-6">
                             <div className="rounded-xl bg-white dark:bg-slate-900 p-6 shadow-sm border border-slate-100 dark:border-slate-800 flex flex-col gap-5">
-                                <h3 className="text-base font-bold text-slate-900 dark:text-white">Center Information</h3>
+                                <h3 className="text-base font-bold text-slate-900 dark:text-white">Informasi Center</h3>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                                     <div className="flex flex-col gap-1.5">
-                                        <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Operating Hours (Weekday)</label>
+                                        <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Jam Operasional (Hari Kerja)</label>
                                         <input type="text" value={operatingHoursWeekday} onChange={(e) => setOperatingHoursWeekday(e.target.value)} placeholder="08:00 - 17:00" className="rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm px-3 py-2.5 outline-none text-slate-900 dark:text-white" />
                                     </div>
                                     <div className="flex flex-col gap-1.5">
-                                        <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Operating Hours (Weekend)</label>
+                                        <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Jam Operasional (Akhir Pekan)</label>
                                         <input type="text" value={operatingHoursWeekend} onChange={(e) => setOperatingHoursWeekend(e.target.value)} placeholder="Tutup" className="rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm px-3 py-2.5 outline-none text-slate-900 dark:text-white" />
                                     </div>
                                     <div className="flex flex-col gap-1.5">
-                                        <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Contact Email</label>
+                                        <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Email Kontak</label>
                                         <input type="email" value={centerEmail} onChange={(e) => setCenterEmail(e.target.value)} placeholder="admin@specialneedscenter.id" className="rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm px-3 py-2.5 outline-none text-slate-900 dark:text-white" />
                                     </div>
                                     <div className="flex flex-col gap-1.5">
-                                        <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Contact Phone</label>
+                                        <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Nomor Kontak</label>
                                         <input type="tel" value={centerPhone} onChange={(e) => setCenterPhone(e.target.value)} placeholder="Contoh: 021123456 atau 6281234567890" className="rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm px-3 py-2.5 outline-none text-slate-900 dark:text-white" />
                                     </div>
                                     <div className="flex flex-col gap-1.5">
@@ -744,7 +731,7 @@ function App() {
                                         <input type="text" value={centerWebsite} onChange={(e) => setCenterWebsite(e.target.value)} placeholder="specialneedscenter.id" className="rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm px-3 py-2.5 outline-none text-slate-900 dark:text-white" />
                                     </div>
                                     <div className="flex flex-col gap-1.5 md:col-span-2">
-                                        <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Center Address</label>
+                                        <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Alamat Center</label>
                                         <input type="text" value={centerAddress} onChange={(e) => setCenterAddress(e.target.value)} placeholder="Jl. Sudirman No. 1, Jakarta Selatan, DKI Jakarta" className="rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm px-3 py-2.5 outline-none text-slate-900 dark:text-white" />
                                     </div>
                                 </div>

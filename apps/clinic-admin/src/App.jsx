@@ -8,6 +8,7 @@ import DailyScheduleTable from './components/DailyScheduleTable';
 import QuickActions from './components/QuickActions';
 import MiniCalendar from './components/MiniCalendar';
 import ChildrenMonthChart from './components/ChildrenMonthChart';
+import LiveSessionMonitor from './components/LiveSessionMonitor';
 import { adminApi, childrenApi, leaveRequestsApi, sessionsApi, therapistsApi } from '../../shared/api/client';
 import TherapistWeeklyScheduleTable from '../../shared/ui/TherapistWeeklyScheduleTable';
 
@@ -56,6 +57,7 @@ function App() {
 
                 {/* Quick Stats - Full Width */}
                 <QuickStats />
+                <LiveSessionMonitor />
 
                 {/* Main 2-column layout */}
                 <div className="flex flex-col lg:flex-row gap-6 items-start">

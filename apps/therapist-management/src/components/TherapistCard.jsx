@@ -89,20 +89,20 @@ const TherapistCard = ({ name, id, avatar, specializations, status, statusColor,
                 </div>
                 <div className="text-sm">
                     <span className="font-bold text-slate-900 dark:text-white">{sessionsToday}</span>
-                    <span className="text-slate-500 dark:text-slate-400"> Sessions Today</span>
+                    <span className="text-slate-500 dark:text-slate-400"> Sesi Hari Ini</span>
                 </div>
             </div>
 
             {/* Action Buttons */}
             <div className="flex justify-between gap-2 mt-4 pt-4 border-t border-slate-100 dark:border-primary/10">
                 {[
-                    { icon: 'person', label: 'Profile' },
+                    { icon: 'person', label: 'Profil' },
                     { icon: 'edit', label: 'Edit' },
-                    { icon: 'insights', label: 'Perf' },
+                    { icon: 'insights', label: 'Kinerja' },
                 ].map((action) => (
                     <button
                         key={action.label}
-                        onClick={() => action.label === 'Profile' ? onView?.(id) : action.label === 'Edit' ? onEdit?.(id) : onPerformance?.(id)}
+                        onClick={() => action.label === 'Profil' ? onView?.(id) : action.label === 'Edit' ? onEdit?.(id) : onPerformance?.(id)}
                         className="flex-1 flex items-center justify-center gap-1 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-primary transition-colors hover:bg-slate-50 dark:hover:bg-primary/10 rounded-lg"
                     >
                         <span className="material-symbols-outlined text-[18px]">{action.icon}</span>

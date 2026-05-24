@@ -9,6 +9,8 @@ import { db } from "./db/index.js";
 import { authSession, user as userTable } from "./db/schema.js";
 import { errorHandler } from "./middleware/error.middleware.js";
 import { setCredentialPassword, verifyCredentialPassword } from "./services/auth-password.service.js";
+import { auditLogService } from "./services/audit-log.service.js";
+import { notificationService } from "./services/notification.service.js";
 import { syncService } from "./services/sync.service.js";
 
 // Routes
@@ -173,6 +175,25 @@ app.post("/api/auth/change-password", express.json({ limit: "1mb" }), async (req
     }
 
     await setCredentialPassword(session.user.id, newPassword);
+    const role = String(session.user.role || "all");
+    const targetRole = ["admin", "parent", "therapist", "all"].includes(role) ? role : "all";
+    await auditLogService.create({
+      actor: { id: session.user.id, role: targetRole },
+      action: "auth.password.change",
+      entityType: "user",
+      entityId: session.user.id,
+      summary: `Password akun ${role} diperbarui oleh pemilik akun`,
+      metadata: { selfService: true, revokeOtherSessions: Boolean(req.body?.revokeOtherSessions) },
+    });
+    await notificationService.create({
+      type: "account_security",
+      icon: "key",
+      title: "Password akun diperbarui",
+      message: "Password akun Anda berhasil diperbarui. Jika bukan Anda yang melakukan perubahan ini, segera hubungi admin.",
+      targetRole,
+      targetUserId: session.user.id,
+      relatedId: session.user.id,
+    });
     void syncService.bump("POST /api/auth/change-password").catch((error) => {
       console.error("[sync] failed to bump system revision", error);
     });

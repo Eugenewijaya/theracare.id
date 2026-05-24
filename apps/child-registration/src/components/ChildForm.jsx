@@ -18,10 +18,10 @@ const ChildForm = ({ data, onChange, errors }) => {
 
             <div className="flex flex-col gap-2">
                 <label htmlFor="cLast" className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                    Last Name <span className="text-red-500">*</span>
+                    Last Name <span className="text-xs font-semibold text-slate-400">(opsional)</span>
                 </label>
                 <input id="cLast" name="lastName" type="text" value={data.lastName || ''} onChange={handle}
-                    className={inputClass('lastName')} placeholder="Enter last name" />
+                    className={inputClass('lastName')} placeholder="Isi jika ada nama belakang" />
                 {errors?.lastName && <p className="text-xs text-red-500">{errors.lastName}</p>}
             </div>
 

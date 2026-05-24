@@ -112,6 +112,7 @@ export const adminService = {
       "centerSubtitle",
       "centerAddress",
       "centerPhone",
+      "adminWhatsApp",
       "centerEmail",
       "centerWebsite",
       "operatingHoursWeekday",

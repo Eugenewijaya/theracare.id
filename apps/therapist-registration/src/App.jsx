@@ -1,6 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { therapistsApi, adminApi } from '../../shared/api/client';
+import { useClinicSettings } from '../../shared/clinicSettings';
+import {
+    buildTherapistRegistrationWhatsAppUrl,
+    getTherapistLoginUrl,
+    openTherapistRegistrationLetter,
+} from '../../shared/therapistRegistrationLetter';
 
 // ─── Pop-up Notification ─────────────────────────────────────────────────────
 function PopupNotif({ popup, onClose }) {
@@ -19,6 +25,75 @@ function PopupNotif({ popup, onClose }) {
                 <button onClick={onClose} className={`mt-1 px-6 py-2 rounded-xl font-bold text-sm ${popup.type === 'success' ? 'bg-emerald-600 text-white hover:bg-emerald-700' : popup.type === 'error' ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>
                     OK
                 </button>
+            </div>
+        </div>
+    );
+}
+
+function RegistrationSuccessDialog({ credential, centerSettings, onClose, onOpenLetter }) {
+    if (!credential) return null;
+    const therapist = credential.therapist || {};
+    const whatsappUrl = buildTherapistRegistrationWhatsAppUrl({
+        therapist,
+        centerSettings,
+        loginUrl: credential.loginUrl,
+    });
+
+    return (
+        <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
+            <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-950">
+                <div className="border-b border-slate-200 bg-emerald-50 px-6 py-5 dark:border-slate-800 dark:bg-emerald-900/20">
+                    <div className="flex items-start gap-3">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-600 text-white">
+                            <span className="material-symbols-outlined">check</span>
+                        </div>
+                        <div>
+                            <h3 className="text-lg font-black text-slate-950 dark:text-white">Terapis berhasil didaftarkan</h3>
+                            <p className="mt-1 text-sm font-semibold text-slate-600 dark:text-slate-300">
+                                Surat registrasi rahasia sudah bisa dibuat untuk {therapist.name || credential.name}.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                <div className="space-y-4 px-6 py-5">
+                    <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm dark:border-slate-800 dark:bg-slate-900">
+                        <div className="flex justify-between gap-4">
+                            <span className="font-bold text-slate-500">NIT</span>
+                            <strong className="text-right text-slate-950 dark:text-white">{therapist.nit || therapist.id || '-'}</strong>
+                        </div>
+                        <div className="flex justify-between gap-4">
+                            <span className="font-bold text-slate-500">Password sementara</span>
+                            <code className="rounded bg-white px-2 py-1 text-xs font-black text-red-700 dark:bg-slate-800 dark:text-red-300">
+                                {credential.temporaryPassword || '-'}
+                            </code>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                            <span className="font-bold text-slate-500">Link login</span>
+                            <span className="break-all text-xs font-black text-blue-700 dark:text-blue-300">{credential.loginUrl}</span>
+                        </div>
+                    </div>
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold leading-5 text-amber-800">
+                        Web WhatsApp tidak bisa auto-attach file PDF tanpa aksi user. Admin perlu membuka surat, simpan sebagai PDF, lalu attach manual bila ingin mengirimkan dokumennya.
+                    </div>
+                </div>
+                <div className="flex flex-col-reverse gap-3 border-t border-slate-200 bg-slate-50 px-6 py-4 dark:border-slate-800 dark:bg-slate-900 sm:flex-row sm:justify-end">
+                    <button type="button" onClick={onClose} className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-black text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800">
+                        Ke Manajemen Terapis
+                    </button>
+                    <button type="button" onClick={onOpenLetter} className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-black text-white transition hover:bg-slate-800">
+                        <span className="material-symbols-outlined text-[18px]">picture_as_pdf</span>
+                        Preview / Simpan PDF
+                    </button>
+                    <a
+                        href={whatsappUrl || undefined}
+                        target="_blank"
+                        rel="noreferrer"
+                        className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-black text-white transition ${whatsappUrl ? 'bg-emerald-600 hover:bg-emerald-700' : 'pointer-events-none bg-slate-300'}`}
+                    >
+                        <span className="material-symbols-outlined text-[18px]">send</span>
+                        Kirim WhatsApp
+                    </a>
+                </div>
             </div>
         </div>
     );
@@ -152,6 +227,7 @@ function Step2({ data, onChange }) {
         onChange('certifications', updated);
     };
     const EDUCATION_LEVELS = ['D3', 'S1', 'S2', 'S3', 'Profes'];
+    const specialtyLabel = data.specialty === 'Lainnya' ? data.customSpecialty : data.specialty;
     return (
         <div className="flex flex-col gap-6">
             {/* Education */}
@@ -176,8 +252,8 @@ function Step2({ data, onChange }) {
                     <Field label="Tahun Lulus">
                         <input type="number" value={data.graduationYear} onChange={e => onChange('graduationYear', e.target.value)} className={inputCls} placeholder="e.g. 2020" min="1980" max={new Date().getFullYear()} />
                     </Field>
-                    <Field label="Nomor STR (Surat Tanda Registrasi)" required hint="Nomor lisensi resmi terapis.">
-                        <input type="text" value={data.strNumber} onChange={e => onChange('strNumber', e.target.value)} required className={inputCls} placeholder="e.g. STR-OT-2024-001" />
+                    <Field label="Nomor STR (Surat Tanda Registrasi)" required hint={`Nomor lisensi resmi untuk peran ${specialtyLabel || 'terapis yang dipilih'}.`}>
+                        <input type="text" value={data.strNumber} onChange={e => onChange('strNumber', e.target.value)} required className={inputCls} placeholder={specialtyLabel ? `STR-${specialtyLabel.split(' ')[0].toUpperCase()}-2026-001` : 'e.g. STR-OT-2026-001'} />
                     </Field>
                     <Field label="Masa Berlaku STR">
                         <input type="date" value={data.strExpiry} onChange={e => onChange('strExpiry', e.target.value)} className={inputCls} />
@@ -258,13 +334,14 @@ function Step2({ data, onChange }) {
 // ─── STEP 3: Work Schedule ─────────────────────────────────────────────────
 const DAYS = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
 function Step3({ data, onChange }) {
+    const [bulkTime, setBulkTime] = useState({ start: '08:00', end: '17:00' });
     const toggleDay = (day) => {
         const sched = data.schedule || {};
         const existing = sched[day];
-        onChange('schedule', {
-            ...sched,
-            [day]: existing ? undefined : { start: '08:00', end: '17:00' }
-        });
+        const next = { ...sched };
+        if (existing) delete next[day];
+        else next[day] = { ...bulkTime };
+        onChange('schedule', next);
     };
     const updateTime = (day, field, val) => {
         const sched = { ...(data.schedule || {}) };
@@ -272,6 +349,20 @@ function Step3({ data, onChange }) {
         onChange('schedule', sched);
     };
     const sched = data.schedule || {};
+    const activeDays = DAYS.filter(day => Boolean(sched[day]));
+    const applyTimeToDays = (days, time = bulkTime) => {
+        if (!days.length) return;
+        const next = { ...sched };
+        days.forEach(day => {
+            next[day] = {
+                ...(next[day] || {}),
+                start: time.start || '08:00',
+                end: time.end || '17:00',
+            };
+        });
+        onChange('schedule', next);
+    };
+    const activateAllWithBulkTime = () => applyTimeToDays(DAYS, bulkTime);
     return (
         <div className="flex flex-col gap-6">
             <div>
@@ -280,6 +371,28 @@ function Step3({ data, onChange }) {
                     Jadwal Kerja Mingguan
                 </h3>
                 <p className="text-sm text-slate-500 dark:text-slate-400 mb-5">Pilih hari kerja dan atur jam layanan terapis.</p>
+                <div className="mb-4 rounded-xl border border-blue-100 bg-blue-50 p-4 dark:border-blue-900/50 dark:bg-blue-950/20">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                        <div>
+                            <p className="text-sm font-black text-blue-900 dark:text-blue-100">Samakan jam cepat</p>
+                            <p className="mt-1 text-xs font-semibold text-blue-700 dark:text-blue-300">Atur sekali lalu terapkan ke hari aktif atau langsung ke semua hari kerja.</p>
+                        </div>
+                        <div className="flex flex-wrap items-end gap-2">
+                            <Field label="Mulai">
+                                <input type="time" value={bulkTime.start} onChange={e => setBulkTime(prev => ({ ...prev, start: e.target.value }))} className={inputCls + " w-32"} />
+                            </Field>
+                            <Field label="Selesai">
+                                <input type="time" value={bulkTime.end} onChange={e => setBulkTime(prev => ({ ...prev, end: e.target.value }))} className={inputCls + " w-32"} />
+                            </Field>
+                            <button type="button" onClick={() => applyTimeToDays(activeDays)} disabled={activeDays.length === 0} className="h-11 rounded-lg bg-blue-600 px-3 text-xs font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300">
+                                Samakan hari aktif
+                            </button>
+                            <button type="button" onClick={activateAllWithBulkTime} className="h-11 rounded-lg border border-blue-200 bg-white px-3 text-xs font-black text-blue-700 transition hover:bg-blue-100 dark:border-blue-800 dark:bg-slate-900 dark:text-blue-200">
+                                Aktifkan semua
+                            </button>
+                        </div>
+                    </div>
+                </div>
                 <div className="flex flex-col gap-3">
                     {DAYS.map(day => {
                         const active = !!sched[day];
@@ -309,6 +422,9 @@ function Step3({ data, onChange }) {
                                                 return `${Math.floor(diff / 60)}j ${diff % 60}m`;
                                             })()}
                                         </div>
+                                        <button type="button" onClick={() => applyTimeToDays(activeDays, sched[day])} disabled={activeDays.length <= 1} className="mt-5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-black text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">
+                                            Samakan jam ini
+                                        </button>
                                     </div>
                                 ) : (
                                     <span className="text-xs text-slate-400 italic">Tidak aktif / libur</span>
@@ -433,11 +549,13 @@ const EMPTY_DATA = {
 
 function App() {
     const navigate = useNavigate();
+    const clinicSettings = useClinicSettings();
     const [currentStep, setCurrentStep] = useState(1);
     const [formData, setFormData] = useState(EMPTY_DATA);
     const [programs, setPrograms] = useState([]);
     const [popup, setPopup] = useState(null);
     const [submitting, setSubmitting] = useState(false);
+    const [createdCredential, setCreatedCredential] = useState(null);
 
     useEffect(() => {
         const load = async () => {
@@ -527,12 +645,28 @@ function App() {
             }
 
             const therapist = res.data?.data || {};
-
-            setPopup({
-                type: 'success',
-                title: 'Terapis Berhasil Didaftarkan!',
-                message: `${fullName} telah berhasil didaftarkan dengan NIT: ${therapist.nit}. Password: ${therapist.tempPassword || formData.tempPassword}`,
-                onClose: () => navigate('/therapists'),
+            const temporaryPassword = therapist.tempPassword || formData.tempPassword;
+            setCreatedCredential({
+                therapist: {
+                    ...therapist,
+                    name: therapist.name || fullName,
+                    phone: therapist.phone || formData.phone,
+                    email: therapist.email || formData.email,
+                    specialty: therapist.specialty || specialization,
+                    specialization,
+                    strNumber: therapist.strNumber || formData.strNumber,
+                    strExpiry: therapist.strExpiry || formData.strExpiry,
+                    schedule: therapist.schedule || formData.schedule,
+                    primaryRoom: therapist.primaryRoom || formData.primaryRoom,
+                    maxClients: therapist.maxClients ?? formData.maxClients,
+                    educationLevel: therapist.educationLevel || formData.educationLevel,
+                    educationField: therapist.educationField || formData.educationField,
+                    educationInstitution: therapist.educationInstitution || formData.educationInstitution,
+                    yearsExperience: therapist.yearsExperience || formData.yearsExperience,
+                    languages: therapist.languages || formData.languages,
+                },
+                temporaryPassword,
+                loginUrl: getTherapistLoginUrl(clinicSettings.settings),
             });
         } catch (err) {
             showPopup('error', 'Gagal Mendaftarkan', err.message || 'Terjadi kesalahan. Silakan coba lagi.');
@@ -551,6 +685,20 @@ function App() {
     return (
         <main className="min-h-full bg-background-light dark:bg-background-dark">
             <PopupNotif popup={popup} onClose={closePopup} />
+            <RegistrationSuccessDialog
+                credential={createdCredential}
+                centerSettings={clinicSettings.settings}
+                onClose={() => navigate('/therapists')}
+                onOpenLetter={async () => {
+                    const result = await openTherapistRegistrationLetter({
+                        therapist: createdCredential?.therapist,
+                        temporaryPassword: createdCredential?.temporaryPassword,
+                        centerSettings: clinicSettings.settings,
+                        loginUrl: createdCredential?.loginUrl,
+                    });
+                    if (!result.ok) showPopup('error', 'Preview gagal dibuka', 'Izinkan pop-up browser lalu coba buka surat registrasi lagi.');
+                }}
+            />
 
             {/* Header */}
             <header className="border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 sm:px-8 py-4 flex items-center gap-4 sticky top-0 z-30">

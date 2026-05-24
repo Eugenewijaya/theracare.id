@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   getLanguageMeta,
   LANGUAGE_CHANGED_EVENT,
+  LANGUAGE_STORAGE_KEY,
   readLanguage,
   SUPPORTED_LANGUAGES,
   translatePhrase,
@@ -13,8 +14,15 @@ export default function LanguageSettingsPanel({ compact = false }) {
 
   useEffect(() => {
     const sync = (event) => setLanguage(event.detail?.language || readLanguage());
+    const syncStorage = (event) => {
+      if (event.key === LANGUAGE_STORAGE_KEY) setLanguage(readLanguage());
+    };
     window.addEventListener(LANGUAGE_CHANGED_EVENT, sync);
-    return () => window.removeEventListener(LANGUAGE_CHANGED_EVENT, sync);
+    window.addEventListener('storage', syncStorage);
+    return () => {
+      window.removeEventListener(LANGUAGE_CHANGED_EVENT, sync);
+      window.removeEventListener('storage', syncStorage);
+    };
   }, []);
 
   const updateLanguage = (nextLanguage) => {

@@ -119,6 +119,9 @@ const NAV_ITEMS = [
 export default function LegalPage({ type = 'privacy', portalName = 'TheraCare' }) {
   const content = CONTENT[type] || CONTENT.privacy;
   const { settings } = useClinicSettings();
+  const centerLogoSrc = settings.logoUrl || platformLogoUrl;
+  const centerName = settings.clinicName || 'TheraCare';
+  const supportEmail = settings.centerEmail || 'support@theracare.id';
 
   useEffect(() => {
     applyPlatformFavicon(settings.faviconUrl || settings.logoUrl);
@@ -129,8 +132,8 @@ export default function LegalPage({ type = 'privacy', portalName = 'TheraCare' }
       <div className="mx-auto flex max-w-5xl flex-col gap-6">
         <header className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xl shadow-slate-200/60 sm:p-8">
           <div className="flex flex-col items-center text-center">
-            <img src={platformLogoUrl} alt="TheraCare platform logo" className="h-24 w-auto max-w-[260px] object-contain" />
-            <p className="mt-4 text-xs font-black uppercase tracking-[0.24em] text-slate-500">{portalName}</p>
+            <img src={centerLogoSrc} alt={`${centerName} logo`} className="h-24 w-auto max-w-[260px] object-contain" />
+            <p className="mt-4 text-xs font-black uppercase tracking-[0.24em] text-slate-500">{portalName} - {centerName}</p>
             <h1 className="mt-3 text-3xl font-black tracking-tight sm:text-4xl">{content.title}</h1>
             <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-600">{content.intro}</p>
           </div>
@@ -181,7 +184,7 @@ export default function LegalPage({ type = 'privacy', portalName = 'TheraCare' }
             </div>
             <div className="flex flex-wrap gap-3 text-sm font-bold">
               <a href="/login" className="rounded-xl bg-slate-950 px-5 py-2.5 text-white hover:bg-slate-800">Kembali ke Login</a>
-              <a href="mailto:support@theracare.id" className="rounded-xl border border-slate-200 px-5 py-2.5 text-slate-700 hover:bg-slate-50">Hubungi Support</a>
+              <a href={`mailto:${supportEmail}`} className="rounded-xl border border-slate-200 px-5 py-2.5 text-slate-700 hover:bg-slate-50">Hubungi Support</a>
             </div>
           </div>
         </aside>

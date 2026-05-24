@@ -6,6 +6,8 @@ const formatCurrency = (value) => {
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(amount);
 };
 
+const getChildDisplayName = (child = {}) => `${child.firstName || ''} ${child.lastName || ''}`.trim() || 'Anak';
+
 const ReviewStep = ({ parentData, childrenList, onAddAnother, isExistingParent }) => (
     <div className="flex flex-col gap-5">
         <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700">
@@ -33,7 +35,7 @@ const ReviewStep = ({ parentData, childrenList, onAddAnother, isExistingParent }
             <div key={idx} className="overflow-hidden rounded-xl border border-emerald-200 dark:border-emerald-800/50">
                 <div className="flex items-center gap-2 border-b border-emerald-100 bg-emerald-50 px-5 py-3 dark:border-emerald-800/50 dark:bg-emerald-900/20">
                     <span className="material-symbols-outlined text-emerald-600 text-[18px]">child_care</span>
-                    <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">Child #{idx + 1}: {child.firstName} {child.lastName}</h3>
+                    <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">Child #{idx + 1}: {getChildDisplayName(child)}</h3>
                 </div>
                 <div className="grid grid-cols-2 gap-4 p-5 md:grid-cols-3">
                     <div><p className="text-xs text-slate-500">Date of Birth</p><p className="mt-0.5 text-sm font-semibold text-slate-900 dark:text-slate-100">{child.dob}</p></div>

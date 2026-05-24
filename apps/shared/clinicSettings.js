@@ -12,6 +12,7 @@ export const DEFAULT_CLINIC_SETTINGS = {
   centerSubtitle: 'Pusat Terapi Anak dan Keluarga',
   centerAddress: 'Jl. Sudirman No. 1, Jakarta Selatan, DKI Jakarta',
   centerPhone: '6281234567890',
+  adminWhatsApp: '6281234567890',
   centerEmail: 'admin@specialneedscenter.id',
   centerWebsite: 'specialneedscenter.id',
   operatingHoursWeekday: '08:00 - 17:00',
@@ -47,6 +48,21 @@ export function normalizeClinicSettings(raw = {}) {
   }
   if (raw.brandColor && !raw.primaryColor) {
     settings.primaryColor = raw.brandColor;
+  }
+  if (raw.centerName && !raw.clinicName) {
+    settings.clinicName = String(raw.centerName).trim();
+  }
+  if (raw.phone && !raw.centerPhone) {
+    settings.centerPhone = String(raw.phone).trim();
+  }
+  if (raw.email && !raw.centerEmail) {
+    settings.centerEmail = String(raw.email).trim();
+  }
+  if (raw.address && !raw.centerAddress) {
+    settings.centerAddress = String(raw.address).trim();
+  }
+  if (raw.website && !raw.centerWebsite) {
+    settings.centerWebsite = String(raw.website).trim();
   }
   return settings;
 }
@@ -147,10 +163,13 @@ export function useClinicSettings() {
 
     const onSettings = (event = {}) => {
       const hasSettingsPayload = hasClinicSettingsPayload(event.detail);
-      const next = normalizeClinicSettings(hasSettingsPayload ? event.detail : getCachedClinicSettings());
+      if (!hasSettingsPayload) {
+        refresh();
+        return;
+      }
+      const next = normalizeClinicSettings(event.detail);
       setSettings(next);
       applyClinicTheme(next);
-      if (!hasSettingsPayload) refresh();
     };
     const onStorage = (event) => {
       if ([CLINIC_SETTINGS_KEY, LEGACY_ADMIN_SETTINGS_KEY].includes(event.key)) {

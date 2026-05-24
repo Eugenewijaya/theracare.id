@@ -1,10 +1,104 @@
 import { db } from "../db/index.js";
-import { notifications, notificationReads } from "../db/schema.js";
-import { and, eq, isNull, or } from "drizzle-orm";
+import { auditLogs, clinicSettings, notifications, notificationReads, user as userTable } from "../db/schema.js";
+import { and, eq, inArray, isNull, or } from "drizzle-orm";
 import { generateId } from "../utils/id-generators.js";
 import { emailService } from "./email.service.js";
 
 type DbClient = typeof db | any;
+const CENTER_CLOSURES_KEY = "centerClosures";
+
+function getAuditMatchScore(notification: typeof notifications.$inferSelect, log: typeof auditLogs.$inferSelect) {
+  const type = String(notification.type || "").toLowerCase();
+  const action = String(log.action || "").toLowerCase();
+  if (log.entityId === notification.id && action === "notification.create") return 100;
+  if (type === "account_security" && action.includes("password")) return 90;
+  if (notification.relatedId && log.entityId === notification.relatedId) return 50;
+  return 0;
+}
+
+function getActorSource(role?: string | null) {
+  const normalized = String(role || "").toLowerCase();
+  if (normalized === "developer" || normalized === "system") return "system";
+  if (["admin", "parent", "therapist"].includes(normalized)) return normalized;
+  return "system";
+}
+
+function parseCenterClosures(value?: string | null): Array<{ id?: string; endDate?: string; startDate?: string; isActive?: boolean }> {
+  try {
+    const parsed = JSON.parse(value || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+async function getActiveFutureClosureIds() {
+  const row = await db.query.clinicSettings.findFirst({
+    where: eq(clinicSettings.key, CENTER_CLOSURES_KEY),
+  });
+  const today = new Date().toISOString().slice(0, 10);
+  return new Set(parseCenterClosures(row?.value)
+    .filter((closure) => closure?.id && closure.isActive !== false && (closure.endDate || closure.startDate || "") >= today)
+    .map((closure) => closure.id as string));
+}
+
+function shouldShowNotificationForUser(
+  notification: typeof notifications.$inferSelect,
+  userId: string,
+  accountCreatedAt: Date | null,
+  activeFutureClosureIds: Set<string>,
+) {
+  if (notification.targetUserId === userId) return true;
+  if (!accountCreatedAt) return true;
+
+  const createdAt = notification.createdAt instanceof Date ? notification.createdAt : new Date(notification.createdAt);
+  if (!Number.isNaN(createdAt.getTime()) && createdAt >= accountCreatedAt) return true;
+
+  if (String(notification.type || "").toLowerCase() === "center_closure" && notification.relatedId) {
+    return activeFutureClosureIds.has(notification.relatedId);
+  }
+
+  return false;
+}
+
+async function enrichNotificationActors(rows: Array<typeof notifications.$inferSelect>) {
+  if (rows.length === 0) return rows;
+
+  const entityIds = [...new Set(rows.flatMap((notification) => [notification.id, notification.relatedId]).filter(Boolean) as string[])];
+  if (entityIds.length === 0) return rows;
+
+  const logs = await db.query.auditLogs.findMany({
+    where: inArray(auditLogs.entityId, entityIds),
+    orderBy: (log, { desc }) => [desc(log.createdAt)],
+    limit: 500,
+  });
+  const actorUserIds = [...new Set(logs.map((log) => log.actorUserId).filter(Boolean) as string[])];
+  const actorUsers = actorUserIds.length > 0
+    ? await db.select({
+        id: userTable.id,
+        name: userTable.name,
+        email: userTable.email,
+        role: userTable.role,
+      }).from(userTable).where(inArray(userTable.id, actorUserIds))
+    : [];
+  const usersById = new Map(actorUsers.map((actor) => [actor.id, actor]));
+
+  return rows.map((notification) => {
+    const matchedLog = logs
+      .filter((log) => log.entityId === notification.id || (notification.relatedId && log.entityId === notification.relatedId))
+      .sort((a, b) => getAuditMatchScore(notification, b) - getAuditMatchScore(notification, a))[0];
+    const actor = matchedLog?.actorUserId ? usersById.get(matchedLog.actorUserId) : null;
+    const actorRole = getActorSource(matchedLog?.actorRole);
+    return {
+      ...notification,
+      actorRole,
+      actorName: actor?.name || actor?.email || "",
+      actorAction: matchedLog?.action || "",
+      actorSummary: matchedLog?.summary || "",
+      actorSource: matchedLog ? "audit_log" : "system",
+    };
+  });
+}
 
 export const notificationService = {
   async getForUser(role: string, userId: string) {
@@ -16,10 +110,17 @@ export const notificationService = {
       orderBy: (n, { desc }) => [desc(n.createdAt)],
       limit: 100,
     });
+    const [account] = await db.select({ createdAt: userTable.createdAt }).from(userTable).where(eq(userTable.id, userId)).limit(1);
+    const accountCreatedAt = account?.createdAt || null;
+    const activeFutureClosureIds = await getActiveFutureClosureIds();
+    const visibleNotifications = all.filter((notification) => (
+      shouldShowNotificationForUser(notification, userId, accountCreatedAt, activeFutureClosureIds)
+    ));
     const reads = await db.select({ notificationId: notificationReads.notificationId })
       .from(notificationReads).where(eq(notificationReads.userId, userId));
     const readIds = new Set(reads.map((r) => r.notificationId));
-    return all.map((n) => ({ ...n, isRead: readIds.has(n.id) }));
+    const enriched = await enrichNotificationActors(visibleNotifications);
+    return enriched.map((n) => ({ ...n, isRead: readIds.has(n.id) }));
   },
 
   async getUnreadCount(role: string, userId: string) {
