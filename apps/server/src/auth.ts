@@ -3,17 +3,10 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { admin } from "better-auth/plugins";
 import { db } from "./db/index.js";
 import * as schema from "./db/schema.js";
+import { getTrustedOrigins } from "./config/origins.js";
 
 const authBaseUrl = process.env.BETTER_AUTH_URL || "http://localhost:3000";
-const configuredOrigins = (process.env.CORS_ORIGIN || "http://localhost:5173")
-  .split(",")
-  .map((s) => s.trim().replace(/\/+$/, ""))
-  .filter(Boolean);
-const trustedOrigins = Array.from(new Set([
-  ...configuredOrigins,
-  "https://*.vercel.app",
-  "http://localhost:*",
-]));
+const trustedOrigins = getTrustedOrigins();
 const isHttpsAuth = authBaseUrl.startsWith("https://");
 
 export const auth = betterAuth({
