@@ -3,7 +3,7 @@
   "buildCommand": "npm run build",
   "installCommand": "npm install",
   "functions": {
-    "src/index.ts": {
+    "api/[...path].ts": {
       "maxDuration": 300
     }
   }
