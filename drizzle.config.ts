@@ -1,10 +1,19 @@
 import { defineConfig } from "drizzle-kit";
 
+function getDatabaseUrl() {
+  return process.env.DATABASE_URL
+    || process.env.POSTGRES_URL
+    || process.env.POSTGRES_PRISMA_URL
+    || process.env.POSTGRES_URL_NON_POOLING
+    || process.env.DATABASE_URL_UNPOOLED
+    || "";
+}
+
 export default defineConfig({
   schema: "apps/server/src/db/schema.ts",
   out: "apps/server/drizzle",
   dialect: "postgresql",
   dbCredentials: {
-    url: "postgresql://neondb_owner:npg_TeNg8s7ftbcx@ep-jolly-night-ao6ngrb6-pooler.c-2.ap-southeast-1.aws.neon.tech/neondb?sslmode=require",
+    url: getDatabaseUrl(),
   },
 });

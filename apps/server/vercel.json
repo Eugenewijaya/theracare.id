@@ -1,8 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "npm run build",
-  "installCommand": "npm install",
-  "outputDirectory": ".",
+  "regions": ["sin1"],
   "functions": {
     "api/[...path].ts": {
       "maxDuration": 300

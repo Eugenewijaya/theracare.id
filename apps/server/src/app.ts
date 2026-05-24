@@ -12,6 +12,8 @@ import { setCredentialPassword, verifyCredentialPassword } from "./services/auth
 import { auditLogService } from "./services/audit-log.service.js";
 import { notificationService } from "./services/notification.service.js";
 import { syncService } from "./services/sync.service.js";
+import { pool } from "./db/index.js";
+import { getDatabaseEnvKey, hasDatabaseUrl } from "./config/database.js";
 import { getConfiguredOrigins, isAllowedOrigin, normalizeOrigin } from "./config/origins.js";
 
 import parentRoutes from "./routes/parent.routes.js";
@@ -36,7 +38,7 @@ const configuredOriginSet = new Set(configuredOrigins.map(normalizeOrigin));
 let schemaReadyPromise: Promise<void> | null = null;
 
 export async function ensureAppReady() {
-  if (!process.env.DATABASE_URL) return;
+  if (!hasDatabaseUrl()) return;
   if (!schemaReadyPromise) {
     schemaReadyPromise = ensureProductionSchema().catch((error) => {
       schemaReadyPromise = null;
@@ -147,7 +149,36 @@ app.get("/api/health", (_req, res) => {
     status: "ok",
     timestamp: new Date().toISOString(),
     service: "TheraCare API",
+    database: hasDatabaseUrl() ? "configured" : "unconfigured",
   });
+});
+
+app.get("/api/health/db", async (_req, res) => {
+  if (!hasDatabaseUrl()) {
+    return res.status(503).json({
+      status: "error",
+      database: "unconfigured",
+      message: "Database environment variable is not configured",
+    });
+  }
+
+  try {
+    await ensureAppReady();
+    await pool.query("select 1");
+    res.json({
+      status: "ok",
+      database: "ok",
+      envKey: getDatabaseEnvKey(),
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error: any) {
+    res.status(503).json({
+      status: "error",
+      database: "unavailable",
+      code: error?.code || error?.name || "DB_ERROR",
+      message: process.env.NODE_ENV === "development" ? error?.message : undefined,
+    });
+  }
 });
 
 app.use(ensureReadyMiddleware);

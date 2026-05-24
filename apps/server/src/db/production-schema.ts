@@ -1,7 +1,8 @@
 import { pool } from "./index.js";
+import { hasDatabaseUrl } from "../config/database.js";
 
 export async function ensureProductionSchema() {
-  if (!process.env.DATABASE_URL) return;
+  if (!hasDatabaseUrl()) return;
   await pool.query(`
     CREATE TABLE IF NOT EXISTS therapy_periods (
       id text PRIMARY KEY,
