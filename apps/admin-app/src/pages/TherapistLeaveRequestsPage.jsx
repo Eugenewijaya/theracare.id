@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { leaveRequestsApi } from '../../../shared/api/client';
 import { confirmAction } from '../../../shared/ui/confirmDialog';
 import {
@@ -90,6 +91,7 @@ function getRequestChangePolicy(request) {
 }
 
 export default function TherapistLeaveRequestsPage() {
+  const navigate = useNavigate();
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -276,13 +278,23 @@ export default function TherapistLeaveRequestsPage() {
               <p className="mt-3 text-sm font-semibold text-red-600 dark:text-red-400">{gateError}</p>
             )}
 
-            <button
-              type="submit"
-              className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-black text-white shadow-lg shadow-primary/20 transition hover:bg-primary-dark"
-            >
-              <span className="material-symbols-outlined text-[20px]">lock_open</span>
-              Buka Halaman
-            </button>
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => navigate('/')}
+                className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-red-600 px-4 text-sm font-black text-white shadow-lg shadow-red-600/20 transition hover:bg-red-700"
+              >
+                <span className="material-symbols-outlined text-[20px]">arrow_back</span>
+                Kembali
+              </button>
+              <button
+                type="submit"
+                className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-black text-white shadow-lg shadow-primary/20 transition hover:bg-primary-dark"
+              >
+                <span className="material-symbols-outlined text-[20px]">lock_open</span>
+                Buka Halaman
+              </button>
+            </div>
           </form>
         </div>
       )}
