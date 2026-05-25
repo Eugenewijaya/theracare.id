@@ -4,14 +4,38 @@
  */
 import { emitTheraCareUpdate, shouldBroadcastApiMutation } from '../autoRefresh.js';
 
+const LOCAL_API_BASE = 'http://localhost:3000/api';
+const PRODUCTION_API_BASE = 'https://theracare-id-server.vercel.app/api';
+const LEGACY_API_HOSTS = new Set(['theracare-api.vercel.app']);
+
+function getDefaultApiBase() {
+  if (typeof window === 'undefined') return LOCAL_API_BASE;
+  const host = window.location.hostname.toLowerCase();
+  if (host.endsWith('.vercel.app') || host.endsWith('.theracare.id') || host === 'theracare.id') {
+    return PRODUCTION_API_BASE;
+  }
+  return LOCAL_API_BASE;
+}
+
 function normalizeApiBase(value) {
-  const raw = (value || 'http://localhost:3000/api').trim().replace(/\/+$/, '');
+  const raw = (value || getDefaultApiBase()).trim().replace(/\/+$/, '');
   if (/^https?:\/\//i.test(raw)) return raw;
   if (raw.startsWith('localhost') || raw.startsWith('127.0.0.1')) return `http://${raw}`;
   return `https://${raw}`;
 }
 
-const API_BASE = normalizeApiBase(import.meta.env.VITE_API_URL);
+function resolveApiBase(value) {
+  const normalized = normalizeApiBase(value);
+  try {
+    const parsed = new URL(normalized);
+    if (LEGACY_API_HOSTS.has(parsed.hostname.toLowerCase())) {
+      return PRODUCTION_API_BASE;
+    }
+  } catch {}
+  return normalized;
+}
+
+const API_BASE = resolveApiBase(import.meta.env.VITE_API_URL);
 const REQUEST_TIMEOUT_MS = 20000;
 const AUTH_TOKEN_KEY = 'theracare_session_token';
 
