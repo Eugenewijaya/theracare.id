@@ -1,10 +1,11 @@
 import { Router } from "express";
 import { timingSafeEqual } from "node:crypto";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { auditLogs, children, parents, reports, therapists, therapyPeriods, therapySessions, user as userTable } from "../db/schema.js";
+import { auditLogs, authSession, children, parents, reports, therapists, therapyPeriods, therapySessions, user as userTable } from "../db/schema.js";
 import { periodDeletionRequestService } from "../services/period-deletion-request.service.js";
 import { ok } from "../utils/response.js";
+import { parseUserAgent } from "../utils/request-context.js";
 
 const router = Router();
 const SENSITIVE_KEY_PATTERN = /(password|token|secret|credential|authorization|cookie|key)/i;
@@ -71,6 +72,44 @@ async function getActorUsers(actorUserIds: string[]) {
   return new Map(rows.map((row) => [row.id, row]));
 }
 
+async function getDeviceSessions(filters: { role?: string; limit?: number; activeOnly?: boolean } = {}) {
+  const limit = Math.min(500, Math.max(1, Number(filters.limit || 100)));
+  const conditions = [];
+  if (filters.role) conditions.push(eq(userTable.role, filters.role));
+  if (filters.activeOnly) conditions.push(gt(authSession.expiresAt, new Date()));
+
+  const columns = {
+    id: authSession.id,
+    userId: authSession.userId,
+    userName: userTable.name,
+    userEmail: userTable.email,
+    userRole: userTable.role,
+    userStatus: userTable.status,
+    ipAddress: authSession.ipAddress,
+    userAgent: authSession.userAgent,
+    createdAt: authSession.createdAt,
+    updatedAt: authSession.updatedAt,
+    expiresAt: authSession.expiresAt,
+  };
+  const baseQuery = db.select(columns)
+    .from(authSession)
+    .innerJoin(userTable, eq(authSession.userId, userTable.id));
+  const rows = conditions.length
+    ? await baseQuery.where(and(...conditions)).orderBy(sql`${authSession.createdAt} desc`).limit(limit)
+    : await baseQuery.orderBy(sql`${authSession.createdAt} desc`).limit(limit);
+
+  return rows.map((row) => {
+    const expiresAt = row.expiresAt instanceof Date ? row.expiresAt : new Date(row.expiresAt);
+    return {
+      ...row,
+      ...parseUserAgent(row.userAgent || ""),
+      active: !Number.isNaN(expiresAt.getTime()) && expiresAt > new Date(),
+      ipAddress: row.ipAddress || "unknown",
+      userAgent: row.userAgent || "",
+    };
+  });
+}
+
 router.use(requireDeveloperToken);
 
 router.get("/overview", async (_req, res, next) => {
@@ -86,6 +125,7 @@ router.get("/overview", async (_req, res, next) => {
       sessionsByStatus,
       periodsByStatus,
       deletionRequests,
+      deviceSessions,
       recentLogs,
     ] = await Promise.all([
       countRows(userTable),
@@ -98,6 +138,7 @@ router.get("/overview", async (_req, res, next) => {
       countBy(therapySessions.status, therapySessions),
       countBy(therapyPeriods.status, therapyPeriods),
       periodDeletionRequestService.getDeveloperSnapshot(),
+      getDeviceSessions({ limit: 20 }),
       db.query.auditLogs.findMany({
         orderBy: (logs, { desc }) => [desc(logs.createdAt)],
         limit: 20,
@@ -118,6 +159,11 @@ router.get("/overview", async (_req, res, next) => {
       sessionsByStatus,
       periodsByStatus,
       periodDeletionRequests: deletionRequests,
+      deviceSummary: {
+        latestSessions: deviceSessions,
+        activeSessions: deviceSessions.filter((session) => session.active).length,
+        uniqueIps: new Set(deviceSessions.map((session) => session.ipAddress).filter((ip) => ip && ip !== "unknown")).size,
+      },
       recentAuditLogs: recentLogs.map((log) => ({ ...log, metadata: redactSensitive(log.metadata) })),
       securityBoundary: {
         passwordsVisible: false,
@@ -174,6 +220,15 @@ router.get("/users", async (req, res, next) => {
       ? await db.select(columns).from(userTable).where(eq(userTable.role, role)).orderBy(sql`${userTable.createdAt} desc`).limit(limit)
       : await db.select(columns).from(userTable).orderBy(sql`${userTable.createdAt} desc`).limit(limit);
     ok(res, rows);
+  } catch (e) { next(e); }
+});
+
+router.get("/device-sessions", async (req, res, next) => {
+  try {
+    const role = typeof req.query.role === "string" ? req.query.role : "";
+    const limit = Math.min(500, Math.max(1, Number(req.query.limit || 200)));
+    const activeOnly = String(req.query.activeOnly || "") === "true";
+    ok(res, await getDeviceSessions({ role, limit, activeOnly }));
   } catch (e) { next(e); }
 });
 

@@ -99,7 +99,7 @@ function formatTherapist(therapist: any) {
   };
 }
 
-async function createPortalSession(userId: string) {
+async function createPortalSession(userId: string, clientMeta: { ipAddress?: string; userAgent?: string } = {}) {
   const token = randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
   await db.insert(authSession).values({
@@ -107,6 +107,8 @@ async function createPortalSession(userId: string) {
     token,
     userId,
     expiresAt,
+    ipAddress: clientMeta.ipAddress || null,
+    userAgent: clientMeta.userAgent || null,
   });
   return token;
 }
@@ -245,7 +247,7 @@ export const therapistService = {
     return { id, tempPassword };
   },
 
-  async portalLogin(nit: string, password: string) {
+  async portalLogin(nit: string, password: string, clientMeta: { ipAddress?: string; userAgent?: string } = {}) {
     const id = nit.trim().toUpperCase();
     if (!id) return null;
     const therapist = await db.query.therapists.findFirst({
@@ -255,7 +257,7 @@ export const therapistService = {
     if (!therapist || therapist.user?.status !== "active") return null;
     const isValid = await verifyCredentialPassword(therapist.userId, password);
     if (!isValid) return null;
-    const token = await createPortalSession(therapist.userId);
+    const token = await createPortalSession(therapist.userId, clientMeta);
     return { token, therapist: formatTherapist(therapist) };
   },
 

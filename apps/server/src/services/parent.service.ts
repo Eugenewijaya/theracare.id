@@ -61,7 +61,7 @@ async function findLoginParent(identifier: string) {
   }) || null;
 }
 
-async function createPortalSession(userId: string) {
+async function createPortalSession(userId: string, clientMeta: { ipAddress?: string; userAgent?: string } = {}) {
   const token = randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
   await db.insert(authSession).values({
@@ -69,6 +69,8 @@ async function createPortalSession(userId: string) {
     token,
     userId,
     expiresAt,
+    ipAddress: clientMeta.ipAddress || null,
+    userAgent: clientMeta.userAgent || null,
   });
   return token;
 }
@@ -131,12 +133,12 @@ export const parentService = {
     };
   },
 
-  async portalLogin(identifier: string, password: string) {
+  async portalLogin(identifier: string, password: string, clientMeta: { ipAddress?: string; userAgent?: string } = {}) {
     const parent = await findLoginParent(identifier);
     if (!parent || parent.user?.status !== "active") return null;
     const isValid = await verifyCredentialPassword(parent.userId, password);
     if (!isValid) return null;
-    const token = await createPortalSession(parent.userId);
+    const token = await createPortalSession(parent.userId, clientMeta);
     return { token, parent: formatParent(parent) };
   },
 

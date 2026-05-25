@@ -4,6 +4,7 @@ import { auditLogService } from "../services/audit-log.service.js";
 import { notificationService } from "../services/notification.service.js";
 import { parentService } from "../services/parent.service.js";
 import { ok, created, notFound, badRequest, conflict } from "../utils/response.js";
+import { getRequestClientMeta } from "../utils/request-context.js";
 
 const router = Router();
 
@@ -30,7 +31,7 @@ router.post("/portal-login", async (req, res, next) => {
   try {
     const { identifier, password } = req.body || {};
     if (!identifier || !password) return badRequest(res, "Identitas login dan password wajib diisi");
-    const result = await parentService.portalLogin(identifier, password);
+    const result = await parentService.portalLogin(identifier, password, getRequestClientMeta(req));
     if (!result) return res.status(401).json({ success: false, error: "Identitas login atau password tidak valid" });
     ok(res, result, "Login berhasil");
   } catch (e) { next(e); }

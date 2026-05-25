@@ -4,6 +4,7 @@ import { auditLogService } from "../services/audit-log.service.js";
 import { notificationService } from "../services/notification.service.js";
 import { therapistService } from "../services/therapist.service.js";
 import { ok, created, notFound, badRequest, conflict } from "../utils/response.js";
+import { getRequestClientMeta } from "../utils/request-context.js";
 
 const router = Router();
 
@@ -30,7 +31,7 @@ router.post("/portal-login", async (req, res, next) => {
   try {
     const { nit, password } = req.body || {};
     if (!nit || !password) return badRequest(res, "NIT dan password wajib diisi");
-    const result = await therapistService.portalLogin(nit, password);
+    const result = await therapistService.portalLogin(nit, password, getRequestClientMeta(req));
     if (!result) return res.status(401).json({ success: false, error: "NIT atau password tidak valid" });
     ok(res, result, "Login berhasil");
   } catch (e) { next(e); }
