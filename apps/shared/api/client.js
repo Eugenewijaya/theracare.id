@@ -294,6 +294,11 @@ export const notificationsApi = {
   delete: (id) => api.delete(`/notifications/${id}`),
 };
 
+export const locationApi = {
+  getMine: () => api.get('/location/me'),
+  sendSignal: (data) => api.post('/location/signal', data),
+};
+
 export const auditLogsApi = {
   getAll: (filters = {}) => {
     const params = new URLSearchParams();

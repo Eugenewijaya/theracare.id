@@ -22,6 +22,7 @@ import NotificationToastHost from '../../shared/ui/NotificationToastHost';
 import AutoRefreshHost from '../../shared/ui/AutoRefreshHost';
 import LanguageRuntime from '../../shared/ui/LanguageRuntime';
 import FriendlyLoader from '../../shared/ui/FriendlyLoader';
+import LocationPermissionHost from '../../shared/ui/LocationPermissionHost';
 import { getNotificationDestination } from '../../shared/notifications';
 
 function Loading() {
@@ -113,6 +114,7 @@ function DashboardLayout() {
           role="therapist"
           onOpenNotifications={(notification) => navigate(getNotificationDestination(notification, 'therapist'))}
         />
+        <LocationPermissionHost user={user} role="therapist" />
         <div className="min-h-0 flex-1 overflow-y-auto bg-background-light dark:bg-background-dark">
           <Suspense fallback={<Loading />}>
             <Routes key={refreshKey}>

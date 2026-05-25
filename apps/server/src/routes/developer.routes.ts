@@ -4,6 +4,7 @@ import { and, eq, gt, inArray, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { auditLogs, authSession, children, parents, reports, therapists, therapyPeriods, therapySessions, user as userTable } from "../db/schema.js";
 import { periodDeletionRequestService } from "../services/period-deletion-request.service.js";
+import { locationSignalService } from "../services/location-signal.service.js";
 import { ok } from "../utils/response.js";
 import { parseUserAgent } from "../utils/request-context.js";
 
@@ -126,6 +127,7 @@ router.get("/overview", async (_req, res, next) => {
       periodsByStatus,
       deletionRequests,
       deviceSessions,
+      locationSignals,
       recentLogs,
     ] = await Promise.all([
       countRows(userTable),
@@ -139,6 +141,7 @@ router.get("/overview", async (_req, res, next) => {
       countBy(therapyPeriods.status, therapyPeriods),
       periodDeletionRequestService.getDeveloperSnapshot(),
       getDeviceSessions({ limit: 20 }),
+      locationSignalService.getAll(),
       db.query.auditLogs.findMany({
         orderBy: (logs, { desc }) => [desc(logs.createdAt)],
         limit: 20,
@@ -164,6 +167,8 @@ router.get("/overview", async (_req, res, next) => {
         activeSessions: deviceSessions.filter((session) => session.active).length,
         uniqueIps: new Set(deviceSessions.map((session) => session.ipAddress).filter((ip) => ip && ip !== "unknown")).size,
       },
+      locationSummary: locationSignals.summary,
+      locationSignals: locationSignals.latest.slice(0, 20),
       recentAuditLogs: recentLogs.map((log) => ({ ...log, metadata: redactSensitive(log.metadata) })),
       securityBoundary: {
         passwordsVisible: false,
@@ -229,6 +234,12 @@ router.get("/device-sessions", async (req, res, next) => {
     const limit = Math.min(500, Math.max(1, Number(req.query.limit || 200)));
     const activeOnly = String(req.query.activeOnly || "") === "true";
     ok(res, await getDeviceSessions({ role, limit, activeOnly }));
+  } catch (e) { next(e); }
+});
+
+router.get("/location-signals", async (_req, res, next) => {
+  try {
+    ok(res, await locationSignalService.getAll());
   } catch (e) { next(e); }
 });
 

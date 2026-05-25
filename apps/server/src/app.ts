@@ -32,6 +32,7 @@ import developerRoutes from "./routes/developer.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 import uploadRoutes from "./routes/upload.routes.js";
 import syncRoutes from "./routes/sync.routes.js";
+import locationRoutes from "./routes/location.routes.js";
 
 const app = express();
 const configuredOrigins = getConfiguredOrigins();
@@ -274,6 +275,7 @@ app.use("/api/meetings", meetingRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/audit-logs", auditLogRoutes);
 app.use("/api/developer", developerRoutes);
+app.use("/api/location", locationRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/uploads", uploadRoutes);
 
