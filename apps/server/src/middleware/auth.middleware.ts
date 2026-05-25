@@ -4,6 +4,8 @@ import { fromNodeHeaders } from "better-auth/node";
 import { and, eq, gt } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { authSession, user as userTable } from "../db/schema.js";
+import { DeviceAccessError, deviceAccessService } from "../services/device-access.service.js";
+import { getRequestClientMeta } from "../utils/request-context.js";
 
 declare global {
   namespace Express {
@@ -35,6 +37,8 @@ export const requireAuth = async (
       if (token) {
         const [fallbackUser] = await db
           .select({
+            sessionId: authSession.id,
+            sessionToken: authSession.token,
             id: userTable.id,
             name: userTable.name,
             email: userTable.email,
@@ -49,7 +53,7 @@ export const requireAuth = async (
           .limit(1);
 
         if (fallbackUser) {
-          session = { user: fallbackUser } as any;
+          session = { user: fallbackUser, session: { id: fallbackUser.sessionId, token: fallbackUser.sessionToken } } as any;
         }
       }
     }
@@ -63,6 +67,14 @@ export const requireAuth = async (
       return res.status(403).json({ success: false, error: "Akun Anda ditangguhkan" });
     }
 
+    const sessionRecord = (session as any).session || {};
+    await deviceAccessService.assertSessionAllowed({
+      userId: u.id,
+      userRole: u.role || "parent",
+      sessionId: sessionRecord.id,
+      sessionToken: sessionRecord.token,
+    }, getRequestClientMeta(req));
+
     req.user = {
       id: u.id,
       name: u.name,
@@ -73,6 +85,9 @@ export const requireAuth = async (
     };
     next();
   } catch (error) {
+    if (error instanceof DeviceAccessError) {
+      return res.status(error.status).json({ success: false, error: error.message, details: error.details });
+    }
     console.error("[auth] session validation failed", error);
     return res.status(401).json({ success: false, error: "Sesi tidak valid" });
   }

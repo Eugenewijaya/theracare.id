@@ -38,6 +38,7 @@ function resolveApiBase(value) {
 const API_BASE = resolveApiBase(import.meta.env.VITE_API_URL);
 const REQUEST_TIMEOUT_MS = 20000;
 const AUTH_TOKEN_KEY = 'theracare_session_token';
+const DEVICE_ID_KEY = 'theracare_device_id';
 
 function readAuthToken() {
   try {
@@ -66,6 +67,82 @@ function clearAuthToken() {
   } catch {}
 }
 
+function createDeviceId() {
+  const random = globalThis.crypto?.randomUUID?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+  return `web_${random}`;
+}
+
+function getDeviceId() {
+  if (typeof window === 'undefined') return '';
+  try {
+    const existing = localStorage.getItem(DEVICE_ID_KEY);
+    if (existing) return existing;
+    const next = createDeviceId();
+    localStorage.setItem(DEVICE_ID_KEY, next);
+    return next;
+  } catch {
+    try {
+      const existing = sessionStorage.getItem(DEVICE_ID_KEY);
+      if (existing) return existing;
+      const next = createDeviceId();
+      sessionStorage.setItem(DEVICE_ID_KEY, next);
+      return next;
+    } catch {
+      return '';
+    }
+  }
+}
+
+function getDeviceLabel() {
+  if (typeof navigator === 'undefined') return '';
+  const ua = navigator.userAgent || '';
+  const platform = navigator.userAgentData?.platform || navigator.platform || '';
+  const isIphone = /iphone/i.test(ua);
+  const isIpad = /ipad/i.test(ua) || (platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const isMac = /mac/i.test(platform) && !isIpad;
+  const isAndroid = /android/i.test(ua);
+  const isWindows = /win/i.test(platform);
+  const browser = /Edg\//.test(ua)
+    ? 'Edge'
+    : /OPR\//.test(ua)
+      ? 'Opera'
+      : /Firefox\//.test(ua)
+        ? 'Firefox'
+        : /Chrome|CriOS/.test(ua)
+          ? 'Chrome'
+          : /Safari/.test(ua)
+            ? 'Safari'
+            : 'Browser';
+  const device = isIphone
+    ? 'iPhone'
+    : isIpad
+      ? 'iPad'
+      : isMac
+        ? 'Mac'
+        : isAndroid
+          ? 'Android'
+          : isWindows
+            ? 'Windows PC'
+            : platform || 'Device';
+  return `${device} / ${browser}`;
+}
+
+function getDeviceHeaders() {
+  if (typeof window === 'undefined') return {};
+  const headers = {};
+  const deviceId = getDeviceId();
+  if (deviceId) headers['x-theracare-device-id'] = deviceId;
+  const label = getDeviceLabel();
+  if (label) headers['x-theracare-device-label'] = label;
+  if (window.screen) {
+    headers['x-theracare-device-screen'] = `${window.screen.width}x${window.screen.height}@${window.devicePixelRatio || 1}`;
+  }
+  try {
+    headers['x-theracare-device-timezone'] = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+  } catch {}
+  return headers;
+}
+
 /**
  * Make an API request with automatic session cookie handling.
  * @param {string} method - HTTP method
@@ -79,7 +156,7 @@ async function request(method, path, body = null) {
   const timeoutId = controller
     ? globalThis.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
     : null;
-  const headers = { 'Content-Type': 'application/json' };
+  const headers = { 'Content-Type': 'application/json', ...getDeviceHeaders() };
   const authToken = readAuthToken();
   if (authToken) headers['x-theracare-session-token'] = authToken;
 

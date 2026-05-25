@@ -6,6 +6,7 @@ import { randomBytes } from "node:crypto";
 import { generateId, generatePortalResetPassword, generateTempPassword, generateNIT } from "../utils/id-generators.js";
 import { setCredentialPassword, verifyCredentialPassword } from "./auth-password.service.js";
 import { notifyTherapistScheduleConflicts } from "./schedule-conflict-notification.service.js";
+import { deviceAccessService } from "./device-access.service.js";
 
 type TherapistProfileInput = {
   name?: string;
@@ -99,17 +100,19 @@ function formatTherapist(therapist: any) {
   };
 }
 
-async function createPortalSession(userId: string, clientMeta: { ipAddress?: string; userAgent?: string } = {}) {
+async function createPortalSession(userId: string, clientMeta: { ipAddress?: string; userAgent?: string; deviceId?: string; deviceLabel?: string; deviceScreen?: string; deviceTimezone?: string } = {}) {
   const token = randomBytes(32).toString("hex");
+  const sessionId = generateId("SES");
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
   await db.insert(authSession).values({
-    id: generateId("SES"),
+    id: sessionId,
     token,
     userId,
     expiresAt,
     ipAddress: clientMeta.ipAddress || null,
     userAgent: clientMeta.userAgent || null,
   });
+  await deviceAccessService.assertSessionAllowed({ userId, userRole: "therapist", sessionId, sessionToken: token }, clientMeta);
   return token;
 }
 
@@ -247,7 +250,7 @@ export const therapistService = {
     return { id, tempPassword };
   },
 
-  async portalLogin(nit: string, password: string, clientMeta: { ipAddress?: string; userAgent?: string } = {}) {
+  async portalLogin(nit: string, password: string, clientMeta: { ipAddress?: string; userAgent?: string; deviceId?: string; deviceLabel?: string; deviceScreen?: string; deviceTimezone?: string } = {}) {
     const id = nit.trim().toUpperCase();
     if (!id) return null;
     const therapist = await db.query.therapists.findFirst({

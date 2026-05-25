@@ -5,6 +5,7 @@ import { auth } from "../auth.js";
 import { randomBytes } from "node:crypto";
 import { generateId, generatePortalResetPassword, generateSeqId, generateTempPassword } from "../utils/id-generators.js";
 import { setCredentialPassword, verifyCredentialPassword } from "./auth-password.service.js";
+import { deviceAccessService } from "./device-access.service.js";
 
 function normalizePhone(phone?: string) {
   const digits = (phone || "").replace(/\D/g, "");
@@ -61,17 +62,19 @@ async function findLoginParent(identifier: string) {
   }) || null;
 }
 
-async function createPortalSession(userId: string, clientMeta: { ipAddress?: string; userAgent?: string } = {}) {
+async function createPortalSession(userId: string, clientMeta: { ipAddress?: string; userAgent?: string; deviceId?: string; deviceLabel?: string; deviceScreen?: string; deviceTimezone?: string } = {}) {
   const token = randomBytes(32).toString("hex");
+  const sessionId = generateId("SES");
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
   await db.insert(authSession).values({
-    id: generateId("SES"),
+    id: sessionId,
     token,
     userId,
     expiresAt,
     ipAddress: clientMeta.ipAddress || null,
     userAgent: clientMeta.userAgent || null,
   });
+  await deviceAccessService.assertSessionAllowed({ userId, userRole: "parent", sessionId, sessionToken: token }, clientMeta);
   return token;
 }
 
@@ -133,7 +136,7 @@ export const parentService = {
     };
   },
 
-  async portalLogin(identifier: string, password: string, clientMeta: { ipAddress?: string; userAgent?: string } = {}) {
+  async portalLogin(identifier: string, password: string, clientMeta: { ipAddress?: string; userAgent?: string; deviceId?: string; deviceLabel?: string; deviceScreen?: string; deviceTimezone?: string } = {}) {
     const parent = await findLoginParent(identifier);
     if (!parent || parent.user?.status !== "active") return null;
     const isValid = await verifyCredentialPassword(parent.userId, password);

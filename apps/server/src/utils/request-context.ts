@@ -29,6 +29,10 @@ export function getRequestClientMeta(req: Request) {
   return {
     ipAddress: getClientIp(req),
     userAgent: getUserAgent(req),
+    deviceId: firstHeaderValue(req.headers["x-theracare-device-id"]).trim().slice(0, 160),
+    deviceLabel: firstHeaderValue(req.headers["x-theracare-device-label"]).trim().slice(0, 160),
+    deviceScreen: firstHeaderValue(req.headers["x-theracare-device-screen"]).trim().slice(0, 80),
+    deviceTimezone: firstHeaderValue(req.headers["x-theracare-device-timezone"]).trim().slice(0, 120),
   };
 }
 
@@ -64,8 +68,35 @@ export function parseUserAgent(userAgent = "") {
         : /safari/.test(ua) && !/chrome|crios/.test(ua)
           ? "Safari"
           : /firefox|fxios/.test(ua)
-            ? "Firefox"
+          ? "Firefox"
             : "Unknown";
 
-  return { deviceType, os, browser };
+  const androidModel = userAgent.match(/Android[^;)]*;\s*([^;)]+?)(?:\s+Build|\)|;)/i)?.[1]?.trim();
+  const deviceModel = /iphone/.test(ua)
+    ? "iPhone"
+    : /ipad/.test(ua)
+      ? "iPad"
+      : /mac os|macintosh/.test(ua)
+        ? "Mac"
+        : /windows/.test(ua)
+          ? "Windows PC"
+          : androidModel || (/android/.test(ua) ? "Android device" : deviceType);
+  const deviceVendor = /iphone|ipad|mac os|macintosh/.test(ua)
+    ? "Apple"
+    : /samsung|sm-|gt-|galaxy/.test(ua)
+      ? "Samsung"
+      : /huawei|honor/.test(ua)
+        ? "Huawei"
+        : /xiaomi|redmi|poco/.test(ua)
+          ? "Xiaomi"
+          : /oppo/.test(ua)
+            ? "OPPO"
+            : /vivo/.test(ua)
+              ? "Vivo"
+              : /windows/.test(ua)
+                ? "Microsoft/PC"
+                : "Unknown";
+  const deviceName = [deviceVendor !== "Unknown" ? deviceVendor : "", deviceModel].filter(Boolean).join(" ").trim() || deviceType;
+
+  return { deviceType, os, browser, deviceName, deviceModel, deviceVendor };
 }

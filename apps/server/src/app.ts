@@ -10,11 +10,13 @@ import { authSession, user as userTable } from "./db/schema.js";
 import { errorHandler } from "./middleware/error.middleware.js";
 import { setCredentialPassword, verifyCredentialPassword } from "./services/auth-password.service.js";
 import { auditLogService } from "./services/audit-log.service.js";
+import { DeviceAccessError, deviceAccessService } from "./services/device-access.service.js";
 import { notificationService } from "./services/notification.service.js";
 import { syncService } from "./services/sync.service.js";
 import { pool } from "./db/index.js";
 import { getDatabaseEnvKey, hasDatabaseUrl } from "./config/database.js";
 import { getConfiguredOrigins, isAllowedOrigin, normalizeOrigin } from "./config/origins.js";
+import { getRequestClientMeta } from "./utils/request-context.js";
 
 import parentRoutes from "./routes/parent.routes.js";
 import childRoutes from "./routes/child.routes.js";
@@ -121,8 +123,14 @@ async function getSessionWithTokenFallback(req: express.Request) {
   const token = req.get("x-theracare-session-token")?.trim();
   if (!token) return null;
 
+  return getSessionByToken(token);
+}
+
+async function getSessionByToken(token: string) {
   const [fallbackUser] = await db
     .select({
+      sessionId: authSession.id,
+      sessionToken: authSession.token,
       id: userTable.id,
       name: userTable.name,
       email: userTable.email,
@@ -140,7 +148,17 @@ async function getSessionWithTokenFallback(req: express.Request) {
     .where(and(eq(authSession.token, token), gt(authSession.expiresAt, new Date())))
     .limit(1);
 
-  return fallbackUser ? { user: fallbackUser, session: { token } } : null;
+  if (!fallbackUser) return null;
+  const { sessionId, sessionToken, ...safeUser } = fallbackUser;
+  return { user: safeUser, session: { id: sessionId, token: sessionToken } };
+}
+
+function extractSessionToken(payload: any) {
+  return payload?.token
+    || payload?.data?.token
+    || payload?.session?.token
+    || payload?.data?.session?.token
+    || "";
 }
 
 app.use(cors(corsOptions));
@@ -192,8 +210,26 @@ app.post("/api/auth/sign-in/email", express.json({ limit: "1mb" }), async (req, 
       headers: fromNodeHeaders(req.headers),
       asResponse: true,
     });
+    if (response.ok) {
+      const payload = await response.clone().json().catch(() => ({}));
+      const token = extractSessionToken(payload);
+      if (token) {
+        const session = await getSessionByToken(token);
+        if (session?.user) {
+          await deviceAccessService.assertSessionAllowed({
+            userId: session.user.id,
+            userRole: session.user.role,
+            sessionId: (session as any).session?.id,
+            sessionToken: token,
+          }, getRequestClientMeta(req));
+        }
+      }
+    }
     await sendAuthResponse(res, response);
   } catch (e) {
+    if (e instanceof DeviceAccessError) {
+      return res.status(e.status).json({ success: false, error: e.message, details: e.details });
+    }
     next(e);
   }
 });
@@ -250,8 +286,19 @@ app.get("/api/auth/get-session", async (req, res, next) => {
   try {
     const session = await getSessionWithTokenFallback(req);
     if (!session?.user) return res.status(401).json({ error: "Unauthorized - silakan login terlebih dahulu" });
+    const sessionRecord = (session as any).session || {};
+    const user = (session as any).user || {};
+    await deviceAccessService.assertSessionAllowed({
+      userId: user.id,
+      userRole: user.role || "parent",
+      sessionId: sessionRecord.id,
+      sessionToken: sessionRecord.token,
+    }, getRequestClientMeta(req));
     res.json(session);
   } catch (e) {
+    if (e instanceof DeviceAccessError) {
+      return res.status(e.status).json({ success: false, error: e.message, details: e.details });
+    }
     next(e);
   }
 });
