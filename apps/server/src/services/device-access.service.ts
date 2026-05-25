@@ -495,4 +495,43 @@ export const deviceAccessService = {
     });
     return { revoked: true, userId: row.userId, sessionId };
   },
+
+  async revokeSessionsByRole(role = "all", actor?: Actor, reason = "") {
+    const normalizedRole = cleanText(role, 40).toLowerCase();
+    const targetRole = ["admin", "therapist", "parent"].includes(normalizedRole) ? normalizedRole : "all";
+    const columns = {
+      id: authSession.id,
+      userId: authSession.userId,
+      userRole: userTable.role,
+    };
+    const baseQuery = db.select(columns)
+      .from(authSession)
+      .innerJoin(userTable, eq(authSession.userId, userTable.id));
+    const rows = targetRole === "all"
+      ? await baseQuery
+      : await baseQuery.where(eq(userTable.role, targetRole));
+    const revokedSessions = await deleteSessions(rows.map((row) => row.id));
+    const affectedUsers = new Set(rows.map((row) => row.userId)).size;
+
+    await audit(
+      actor,
+      "device.sessions.revoke_bulk",
+      targetRole,
+      targetRole === "all"
+        ? "Semua session user dimatikan paksa oleh developer"
+        : `Semua session role ${targetRole} dimatikan paksa oleh developer`,
+      {
+        role: targetRole,
+        revokedSessions,
+        affectedUsers,
+        reason: cleanText(reason, 240),
+      },
+    );
+
+    return {
+      role: targetRole,
+      revokedSessions,
+      affectedUsers,
+    };
+  },
 };

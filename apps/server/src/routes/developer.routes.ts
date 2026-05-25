@@ -254,6 +254,17 @@ router.post("/device-access/:userId/devices/:deviceId/lock-only", async (req, re
   } catch (e) { next(e); }
 });
 
+router.post("/device-sessions/logout-all", async (req, res, next) => {
+  try {
+    const result = await deviceAccessService.revokeSessionsByRole(
+      req.body?.role,
+      { id: "developer", role: "developer" },
+      req.body?.reason || "Logout massal dari TheraGOD",
+    );
+    ok(res, result, "Session perangkat dimatikan");
+  } catch (e) { next(e); }
+});
+
 router.delete("/device-sessions/:sessionId", async (req, res, next) => {
   try {
     const result = await deviceAccessService.revokeSession(
