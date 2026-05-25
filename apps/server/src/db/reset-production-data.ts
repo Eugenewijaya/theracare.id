@@ -117,7 +117,7 @@ async function main() {
   }
 
   if (!process.env.DATABASE_URL) {
-    throw new Error("DATABASE_URL belum tersedia. Jalankan dari Railway shell atau lokal dengan Neon DATABASE_URL.");
+    throw new Error("DATABASE_URL belum tersedia. Jalankan dari Vercel/Neon environment atau lokal dengan Neon DATABASE_URL.");
   }
 
   const resetSettings = process.env.RESET_CLINIC_SETTINGS === "true";

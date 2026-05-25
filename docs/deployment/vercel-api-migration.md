@@ -1,7 +1,8 @@
 # TheraCare API migration to Vercel
 
 This repo is ready to run the API as a dedicated Vercel project while keeping
-the existing local/Railway start command available as a fallback.
+the existing local Node start command available for development and emergency
+debugging.
 
 ## Vercel project
 
@@ -15,8 +16,8 @@ the existing local/Railway start command available as a fallback.
 
 ## Required production environment variables
 
-Use the values currently configured in Railway, but set them in Vercel Project
-Settings instead of committing secrets to the repo.
+Set these values in Vercel Project Settings instead of committing secrets to the
+repo.
 
 - `DATABASE_URL`: Neon pooled production connection string
 - Fallbacks are also supported if Vercel/Neon injects a different key:
@@ -32,10 +33,11 @@ Settings instead of committing secrets to the repo.
 
 ## Cutover checklist
 
-1. Deploy the API project on Vercel with Railway still active.
+1. Deploy the API project on Vercel.
 2. Verify `GET /api/health` on the Vercel API URL.
 3. Verify `GET /api/health/db` returns `database: "ok"` before testing login.
 4. Set each dashboard project's `VITE_API_URL` to `<api-origin>/api`.
 5. Redeploy admin, therapist, parent, and related microapps.
 6. Verify login, schedule, reports, leave requests, branding upload, and notifications.
-7. Keep Railway available until one normal operating cycle is stable.
+7. After one normal operating cycle is stable, remove any obsolete non-Vercel
+   service references from external project settings.
