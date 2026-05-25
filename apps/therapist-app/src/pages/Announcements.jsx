@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { adminApi, notificationsApi, rescheduleApi } from '../../../shared/api/client';
+import { adminApi, notificationsApi, rescheduleApi, therapyPeriodsApi } from '../../../shared/api/client';
 import { readTherapistUser } from '../../../shared/sessionIdentity';
 import {
     formatNotificationTime,
@@ -53,12 +53,16 @@ export default function Announcements() {
     const [unreadTotal, setUnreadTotal] = useState(0);
     const [expanded, setExpanded] = useState(null);
     const [activeTab, setActiveTab] = useState('announcements'); // 'announcements' | 'system' | 'reschedules'
+    const [deletionRequests, setDeletionRequests] = useState([]);
+    const [deletionProcessingId, setDeletionProcessingId] = useState('');
+    const [deletionFeedback, setDeletionFeedback] = useState('');
 
     const load = async () => {
         try {
-            const [annRes, notifRes] = await Promise.all([
+            const [annRes, notifRes, deletionRes] = await Promise.all([
                 adminApi.getAnnouncementsForRole('therapist'),
                 notificationsApi.getAll(),
+                therapyPeriodsApi.getDeletionRequests(),
             ]);
             const announcementRows = annRes.data?.data || [];
             setAnnouncements(announcementRows);
@@ -71,6 +75,7 @@ export default function Announcements() {
             setNotificationMap(byRelated);
             setSystemNotifications(sortNotifications(notifs.filter(n => isSystemNotification(n, announcementIds))));
             setUnreadTotal(notifs.filter(n => !isNotificationRead(n)).length);
+            if (deletionRes.ok) setDeletionRequests(deletionRes.data?.data || []);
 
             const user = readTherapistUser();
             if (user) {
@@ -104,6 +109,9 @@ export default function Announcements() {
 
     const pendingReschedules = reschedules.filter(r => r.status === 'pending').length;
     const unreadSystemNotifications = systemNotifications.filter(n => !isNotificationRead(n)).length;
+    const pendingDeletionRequests = deletionRequests.filter(request => (
+        request.status === 'pending' && request.therapistApproval?.status === 'pending'
+    ));
 
     const markNotificationRead = async (notificationId) => {
         if (!notificationId) return;
@@ -141,6 +149,30 @@ export default function Announcements() {
             window.dispatchEvent(new Event('notificationsUpdated'));
         } catch (e) {
             console.error('Failed to mark all notifications read', e);
+        }
+    };
+
+    const respondDeletionRequest = async (request, decision) => {
+        const approved = decision === 'approved';
+        const confirmed = window.confirm(`${approved ? 'Setujui' : 'Tolak'} penghapusan periode ${request.periodName} untuk ${request.childName}?`);
+        if (!confirmed) return;
+        setDeletionProcessingId(request.id);
+        setDeletionFeedback('');
+        try {
+            const response = await therapyPeriodsApi.respondDeletionRequest(request.id, {
+                decision,
+                note: approved
+                    ? 'Terapis menyetujui penghapusan periode berjalan.'
+                    : 'Terapis menolak penghapusan periode berjalan.',
+            });
+            if (!response.ok) throw new Error(response.data?.error || 'Gagal menyimpan keputusan.');
+            setDeletionFeedback('Keputusan penghapusan periode berhasil disimpan.');
+            await load();
+            window.dispatchEvent(new Event('notificationsUpdated'));
+        } catch (error) {
+            setDeletionFeedback(error.message || 'Gagal menyimpan keputusan.');
+        } finally {
+            setDeletionProcessingId('');
         }
     };
 
@@ -271,7 +303,7 @@ export default function Announcements() {
 
                     {/* System Notifications Tab */}
                     {activeTab === 'system' && (
-                        systemNotifications.length === 0 ? (
+                        systemNotifications.length === 0 && pendingDeletionRequests.length === 0 ? (
                             <div className="flex flex-col items-center justify-center py-20 gap-4 text-center">
                                 <div className="w-20 h-20 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
                                     <span className="material-symbols-outlined text-4xl text-slate-400">verified_user</span>
@@ -280,7 +312,53 @@ export default function Announcements() {
                                 <p className="max-w-md text-sm text-slate-400 dark:text-slate-500">Riwayat keamanan akun, perubahan dari admin, dan pembaruan sistem akan muncul di sini.</p>
                             </div>
                         ) : (
-                            systemNotifications.map((notification) => {
+                            <>
+                            {deletionFeedback && (
+                                <div className="rounded-2xl border border-teal-200 bg-teal-50 p-4 text-sm font-bold text-teal-800 dark:border-teal-900/60 dark:bg-teal-950/40 dark:text-teal-200">
+                                    {deletionFeedback}
+                                </div>
+                            )}
+                            {pendingDeletionRequests.map((request) => (
+                                <div key={request.id} className="overflow-hidden rounded-2xl border border-red-200 bg-white shadow-sm dark:border-red-900/60 dark:bg-slate-800">
+                                    <div className="border-b border-red-100 bg-red-50 px-5 py-3 dark:border-red-900/60 dark:bg-red-950/30">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <span className="material-symbols-outlined text-red-600 dark:text-red-300">delete_forever</span>
+                                            <p className="text-sm font-black text-red-800 dark:text-red-200">Konfirmasi hapus periode berjalan</p>
+                                            <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-black text-amber-700">Menunggu terapis</span>
+                                        </div>
+                                    </div>
+                                    <div className="p-5">
+                                        <h2 className="text-base font-black text-slate-900 dark:text-white">{request.childName} - {request.periodName}</h2>
+                                        <p className="mt-1 text-sm font-semibold text-slate-500 dark:text-slate-400">{request.programName}</p>
+                                        <p className="mt-3 rounded-xl bg-slate-50 p-3 text-sm leading-relaxed text-slate-600 dark:bg-slate-900/60 dark:text-slate-300">
+                                            {request.reason}
+                                        </p>
+                                        <div className="mt-4 flex flex-wrap items-center gap-2 text-xs font-bold text-slate-500">
+                                            <span className="rounded-full bg-slate-100 px-2.5 py-1 dark:bg-slate-700">Orang tua: {request.parentApproval?.status === 'approved' ? 'Disetujui' : request.parentApproval?.status === 'rejected' ? 'Ditolak' : 'Menunggu'}</span>
+                                            <span className="rounded-full bg-slate-100 px-2.5 py-1 dark:bg-slate-700">Terapis: Menunggu</span>
+                                        </div>
+                                        <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                                            <button
+                                                type="button"
+                                                onClick={() => respondDeletionRequest(request, 'rejected')}
+                                                disabled={deletionProcessingId === request.id}
+                                                className="rounded-xl border border-red-200 px-4 py-2 text-sm font-black text-red-700 hover:bg-red-50 disabled:opacity-50 dark:border-red-900/60 dark:text-red-300 dark:hover:bg-red-950/30"
+                                            >
+                                                Tolak
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => respondDeletionRequest(request, 'approved')}
+                                                disabled={deletionProcessingId === request.id}
+                                                className="rounded-xl bg-red-600 px-4 py-2 text-sm font-black text-white hover:bg-red-700 disabled:opacity-50"
+                                            >
+                                                {deletionProcessingId === request.id ? 'Menyimpan...' : 'Setujui penghapusan'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                            {systemNotifications.map((notification) => {
                                 const isRead = isNotificationRead(notification);
                                 const actor = getNotificationActor(notification);
                                 const actorTone = actor.role === 'admin'
@@ -339,7 +417,8 @@ export default function Announcements() {
                                         </div>
                                     </div>
                                 );
-                            })
+                            })}
+                            </>
                         )
                     )}
 

@@ -7,6 +7,7 @@ import { childService } from "../services/child.service.js";
 import { parentService } from "../services/parent.service.js";
 import { therapistService } from "../services/therapist.service.js";
 import { therapyPeriodService } from "../services/therapy-period.service.js";
+import { periodDeletionRequestService } from "../services/period-deletion-request.service.js";
 import { auditLogService } from "../services/audit-log.service.js";
 import { notificationService } from "../services/notification.service.js";
 import { created, notFound, ok, badRequest } from "../utils/response.js";
@@ -56,6 +57,32 @@ router.get("/child/:childId", requireAuth, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+router.get("/deletion-requests", requireAuth, async (req, res, next) => {
+  try {
+    ok(res, await periodDeletionRequestService.getAllForUser(req.user!));
+  } catch (e) { next(e); }
+});
+
+router.patch("/deletion-requests/:requestId/respond", requireAuth, async (req, res, next) => {
+  try {
+    const decision = String(req.body?.decision || "").toLowerCase();
+    const note = typeof req.body?.note === "string" ? req.body.note : "";
+    const result = await periodDeletionRequestService.respond(req.params.requestId as string, req.user!, decision as any, note);
+    if (!result) return notFound(res, "Pengajuan penghapusan periode tidak ditemukan");
+    await auditLogService.create({
+      actor: req.user,
+      action: `therapy_period.deletion_request.${decision}`,
+      entityType: "therapy_period_deletion_request",
+      entityId: req.params.requestId as string,
+      summary: `${req.user!.role} memberi keputusan ${decision} untuk penghapusan periode ${result.periodName}`,
+      metadata: { decision, note, status: result.status, periodId: result.periodId },
+    });
+    ok(res, result, "Keputusan persetujuan tersimpan");
+  } catch (e) {
+    return badRequest(res, e instanceof Error ? e.message : "Gagal memproses persetujuan");
+  }
+});
+
 router.get("/:id", requireAuth, async (req, res, next) => {
   try {
     const period = await therapyPeriodService.getById(req.params.id as string);
@@ -83,6 +110,25 @@ router.post("/", requireAuth, requireRole("admin"), async (req, res, next) => {
     created(res, period, "Periode terapi berhasil dibuat");
   } catch (e) {
     return badRequest(res, e instanceof Error ? e.message : "Gagal membuat periode terapi");
+  }
+});
+
+router.post("/:id/deletion-requests", requireAuth, requireRole("admin"), async (req, res, next) => {
+  try {
+    const reason = typeof req.body?.reason === "string" ? req.body.reason : "";
+    const request = await periodDeletionRequestService.create(req.params.id as string, req.user!, reason);
+    if (!request) return notFound(res, "Periode terapi tidak ditemukan");
+    await auditLogService.create({
+      actor: req.user,
+      action: "therapy_period.deletion_request.create",
+      entityType: "therapy_period_deletion_request",
+      entityId: request.id,
+      summary: `Admin mengajukan penghapusan periode ${request.periodName} untuk ${request.childName}`,
+      metadata: { periodId: request.periodId, childId: request.childId, reason: request.reason },
+    });
+    created(res, request, "Pengajuan penghapusan periode dikirim ke orang tua dan terapis");
+  } catch (e) {
+    return badRequest(res, e instanceof Error ? e.message : "Gagal mengajukan penghapusan periode");
   }
 });
 

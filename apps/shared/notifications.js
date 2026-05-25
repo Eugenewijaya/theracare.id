@@ -48,6 +48,12 @@ export function getNotificationDestination(notification, role = 'user') {
   const icon = String(notification?.icon || '').toLowerCase();
   const userRole = String(role || '').toLowerCase();
 
+  if (type.includes('period_deletion')) {
+    if (userRole === 'admin') return '/children/program-registration';
+    if (userRole === 'therapist') return '/announcements?tab=system';
+    return '/announcements';
+  }
+
   if (type.includes('account') || type.includes('security') || type.includes('developer') || type.includes('system')) {
     if (userRole === 'admin') return '/notifications';
     return '/announcements?tab=system';

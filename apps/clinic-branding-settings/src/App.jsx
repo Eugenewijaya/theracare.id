@@ -3,12 +3,13 @@ import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import { adminApi } from '../../shared/api/client';
 import { DEFAULT_CLINIC_SETTINGS, useClinicSettings } from '../../shared/clinicSettings';
+import { prepareImageUploadPayload } from '../../shared/uploadImage';
 import { confirmAction } from '../../shared/ui/confirmDialog';
 import LanguageSettingsPanel from '../../shared/ui/LanguageSettingsPanel';
 
 const ASSET_ACCEPT = 'image/png,image/jpeg,image/webp,image/svg+xml,image/gif,image/x-icon,image/vnd.microsoft.icon,.ico';
 const ACCEPTED_ASSET_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml', 'image/gif', 'image/x-icon', 'image/vnd.microsoft.icon'];
-const MAX_ASSET_SIZE = 5 * 1024 * 1024;
+const MAX_ASSET_SIZE = 10 * 1024 * 1024;
 const SECTION_META = {
     general: {
         title: 'Pengaturan Umum',
@@ -44,18 +45,6 @@ function inferContentType(file) {
     if (file.type) return file.type;
     if (file.name.toLowerCase().endsWith('.ico')) return 'image/x-icon';
     return 'application/octet-stream';
-}
-
-function fileToBase64(file) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-            const result = String(reader.result || '');
-            resolve(result.includes(',') ? result.split(',')[1] : result);
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-    });
 }
 
 function AssetUploadButton({ id, label, uploading, onFile }) {
@@ -211,7 +200,7 @@ function App() {
 
     const handleAssetUpload = async (kind, file) => {
         if (file.size > MAX_ASSET_SIZE) {
-            showToast('Ukuran file maksimal 5MB.', 'error');
+            showToast('Ukuran file maksimal 10MB. Gambar besar akan dikompres otomatis sebelum diupload.', 'error');
             return;
         }
 
@@ -223,12 +212,12 @@ function App() {
 
         try {
             setUploadingAsset(kind);
-            const dataBase64 = await fileToBase64(file);
+            const payload = await prepareImageUploadPayload(file, kind);
             const res = await adminApi.uploadBrandAsset({
                 kind,
-                fileName: file.name,
-                contentType,
-                dataBase64,
+                fileName: payload.fileName,
+                contentType: payload.contentType,
+                dataBase64: payload.dataBase64,
             });
             if (!res.ok) {
                 throw new Error(res.data?.error || res.data?.message || 'Upload gagal');

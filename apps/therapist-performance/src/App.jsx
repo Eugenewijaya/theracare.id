@@ -82,6 +82,7 @@ function App({ onLogout }) {
     const [currentUser, setCurrentUser] = useState(readStoredTherapist);
     const [growth, setGrowth] = useState(() => normalizeCertifications(readStoredTherapist()?.certifications || []));
     const [profileDraft, setProfileDraft] = useState({});
+    const [photoUploading, setPhotoUploading] = useState(false);
 
     // Derived Statistics
     const [stats, setStats] = useState([
@@ -205,33 +206,42 @@ function App({ onLogout }) {
         if (currentUser) {
             try {
                 const res = await therapistsApi.updateProfile(currentUser.id, profileDraft);
+                if (!res.ok) throw new Error(res.data?.error || 'Gagal menyimpan profil.');
                 if (res.data?.data) {
                     const updated = { ...currentUser, ...res.data.data };
                     setCurrentUser(updated);
                     storeTherapist(updated);
                 }
+                setProfileModal(false);
+                showToast('Profil berhasil diperbarui.');
             } catch (e) {
                 console.error('Failed to update profile', e);
+                showToast(e.message || 'Gagal menyimpan profil.');
             }
+            return;
         }
         setProfileModal(false); 
-        showToast('Profile updated successfully.'); 
+        showToast('Profil berhasil diperbarui.');
     };
 
     const handlePhotoUpdate = async (file) => {
         if (currentUser) {
+            setPhotoUploading(true);
             try {
                 const avatarUrl = await uploadImageFile(file, 'therapist-profile');
                 const res = await therapistsApi.updateProfile(currentUser.id, { avatar: avatarUrl });
+                if (!res.ok) throw new Error(res.data?.error || 'Gagal menyimpan foto profil.');
                 if (res.data?.data) {
                     const updated = { ...currentUser, ...res.data.data };
                     setCurrentUser(updated);
                     storeTherapist(updated);
                 }
-                showToast('Profile photo updated.');
+                showToast('Foto profil berhasil diperbarui.');
             } catch (e) {
                 console.error('Failed to update photo', e);
-                showToast(e.message || 'Failed to update profile photo.');
+                showToast(e.message || 'Gagal memperbarui foto profil.');
+            } finally {
+                setPhotoUploading(false);
             }
         }
     };
@@ -245,6 +255,7 @@ function App({ onLogout }) {
 
         try {
             const res = await therapistsApi.updateProfile(currentUser.id, { certifications: nextGrowth });
+            if (!res.ok) throw new Error(res.data?.error || 'Gagal menyimpan sertifikasi.');
             if (res.data?.data) {
                 const updated = { ...currentUser, ...res.data.data };
                 setCurrentUser(updated);
@@ -284,7 +295,7 @@ function App({ onLogout }) {
 
                     {/* Profile Header with Edit button */}
                     <div className="relative">
-                        <TherapistProfile user={currentUser} onPhotoUpdate={handlePhotoUpdate} />
+                        <TherapistProfile user={currentUser} onPhotoUpdate={handlePhotoUpdate} uploading={photoUploading} />
                         <button
                             onClick={openProfileModal}
                             className="absolute top-4 right-4 flex items-center gap-2 px-4 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-primary hover:text-primary transition-colors text-sm font-bold shadow-sm"

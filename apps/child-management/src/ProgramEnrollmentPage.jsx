@@ -61,6 +61,20 @@ const buildDateLabel = (startDate, endDate) => {
   return `${startDate || '-'} - ${endDate}`;
 };
 
+const getDeletionStatusTone = (status) => {
+  if (status === 'executed') return 'bg-slate-200 text-slate-700';
+  if (status === 'rejected') return 'bg-red-100 text-red-700';
+  if (status === 'approved') return 'bg-blue-100 text-blue-700';
+  return 'bg-amber-100 text-amber-700';
+};
+
+const getApprovalLabel = (approval) => {
+  if (!approval || approval.status === 'pending') return 'Menunggu';
+  if (approval.status === 'approved') return 'Disetujui';
+  if (approval.status === 'rejected') return 'Ditolak';
+  return approval.status;
+};
+
 export default function ProgramEnrollmentPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -72,15 +86,22 @@ export default function ProgramEnrollmentPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
+  const [deletionRequests, setDeletionRequests] = useState([]);
+  const [deletionReasonByPeriod, setDeletionReasonByPeriod] = useState({});
+  const [requestingDeletionId, setRequestingDeletionId] = useState('');
 
   useEffect(() => {
     const load = async () => {
       setLoading(true);
       try {
-        const res = await childrenApi.getAll();
+        const [res, deletionRes] = await Promise.all([
+          childrenApi.getAll(),
+          therapyPeriodsApi.getDeletionRequests(),
+        ]);
         if (!res.ok) throw new Error(res.data?.error || 'Gagal memuat data anak.');
         const rows = res.data?.data || [];
         setChildren(rows);
+        if (deletionRes.ok) setDeletionRequests(deletionRes.data?.data || []);
         const requested = searchParams.get('childId');
         const requestedExists = rows.some(child => child.id === requested || child.nita === requested);
         const fallbackId = requested && requestedExists ? requested : rows[0]?.id || '';
@@ -100,6 +121,13 @@ export default function ProgramEnrollmentPage() {
   );
 
   const sortedPeriods = useMemo(() => sortPeriods(selectedChild?.periods || []), [selectedChild]);
+  const deletionRequestsByPeriod = useMemo(() => {
+    const map = new Map();
+    deletionRequests.forEach(request => {
+      if (!map.has(request.periodId)) map.set(request.periodId, request);
+    });
+    return map;
+  }, [deletionRequests]);
   const latestMatchingPeriod = useMemo(() => {
     if (!sortedPeriods.length) return null;
     if (form.programId) {
@@ -179,6 +207,11 @@ export default function ProgramEnrollmentPage() {
     };
   };
 
+  const reloadDeletionRequests = async () => {
+    const res = await therapyPeriodsApi.getDeletionRequests();
+    if (res.ok) setDeletionRequests(res.data?.data || []);
+  };
+
   const enrollmentSummary = useMemo(() => {
     const days = Array.isArray(form.therapyDays) ? form.therapyDays : [];
     return {
@@ -223,10 +256,43 @@ export default function ProgramEnrollmentPage() {
       const refreshed = await childrenApi.getAll();
       if (!refreshed.ok) throw new Error(refreshed.data?.error || 'Program tersimpan, tetapi gagal memuat ulang data anak.');
       setChildren(refreshed.data?.data || []);
+      await reloadDeletionRequests();
     } catch (e) {
       setMessage({ type: 'error', text: e.message || 'Gagal mendaftarkan program anak.' });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleRequestDeletion = async (period) => {
+    const currentRequest = deletionRequestsByPeriod.get(period.id);
+    if (currentRequest?.status === 'pending') {
+      setMessage({ type: 'warning', text: 'Pengajuan untuk periode ini masih menunggu persetujuan.' });
+      return;
+    }
+
+    const reason = (deletionReasonByPeriod[period.id] || '').trim();
+    if (reason.length < 8) {
+      setMessage({ type: 'error', text: 'Isi alasan penghapusan minimal 8 karakter agar orang tua dan terapis punya konteks.' });
+      return;
+    }
+
+    const confirmed = window.confirm(`Ajukan penghapusan periode ${period.name}? Sesi yang belum selesai akan dihapus setelah orang tua dan terapis menyetujui.`);
+    if (!confirmed) return;
+
+    setRequestingDeletionId(period.id);
+    setMessage(null);
+    try {
+      const res = await therapyPeriodsApi.requestDeletion(period.id, { reason });
+      if (!res.ok) throw new Error(res.data?.error || 'Gagal mengajukan penghapusan periode.');
+      setMessage({ type: 'success', text: 'Pengajuan dikirim ke inbox orang tua dan terapis terkait.' });
+      setDeletionReasonByPeriod(prev => ({ ...prev, [period.id]: '' }));
+      await reloadDeletionRequests();
+      window.dispatchEvent(new Event('notificationsUpdated'));
+    } catch (e) {
+      setMessage({ type: 'error', text: e.message || 'Gagal mengajukan penghapusan periode.' });
+    } finally {
+      setRequestingDeletionId('');
     }
   };
 
@@ -293,6 +359,44 @@ export default function ProgramEnrollmentPage() {
                     <p className="mt-1 font-semibold text-slate-600 dark:text-slate-300">{period.programName || period.type}</p>
                     <p className="mt-1 text-slate-500">{period.startDate} - {period.endDate || 'selesai sesi'}</p>
                     <p className="mt-1 text-slate-500">{period.sessionLabel} - {formatCurrency(period.totalPrice)}</p>
+                    {deletionRequestsByPeriod.has(period.id) && (() => {
+                      const request = deletionRequestsByPeriod.get(period.id);
+                      return (
+                        <div className="mt-3 rounded-lg border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className={`rounded-full px-2 py-0.5 font-black ${getDeletionStatusTone(request.status)}`}>
+                              {request.status === 'executed' ? 'Selesai' : request.status}
+                            </span>
+                            <span className="font-bold text-slate-500">Orang tua: {getApprovalLabel(request.parentApproval)}</span>
+                            <span className="font-bold text-slate-500">Terapis: {getApprovalLabel(request.therapistApproval)}</span>
+                          </div>
+                          {request.deletedSessionCount > 0 && (
+                            <p className="mt-1 font-semibold text-slate-500">{request.deletedSessionCount} sesi belum selesai sudah dihapus.</p>
+                          )}
+                        </div>
+                      );
+                    })()}
+                    {['active', 'planned'].includes(String(period.status || '').toLowerCase()) && deletionRequestsByPeriod.get(period.id)?.status !== 'pending' && deletionRequestsByPeriod.get(period.id)?.status !== 'executed' && (
+                      <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-2 dark:border-red-900/50 dark:bg-red-950/30">
+                        <label className="block text-[11px] font-black uppercase tracking-wide text-red-700">Opsi kritikal</label>
+                        <textarea
+                          rows={2}
+                          value={deletionReasonByPeriod[period.id] || ''}
+                          onChange={e => setDeletionReasonByPeriod(prev => ({ ...prev, [period.id]: e.target.value }))}
+                          placeholder="Alasan penghapusan periode berjalan"
+                          className="mt-2 w-full rounded-lg border border-red-200 bg-white px-2 py-1.5 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-300 dark:border-red-900 dark:bg-slate-950 dark:text-slate-100"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleRequestDeletion(period)}
+                          disabled={requestingDeletionId === period.id}
+                          className="mt-2 inline-flex w-full items-center justify-center gap-1 rounded-lg bg-red-600 px-3 py-2 text-[11px] font-black text-white hover:bg-red-700 disabled:opacity-50"
+                        >
+                          <span className="material-symbols-outlined text-[15px]">delete_forever</span>
+                          {requestingDeletionId === period.id ? 'Mengirim...' : 'Ajukan hapus periode'}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )) : (
                   <p className="rounded-xl bg-amber-50 p-3 text-xs font-semibold text-amber-700">Anak ini belum punya periode terapi.</p>

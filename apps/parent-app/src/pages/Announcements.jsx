@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { adminApi, notificationsApi } from '../../../shared/api/client';
+import { adminApi, notificationsApi, therapyPeriodsApi } from '../../../shared/api/client';
 import {
   formatNotificationTime,
   getNotificationDestination,
@@ -171,15 +171,19 @@ export default function Announcements() {
   const [expandedKey, setExpandedKey] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [deletionRequests, setDeletionRequests] = useState([]);
+  const [deletionProcessingId, setDeletionProcessingId] = useState('');
+  const [deletionFeedback, setDeletionFeedback] = useState('');
 
   const loadInbox = useCallback(async () => {
     setLoading(true);
     setError('');
 
     try {
-      const [announcementResponse, notificationResponse] = await Promise.all([
+      const [announcementResponse, notificationResponse, deletionResponse] = await Promise.all([
         adminApi.getAnnouncementsForRole('parent'),
         notificationsApi.getAll(),
+        therapyPeriodsApi.getDeletionRequests(),
       ]);
 
       if (!announcementResponse.ok) {
@@ -191,6 +195,7 @@ export default function Announcements() {
       }
 
       setItems(buildInboxItems(unwrapResponseData(announcementResponse), unwrapResponseData(notificationResponse)));
+      if (deletionResponse.ok) setDeletionRequests(unwrapResponseData(deletionResponse));
     } catch (err) {
       console.error('[ParentNotifications] load failed', err);
       setError(err.message || 'Gagal memuat notifikasi orang tua.');
@@ -209,6 +214,9 @@ export default function Announcements() {
   }, [loadInbox]);
 
   const unreadTotal = useMemo(() => items.filter((item) => item.unread).length, [items]);
+  const pendingDeletionRequests = useMemo(() => (
+    deletionRequests.filter(request => request.status === 'pending' && request.parentApproval?.status === 'pending')
+  ), [deletionRequests]);
 
   const visibleItems = useMemo(() => {
     if (filter === 'all') return items;
@@ -284,6 +292,31 @@ export default function Announcements() {
     setExpandedKey((current) => (current === item.key ? null : item.key));
   };
 
+  const respondDeletionRequest = async (request, decision) => {
+    const approved = decision === 'approved';
+    const confirmed = window.confirm(`${approved ? 'Setujui' : 'Tolak'} penghapusan periode ${request.periodName} untuk ${request.childName}?`);
+    if (!confirmed) return;
+    setDeletionProcessingId(request.id);
+    setDeletionFeedback('');
+    setError('');
+    try {
+      const response = await therapyPeriodsApi.respondDeletionRequest(request.id, {
+        decision,
+        note: approved
+          ? 'Orang tua menyetujui penghapusan periode berjalan.'
+          : 'Orang tua menolak penghapusan periode berjalan.',
+      });
+      if (!response.ok) throw new Error(response.data?.error || 'Gagal menyimpan keputusan.');
+      setDeletionFeedback('Keputusan penghapusan periode berhasil disimpan.');
+      await loadInbox();
+      window.dispatchEvent(new CustomEvent('notificationsUpdated'));
+    } catch (err) {
+      setError(err.message || 'Gagal menyimpan keputusan penghapusan periode.');
+    } finally {
+      setDeletionProcessingId('');
+    }
+  };
+
   return (
     <div className="space-y-6 pb-12">
       <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm sm:p-8">
@@ -357,6 +390,66 @@ export default function Announcements() {
         <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
           {error}
         </div>
+      )}
+
+      {(deletionFeedback || pendingDeletionRequests.length > 0) && (
+        <section className="rounded-[28px] border border-red-200 bg-white shadow-sm">
+          <div className="border-b border-red-100 bg-red-50 px-5 py-4 sm:px-6">
+            <div className="flex items-center gap-3">
+              <IconBadge icon="priority_high" className="bg-red-600 text-white" />
+              <div>
+                <h2 className="text-xl font-black text-red-900">Persetujuan Kritis</h2>
+                <p className="mt-1 text-sm font-semibold text-red-700">
+                  Penghapusan periode berjalan hanya diproses setelah orang tua dan terapis menyetujui.
+                </p>
+              </div>
+            </div>
+          </div>
+          {deletionFeedback && (
+            <div className="border-b border-emerald-100 bg-emerald-50 px-5 py-3 text-sm font-bold text-emerald-800 sm:px-6">
+              {deletionFeedback}
+            </div>
+          )}
+          <div className="divide-y divide-red-100">
+            {pendingDeletionRequests.map((request) => (
+              <article key={request.id} className="p-5 sm:p-6">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="min-w-0">
+                    <h3 className="text-lg font-black text-slate-950">{request.childName} - {request.periodName}</h3>
+                    <p className="mt-1 text-sm font-bold text-slate-500">{request.programName}</p>
+                    <p className="mt-3 rounded-2xl bg-slate-50 p-4 text-sm leading-6 text-slate-600">
+                      {request.reason}
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold text-slate-500">
+                      <span className="rounded-full bg-slate-100 px-3 py-1">Orang tua: Menunggu</span>
+                      <span className="rounded-full bg-slate-100 px-3 py-1">
+                        Terapis: {request.therapistApproval?.status === 'approved' ? 'Disetujui' : request.therapistApproval?.status === 'rejected' ? 'Ditolak' : 'Menunggu'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 flex-col-reverse gap-2 sm:flex-row lg:flex-col">
+                    <button
+                      type="button"
+                      onClick={() => respondDeletionRequest(request, 'rejected')}
+                      disabled={deletionProcessingId === request.id}
+                      className="rounded-2xl border border-red-200 px-4 py-2 text-sm font-black text-red-700 transition hover:bg-red-50 disabled:opacity-50"
+                    >
+                      Tolak
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => respondDeletionRequest(request, 'approved')}
+                      disabled={deletionProcessingId === request.id}
+                      className="rounded-2xl bg-red-600 px-4 py-2 text-sm font-black text-white transition hover:bg-red-700 disabled:opacity-50"
+                    >
+                      {deletionProcessingId === request.id ? 'Menyimpan...' : 'Setujui'}
+                    </button>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
       )}
 
       <section className="rounded-[28px] border border-slate-200 bg-white shadow-sm">

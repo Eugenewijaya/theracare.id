@@ -219,9 +219,12 @@ export const therapyPeriodsApi = {
     const query = params.toString();
     return api.get(`/therapy-periods${query ? `?${query}` : ''}`);
   },
+  getDeletionRequests: () => api.get('/therapy-periods/deletion-requests'),
   getById: (id) => api.get(`/therapy-periods/${id}`),
   getForChild: (childId) => api.get(`/therapy-periods/child/${childId}`),
   create: (data) => api.post('/therapy-periods', data),
+  requestDeletion: (id, data = {}) => api.post(`/therapy-periods/${id}/deletion-requests`, data),
+  respondDeletionRequest: (requestId, data = {}) => api.patch(`/therapy-periods/deletion-requests/${requestId}/respond`, data),
   update: (id, data) => api.patch(`/therapy-periods/${id}`, data),
   generateSessions: (id, data = {}) => api.post(`/therapy-periods/${id}/generate-sessions`, data),
   complete: (id, data = {}) => api.post(`/therapy-periods/${id}/complete`, data),
