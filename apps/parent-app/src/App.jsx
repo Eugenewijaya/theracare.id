@@ -57,11 +57,17 @@ function MobileTopBar({ onMenuOpen }) {
       >
         <span className="material-symbols-outlined text-[22px]">menu</span>
       </button>
-      <div className="flex min-w-0 flex-1 items-center gap-2.5">
+      <button
+        type="button"
+        onClick={() => navigate('/')}
+        className="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl px-1.5 py-1 text-left transition-colors hover:bg-slate-100 dark:hover:bg-slate-800"
+        aria-label="Kembali ke dasbor orang tua"
+        title="Kembali ke dasbor"
+      >
         <ClinicLogoMark logoUrl={logoUrl} name={clinicName} color={primaryColor} className="h-8 w-8 shrink-0 rounded-lg" />
         <span className="min-w-0 truncate text-sm font-bold text-slate-900 dark:text-white">{clinicName}</span>
         <span className="hidden shrink-0 text-[10px] font-semibold text-slate-500 dark:text-slate-400 sm:inline">Portal Orang Tua</span>
-      </div>
+      </button>
       {canGoBack ? (
         <button
           onClick={() => navigate(-1)}

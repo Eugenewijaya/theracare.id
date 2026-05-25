@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { parentsApi, therapistsApi } from '../../../shared/api/client';
 import { confirmAction } from '../../../shared/ui/confirmDialog';
 import {
@@ -12,6 +13,7 @@ import {
 const PASSWORD_INFO_MESSAGE = 'Password saat ini tersimpan aman sebagai hash dan tidak bisa ditampilkan ulang. Gunakan Reset untuk membuat password baru yang bisa diberikan ke user.';
 
 export default function UserManagementPage() {
+    const navigate = useNavigate();
     const [activeTab, setActiveTab]   = useState('parents');
     const [parents, setParents]       = useState([]);
     const [therapists, setTherapists] = useState([]);
@@ -432,6 +434,13 @@ export default function UserManagementPage() {
                             className="mt-6 w-full h-11 rounded-xl bg-primary text-white text-sm font-black hover:bg-primary/90 disabled:opacity-45 disabled:cursor-not-allowed transition-colors"
                         >
                             Buka User Management
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => navigate('/', { replace: true })}
+                            className="mt-3 w-full h-11 rounded-xl bg-red-600 text-white text-sm font-black transition-colors hover:bg-red-700 focus:outline-none focus:ring-4 focus:ring-red-500/20"
+                        >
+                            Kembali
                         </button>
                     </form>
                 </div>

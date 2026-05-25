@@ -107,12 +107,20 @@ export default function Sidebar({ isOpen, onClose }) {
       style={{ width: `${sidebarWidth}px`, minWidth: 240, maxWidth: 340 }}
     >
       <div className="p-4 flex flex-col gap-5 flex-1 overflow-y-auto overflow-x-hidden">
-        <div className="flex min-w-0 items-center gap-3 px-2 pb-4 border-b border-slate-100 dark:border-slate-800">
-          <ClinicLogoMark logoUrl={logoUrl} name={clinicName} color={primaryColor} className="h-10 w-10" />
-          <div className="min-w-0 flex-1">
-            <h1 className="text-sm font-bold text-slate-900 dark:text-slate-100 leading-tight truncate">{clinicName}</h1>
-            <p className="text-xs text-slate-500 dark:text-slate-400">Portal Orang Tua</p>
-          </div>
+        <div className="flex min-w-0 items-center gap-2 px-2 pb-4 border-b border-slate-100 dark:border-slate-800">
+          <NavLink
+            to="/"
+            end
+            className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-2 py-2 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800"
+            title="Kembali ke dasbor"
+            aria-label="Kembali ke dasbor orang tua"
+          >
+            <ClinicLogoMark logoUrl={logoUrl} name={clinicName} color={primaryColor} className="h-10 w-10" />
+            <div className="min-w-0 flex-1">
+              <h1 className="text-sm font-bold text-slate-900 dark:text-slate-100 leading-tight truncate">{clinicName}</h1>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Portal Orang Tua</p>
+            </div>
+          </NavLink>
           {/* Close btn on mobile */}
           <button
             onClick={onClose}

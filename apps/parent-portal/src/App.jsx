@@ -1,9 +1,12 @@
 import React, { lazy, Suspense } from 'react';
-import { BrowserRouter, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 
 const ParentWebDashboard = lazy(() => import('../../parent-web-dashboard/src/App.jsx'));
 const ParentReportsArchive = lazy(() => import('../../parent-reports-archive/src/App.jsx'));
 const ParentReschedule = lazy(() => import('../../parent-reschedule/src/App.jsx'));
+const ChildProfile = lazy(() => import('../../parent-app/src/pages/ChildProfile.jsx'));
+const Announcements = lazy(() => import('../../parent-app/src/pages/Announcements.jsx'));
+const Settings = lazy(() => import('../../parent-app/src/pages/Settings.jsx'));
 
 function Loading() {
     return (
@@ -24,6 +27,10 @@ export default function App() {
                     <Route path="/" element={<ParentWebDashboard />} />
                     <Route path="/reports" element={<ParentReportsArchive />} />
                     <Route path="/reschedule" element={<ParentReschedule />} />
+                    <Route path="/profile" element={<ChildProfile />} />
+                    <Route path="/announcements" element={<Announcements />} />
+                    <Route path="/settings" element={<Settings />} />
+                    <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
             </Suspense>
         </BrowserRouter>

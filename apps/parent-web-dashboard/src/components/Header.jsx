@@ -100,10 +100,16 @@ const Header = ({ title = "Dashboard", onLogout }) => {
     return (
         <header className="flex flex-col sm:flex-row items-center justify-between border-b border-border-light dark:border-border-dark bg-surface-light dark:bg-surface-dark px-6 py-4 flex-shrink-0 gap-4 mb-4">
             {/* Left: Title */}
-            <div className="flex items-center gap-3 text-primary">
+            <button
+                type="button"
+                onClick={() => navigate('/')}
+                className="flex items-center gap-3 rounded-xl px-2 py-1 text-primary transition-colors hover:bg-primary/10"
+                title="Kembali ke dasbor"
+                aria-label="Kembali ke dasbor orang tua"
+            >
                 <span className="material-symbols-outlined text-2xl">sentiment_satisfied</span>
                 <h2 className="text-xl font-bold tracking-tight">{title}</h2>
-            </div>
+            </button>
 
             {/* Right: controls */}
             <div className="flex items-center gap-3 w-full sm:w-auto">
