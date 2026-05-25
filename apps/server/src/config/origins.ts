@@ -1,7 +1,14 @@
 const LOCAL_DEV_ORIGIN = "http://localhost:5173";
+const THERACARE_ORIGINS = [
+  "https://theracare.id",
+  "https://admin.theracare.id",
+  "https://therapist.theracare.id",
+  "https://parent.theracare.id",
+];
 
 const vercelOriginPattern = /^https:\/\/[a-z0-9-]+\.vercel\.app$/i;
 const localhostOriginPattern = /^http:\/\/localhost:\d+$/i;
+const theracareOriginPattern = /^https:\/\/([a-z0-9-]+\.)?theracare\.id$/i;
 
 function splitOrigins(value?: string) {
   return (value || "")
@@ -16,6 +23,7 @@ export function normalizeOrigin(origin: string) {
 
 export function getConfiguredOrigins() {
   const origins = [
+    ...THERACARE_ORIGINS,
     ...splitOrigins(process.env.CORS_ORIGIN),
     ...splitOrigins(process.env.ADMIN_APP_URL),
     ...splitOrigins(process.env.THERAPIST_APP_URL),
@@ -29,6 +37,7 @@ export function isAllowedOrigin(origin: string, configuredOrigins = getConfigure
   const normalized = normalizeOrigin(origin);
   return configuredOrigins.includes(normalized)
     || vercelOriginPattern.test(normalized)
+    || theracareOriginPattern.test(normalized)
     || localhostOriginPattern.test(normalized);
 }
 
