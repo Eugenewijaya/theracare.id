@@ -8,6 +8,8 @@ import { notifyTherapistScheduleConflicts } from "./schedule-conflict-notificati
 const LEAVE_REQUESTS_KEY = "therapistLeaveRequests";
 const VALID_TYPES = new Set(["cuti", "sakit", "unpaid_leave"]);
 const VALID_STATUSES = new Set(["pending", "approved", "rejected"]);
+const POST_APPROVAL_CHANGE_LIMIT = 3;
+const APP_TIME_ZONE = "Asia/Jakarta";
 
 type LeaveRequestStatus = "pending" | "approved" | "rejected";
 
@@ -26,6 +28,16 @@ type TherapistLeaveRequest = {
   reviewedAt?: string;
   wasApproved?: boolean;
   postApprovalChangeCount?: number;
+  postApprovalChangeLimit?: number;
+  remainingPostApprovalChanges?: number;
+  canChangeStatus?: boolean;
+  changeBlockedReason?: string;
+  changeStatus?: "open" | "completed";
+  changeStatusLabel?: string;
+  changeStatusDetail?: string;
+  isChangeLimitReached?: boolean;
+  isExpired?: boolean;
+  isFinalRejected?: boolean;
   history?: Array<{ status: LeaveRequestStatus; note?: string; createdAt: string }>;
   createdAt: string;
 };
@@ -46,8 +58,69 @@ function normalizeDateKey(value?: string | null) {
   return Number.isNaN(date.getTime()) ? "" : raw;
 }
 
+function todayKey() {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: APP_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const byType = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${byType.year}-${byType.month}-${byType.day}`;
+}
+
 function rangesOverlap(aStart: string, aEnd: string, bStart: string, bEnd: string) {
   return aStart <= bEnd && bStart <= aEnd;
+}
+
+function getPostApprovalChangeCount(request: TherapistLeaveRequest) {
+  const count = Number(request.postApprovalChangeCount || 0);
+  return Number.isFinite(count) && count > 0 ? count : 0;
+}
+
+function getChangePolicy(request: TherapistLeaveRequest) {
+  const changeCount = getPostApprovalChangeCount(request);
+  const remainingPostApprovalChanges = Math.max(0, POST_APPROVAL_CHANGE_LIMIT - changeCount);
+  const hasApprovalHistory = Boolean(request.wasApproved || request.status === "approved" || changeCount > 0);
+  const endDate = normalizeDateKey(request.endDate);
+  const isExpired = Boolean(endDate && endDate < todayKey());
+  const isFinalRejected = request.status === "rejected";
+  const isChangeLimitReached = hasApprovalHistory && remainingPostApprovalChanges <= 0;
+
+  let changeBlockedReason = "";
+  if (isFinalRejected) {
+    changeBlockedReason = "Pengajuan ini sudah ditolak final. Terapis perlu membuat pengajuan baru jika masih diperlukan.";
+  } else if (isExpired) {
+    changeBlockedReason = "Tanggal pengajuan ini sudah lewat. Terapis perlu membuat pengajuan baru agar riwayat cuti tidak bertumpuk.";
+  } else if (isChangeLimitReached) {
+    changeBlockedReason = "Kuota 3x perubahan setelah disetujui sudah habis. Terapis perlu membuat pengajuan baru.";
+  }
+
+  const canChangeStatus = !changeBlockedReason;
+  const changeStatus = canChangeStatus ? "open" : "completed";
+  const changeStatusDetail = hasApprovalHistory
+    ? `Perubahan status ${changeCount}/${POST_APPROVAL_CHANGE_LIMIT}`
+    : "Belum pernah disetujui";
+
+  return {
+    postApprovalChangeLimit: POST_APPROVAL_CHANGE_LIMIT,
+    remainingPostApprovalChanges,
+    canChangeStatus,
+    changeBlockedReason,
+    changeStatus,
+    changeStatusLabel: changeStatus === "completed" ? "Selesai" : "Aktif",
+    changeStatusDetail,
+    isChangeLimitReached,
+    isExpired,
+    isFinalRejected,
+  };
+}
+
+function withChangePolicy(request: TherapistLeaveRequest) {
+  return {
+    ...request,
+    ...getChangePolicy(request),
+  };
 }
 
 async function readRequests() {
@@ -73,13 +146,16 @@ async function writeRequests(requests: TherapistLeaveRequest[]) {
 export const leaveRequestService = {
   async getAll() {
     const requests = await readRequests();
-    return requests.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return requests
+      .map(withChangePolicy)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   },
 
   async getForTherapist(therapistId: string) {
     const requests = await readRequests();
     return requests
       .filter((request) => request.therapistId === therapistId)
+      .map(withChangePolicy)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   },
 
@@ -148,6 +224,11 @@ export const leaveRequestService = {
 
     const current = requests[index];
     const hasStatusChange = current.status !== status;
+    const changePolicy = getChangePolicy(current);
+    if (!changePolicy.canChangeStatus) {
+      throw new Error(changePolicy.changeBlockedReason || "Pengajuan ini sudah tidak dapat diubah. Terapis perlu membuat pengajuan baru.");
+    }
+
     if (status === "approved") {
       const conflictingApproved = requests.find((request) => (
         request.id !== id
@@ -162,9 +243,9 @@ export const leaveRequestService = {
     const wasAlreadyApproved = current.wasApproved || current.status === "approved";
     const wasApproved = wasAlreadyApproved || status === "approved";
     const nextChangeCount = wasAlreadyApproved && hasStatusChange
-      ? Number(current.postApprovalChangeCount || 0) + 1
-      : Number(current.postApprovalChangeCount || 0);
-    if (nextChangeCount > 3) {
+      ? getPostApprovalChangeCount(current) + 1
+      : getPostApprovalChangeCount(current);
+    if (nextChangeCount > POST_APPROVAL_CHANGE_LIMIT) {
       throw new Error("Status cuti ini sudah diubah 3x setelah approval. Buat pengajuan baru agar log tetap aman.");
     }
 
@@ -199,6 +280,6 @@ export const leaveRequestService = {
       await notifyTherapistScheduleConflicts(next.therapistId);
     }
 
-    return next;
+    return withChangePolicy(next);
   },
 };

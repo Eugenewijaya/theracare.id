@@ -70,16 +70,18 @@ export default function Sidebar({ isOpen, onClose }) {
         const pendingMeetings = (meetingRes.data?.data || []).filter(r => r.status === 'pending_admin_review').length;
         const pendingCount = pendingReschedules + pendingMeetings;
         const unreadNotifs = unreadRes.data?.data?.count || 0;
-        const pendingLeave = (leaveRes.data?.data || []).filter(r => r.status === 'pending').length;
+        const pendingLeave = (leaveRes.data?.data || []).filter(r => r.status === 'pending' && r.canChangeStatus !== false).length;
         setBadgeCounts({ requests: pendingCount, notifications: unreadNotifs, leaveRequests: pendingLeave });
       } catch {}
     };
     computeBadges();
     window.addEventListener('notificationsUpdated', computeBadges);
+    window.addEventListener('leaveRequestsUpdated', computeBadges);
     const interval = setInterval(computeBadges, 30000); // Poll every 30s
     return () => {
       clearInterval(interval);
       window.removeEventListener('notificationsUpdated', computeBadges);
+      window.removeEventListener('leaveRequestsUpdated', computeBadges);
     };
   }, []);
 

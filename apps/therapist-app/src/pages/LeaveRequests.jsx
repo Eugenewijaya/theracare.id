@@ -13,14 +13,25 @@ const STATUS_STYLE = {
   rejected: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
 };
 
+const CHANGE_STATUS_STYLE = {
+  open: 'bg-sky-50 text-sky-700 ring-sky-100 dark:bg-sky-900/30 dark:text-sky-300 dark:ring-sky-800/50',
+  completed: 'bg-slate-100 text-slate-700 ring-slate-200 dark:bg-slate-700 dark:text-slate-200 dark:ring-slate-600',
+};
+
 const STATUS_LABELS = {
   pending: 'Menunggu Review',
   approved: 'Disetujui',
   rejected: 'Ditolak',
 };
 
+const DEFAULT_POST_APPROVAL_CHANGE_LIMIT = 3;
+
 function todayKey() {
-  return new Date().toISOString().split('T')[0];
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 function formatDate(value) {
@@ -34,6 +45,41 @@ function formatDate(value) {
 
 function getTypeLabel(value) {
   return TYPES.find((item) => item.value === value)?.label || value;
+}
+
+function getRequestFollowUpInfo(request) {
+  const limit = Number(request.postApprovalChangeLimit || DEFAULT_POST_APPROVAL_CHANGE_LIMIT);
+  const used = Math.max(0, Number(request.postApprovalChangeCount || 0));
+  const remaining = Math.max(0, Number.isFinite(Number(request.remainingPostApprovalChanges))
+    ? Number(request.remainingPostApprovalChanges)
+    : limit - used);
+  const hasApprovalHistory = Boolean(request.wasApproved || request.status === 'approved' || used > 0);
+  const isExpired = Boolean(request.isExpired ?? (request.endDate && request.endDate < todayKey()));
+  const isFinalRejected = Boolean(request.isFinalRejected ?? request.status === 'rejected');
+  const isChangeLimitReached = Boolean(request.isChangeLimitReached ?? (hasApprovalHistory && remaining <= 0));
+  let message = '';
+
+  if (isFinalRejected) {
+    message = 'Pengajuan ini sudah ditolak final. Buat pengajuan baru jika masih diperlukan.';
+  } else if (isExpired) {
+    message = 'Tanggal pengajuan ini sudah lewat. Buat pengajuan baru jika masih memerlukan cuti.';
+  } else if (hasApprovalHistory && remaining <= 0) {
+    message = 'Kuota perubahan setelah disetujui sudah habis. Buat pengajuan baru jika ada perubahan lain.';
+  } else if (request.canChangeStatus === false) {
+    message = 'Pengajuan ini sudah tidak dapat diubah. Buat pengajuan baru jika masih diperlukan.';
+  }
+
+  return {
+    limit,
+    used,
+    remaining,
+    hasApprovalHistory,
+    isChangeLimitReached,
+    changeStatus: request.changeStatus || (message ? 'completed' : 'open'),
+    changeStatusLabel: request.changeStatusLabel || (message ? 'Selesai' : 'Aktif'),
+    changeStatusDetail: request.changeStatusDetail || (hasApprovalHistory ? `Perubahan status ${used}/${limit}` : 'Belum pernah disetujui'),
+    message,
+  };
 }
 
 export default function LeaveRequests() {
@@ -244,44 +290,63 @@ export default function LeaveRequests() {
                   <div className="p-8 text-center text-sm font-semibold text-slate-500">
                     {requests.length === 0 ? 'Belum ada pengajuan cuti.' : 'Tidak ada pengajuan pada filter ini.'}
                   </div>
-                ) : filteredRequests.map((request) => (
-                  <article key={request.id} className="p-5">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h3 className="text-sm font-black text-slate-900 dark:text-white">{getTypeLabel(request.type)}</h3>
-                          <span className={`rounded-full px-2.5 py-1 text-[11px] font-black uppercase ${STATUS_STYLE[request.status] || STATUS_STYLE.pending}`}>
-                            {STATUS_LABELS[request.status] || request.status}
-                          </span>
-                        </div>
-                        <p className="mt-1 text-sm font-semibold text-slate-600 dark:text-slate-300">
-                          {formatDate(request.startDate)} - {formatDate(request.endDate)}
-                        </p>
-                        {request.reason && <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{request.reason}</p>}
-                        {request.reviewNote && (
-                          <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600 dark:bg-slate-900/50 dark:text-slate-300">
-                            Catatan admin: {request.reviewNote}
+                ) : filteredRequests.map((request) => {
+                  const followUpInfo = getRequestFollowUpInfo(request);
+                  return (
+                    <article key={request.id} className="p-5">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="text-sm font-black text-slate-900 dark:text-white">{getTypeLabel(request.type)}</h3>
+                            <span className={`rounded-full px-2.5 py-1 text-[11px] font-black uppercase ${STATUS_STYLE[request.status] || STATUS_STYLE.pending}`}>
+                              {STATUS_LABELS[request.status] || request.status}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-sm font-semibold text-slate-600 dark:text-slate-300">
+                            {formatDate(request.startDate)} - {formatDate(request.endDate)}
                           </p>
-                        )}
-                        {Array.isArray(request.history) && request.history.length > 0 && (
-                          <details className="mt-3 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-900/50">
-                            <summary className="cursor-pointer font-black text-slate-600 dark:text-slate-300">Lihat log status</summary>
-                            <div className="mt-2 space-y-1.5 text-slate-500 dark:text-slate-400">
-                              {request.history.map((log, index) => (
-                                <p key={`${log.createdAt}-${index}`}>
-                                  <span className="font-black">{STATUS_LABELS[log.status] || log.status}</span>
-                                  {log.note ? ` - ${log.note}` : ''}
-                                  <span className="opacity-70"> ({formatDate(String(log.createdAt || '').slice(0, 10))})</span>
-                                </p>
-                              ))}
+                          {request.reason && <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{request.reason}</p>}
+                          {(followUpInfo.hasApprovalHistory || followUpInfo.message) && (
+                            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                              <span className={`rounded-full px-2 py-0.5 text-[11px] font-black uppercase ring-1 ${CHANGE_STATUS_STYLE[followUpInfo.changeStatus] || CHANGE_STATUS_STYLE.open}`}>
+                                {followUpInfo.changeStatusLabel}
+                              </span>
+                              <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                                {followUpInfo.changeStatusDetail}
+                                {followUpInfo.changeStatus === 'open' && followUpInfo.hasApprovalHistory ? `, sisa ${followUpInfo.remaining}` : ''}
+                              </span>
                             </div>
-                          </details>
-                        )}
+                          )}
+                          {followUpInfo.message && (
+                            <p className="mt-3 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 dark:border-amber-800/50 dark:bg-amber-900/20 dark:text-amber-300">
+                              {followUpInfo.message}
+                            </p>
+                          )}
+                          {request.reviewNote && (
+                            <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600 dark:bg-slate-900/50 dark:text-slate-300">
+                              Catatan admin: {request.reviewNote}
+                            </p>
+                          )}
+                          {Array.isArray(request.history) && request.history.length > 0 && (
+                            <details className="mt-3 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-900/50">
+                              <summary className="cursor-pointer font-black text-slate-600 dark:text-slate-300">Lihat log status</summary>
+                              <div className="mt-2 space-y-1.5 text-slate-500 dark:text-slate-400">
+                                {request.history.map((log, index) => (
+                                  <p key={`${log.createdAt}-${index}`}>
+                                    <span className="font-black">{STATUS_LABELS[log.status] || log.status}</span>
+                                    {log.note ? ` - ${log.note}` : ''}
+                                    <span className="opacity-70"> ({formatDate(String(log.createdAt || '').slice(0, 10))})</span>
+                                  </p>
+                                ))}
+                              </div>
+                            </details>
+                          )}
+                        </div>
+                        <p className="text-xs font-semibold text-slate-400">{formatDate(request.createdAt?.slice(0, 10))}</p>
                       </div>
-                      <p className="text-xs font-semibold text-slate-400">{formatDate(request.createdAt?.slice(0, 10))}</p>
-                    </div>
-                  </article>
-                ))}
+                    </article>
+                  );
+                })}
               </div>
             </div>
           </section>

@@ -21,6 +21,27 @@ const STATUS_STYLE = {
   rejected: 'bg-red-100 text-red-700',
 };
 
+const CHANGE_STATUS_STYLE = {
+  open: 'bg-sky-50 text-sky-700 ring-sky-100',
+  completed: 'bg-slate-100 text-slate-700 ring-slate-200',
+};
+
+const STATUS_LABELS = {
+  pending: 'Menunggu Review',
+  approved: 'Disetujui',
+  rejected: 'Ditolak',
+};
+
+const DEFAULT_POST_APPROVAL_CHANGE_LIMIT = 3;
+
+function todayKey() {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 function formatDate(value) {
   if (!value) return '-';
   return new Date(`${value}T00:00:00`).toLocaleDateString('id-ID', {
@@ -28,6 +49,44 @@ function formatDate(value) {
     month: 'short',
     year: 'numeric',
   });
+}
+
+function getRequestChangePolicy(request) {
+  const limit = Number(request.postApprovalChangeLimit || DEFAULT_POST_APPROVAL_CHANGE_LIMIT);
+  const used = Math.max(0, Number(request.postApprovalChangeCount || 0));
+  const remaining = Math.max(0, Number.isFinite(Number(request.remainingPostApprovalChanges))
+    ? Number(request.remainingPostApprovalChanges)
+    : limit - used);
+  const hasApprovalHistory = Boolean(request.wasApproved || request.status === 'approved' || used > 0);
+  const isExpired = Boolean(request.isExpired ?? (request.endDate && request.endDate < todayKey()));
+  const isFinalRejected = Boolean(request.isFinalRejected ?? request.status === 'rejected');
+  const isChangeLimitReached = Boolean(request.isChangeLimitReached ?? (hasApprovalHistory && remaining <= 0));
+  let blockedReason = request.changeBlockedReason || '';
+
+  if (!blockedReason && isFinalRejected) {
+    blockedReason = 'Pengajuan ini sudah ditolak final. Terapis perlu membuat pengajuan baru jika masih diperlukan.';
+  } else if (!blockedReason && isExpired) {
+    blockedReason = 'Tanggal pengajuan sudah lewat. Terapis perlu membuat pengajuan baru agar riwayat cuti tidak bertumpuk.';
+  } else if (!blockedReason && hasApprovalHistory && remaining <= 0) {
+    blockedReason = 'Kuota 3x perubahan setelah disetujui sudah habis. Terapis perlu membuat pengajuan baru.';
+  } else if (!blockedReason && request.canChangeStatus === false) {
+    blockedReason = 'Pengajuan ini sudah tidak dapat diubah. Terapis perlu membuat pengajuan baru.';
+  }
+
+  return {
+    limit,
+    used,
+    remaining,
+    hasApprovalHistory,
+    isExpired,
+    isFinalRejected,
+    isChangeLimitReached,
+    canChangeStatus: request.canChangeStatus === false ? false : !blockedReason,
+    changeStatus: request.changeStatus || (blockedReason ? 'completed' : 'open'),
+    changeStatusLabel: request.changeStatusLabel || (blockedReason ? 'Selesai' : 'Aktif'),
+    changeStatusDetail: request.changeStatusDetail || (hasApprovalHistory ? `Perubahan status ${used}/${limit}` : 'Belum pernah disetujui'),
+    blockedReason,
+  };
 }
 
 export default function TherapistLeaveRequestsPage() {
@@ -110,6 +169,13 @@ export default function TherapistLeaveRequestsPage() {
   }), [requests]);
 
   const updateStatus = async (request, status) => {
+    const changePolicy = getRequestChangePolicy(request);
+    if (!changePolicy.canChangeStatus) {
+      setStatusEditOpen((prev) => ({ ...prev, [request.id]: false }));
+      setToast({ type: 'error', message: changePolicy.blockedReason || 'Pengajuan ini sudah tidak dapat diubah.' });
+      return;
+    }
+
     if (status === 'approved') {
       const confirmed = await confirmAction({
         tone: 'warning',
@@ -145,7 +211,8 @@ export default function TherapistLeaveRequestsPage() {
       setToast({ type: 'error', message: res.data?.error || 'Gagal memperbarui pengajuan.' });
       return;
     }
-    setRequests((prev) => prev.map((item) => (item.id === request.id ? { ...item, status, reviewNote: reviewNotes[request.id] || item.reviewNote } : item)));
+    const updatedRequest = res.data?.data || { ...request, status, reviewNote: reviewNotes[request.id] || request.reviewNote };
+    setRequests((prev) => prev.map((item) => (item.id === request.id ? updatedRequest : item)));
     setStatusEditOpen((prev) => ({ ...prev, [request.id]: false }));
     setToast({ type: 'success', message: `Pengajuan ${request.therapistName} diperbarui.` });
     await load({ silent: true });
@@ -275,89 +342,124 @@ export default function TherapistLeaveRequestsPage() {
                     <tr>
                       <td colSpan={6} className="py-16 text-center text-sm font-semibold text-slate-500">Belum ada pengajuan cuti.</td>
                     </tr>
-                  ) : requests.map((request) => (
-                    <tr key={request.id} className="align-top hover:bg-slate-50/70 dark:hover:bg-primary/5">
-                      <td className="px-5 py-4">
-                        <p className="text-sm font-black text-slate-900 dark:text-white">{request.therapistName}</p>
-                        <p className="text-xs font-semibold text-slate-400">{request.therapistNit || request.therapistId}</p>
-                      </td>
-                      <td className="px-5 py-4 text-sm font-semibold text-slate-700 dark:text-slate-300">{TYPE_LABELS[request.type] || request.type}</td>
-                      <td className="px-5 py-4 text-sm font-semibold text-slate-700 dark:text-slate-300">{formatDate(request.startDate)} - {formatDate(request.endDate)}</td>
-                      <td className="max-w-[260px] px-5 py-4 text-sm text-slate-600 dark:text-slate-300">{request.reason || '-'}</td>
-                      <td className="px-5 py-4">
-                        <span className={`rounded-full px-2.5 py-1 text-xs font-black uppercase ${STATUS_STYLE[request.status] || STATUS_STYLE.pending}`}>
-                          {request.status}
-                        </span>
-                        {request.reviewNote && <p className="mt-2 text-xs text-slate-500">Catatan: {request.reviewNote}</p>}
-                      </td>
-                      <td className="px-5 py-4">
-                        <div className="ml-auto flex w-[260px] flex-col gap-2">
-                          <textarea
-                            value={reviewNotes[request.id] || ''}
-                            onChange={(e) => setReviewNotes((prev) => ({ ...prev, [request.id]: e.target.value }))}
-                            rows={2}
-                            placeholder="Catatan admin"
-                            className="w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-primary/20 dark:bg-background-dark"
-                          />
-                          {request.status === 'pending' ? (
-                            <div className="flex justify-end gap-2">
-                              <button
-                                onClick={() => updateStatus(request, 'rejected')}
-                                className="rounded-lg bg-red-50 px-3 py-2 text-xs font-black text-red-700 hover:bg-red-100"
-                              >
-                                Tolak
-                              </button>
-                              <button
-                                onClick={() => updateStatus(request, 'approved')}
-                                className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-700 hover:bg-emerald-100"
-                              >
-                                Setujui
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="flex flex-wrap justify-end gap-2">
-                              {!statusEditOpen[request.id] ? (
-                                <button
-                                  type="button"
-                                  onClick={() => setStatusEditOpen((prev) => ({ ...prev, [request.id]: true }))}
-                                  className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-200 dark:bg-primary/10 dark:text-slate-200"
-                                >
-                                  Ubah
-                                </button>
-                              ) : (
-                                <>
-                                  <button
-                                    type="button"
-                                    onClick={() => updateStatus(request, 'pending')}
-                                    className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-black text-amber-700 hover:bg-amber-100"
-                                  >
-                                    Jadikan Pending
-                                  </button>
-                                  {request.status === 'approved' ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => updateStatus(request, 'rejected')}
-                                      className="rounded-lg bg-red-50 px-3 py-2 text-xs font-black text-red-700 hover:bg-red-100"
-                                    >
-                                      Batal Cuti
-                                    </button>
-                                  ) : (
-                                    <button
-                                      type="button"
-                                      onClick={() => updateStatus(request, 'approved')}
-                                      className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-700 hover:bg-emerald-100"
-                                    >
-                                      Setujui
-                                    </button>
-                                  )}
-                                </>
-                              )}
+                  ) : requests.map((request) => {
+                    const changePolicy = getRequestChangePolicy(request);
+                    return (
+                      <tr key={request.id} className="align-top hover:bg-slate-50/70 dark:hover:bg-primary/5">
+                        <td className="px-5 py-4">
+                          <p className="text-sm font-black text-slate-900 dark:text-white">{request.therapistName}</p>
+                          <p className="text-xs font-semibold text-slate-400">{request.therapistNit || request.therapistId}</p>
+                        </td>
+                        <td className="px-5 py-4 text-sm font-semibold text-slate-700 dark:text-slate-300">{TYPE_LABELS[request.type] || request.type}</td>
+                        <td className="px-5 py-4 text-sm font-semibold text-slate-700 dark:text-slate-300">
+                          <p>{formatDate(request.startDate)} - {formatDate(request.endDate)}</p>
+                          {changePolicy.isExpired && (
+                            <p className="mt-1 text-xs font-bold text-red-600 dark:text-red-400">Tanggal sudah lewat</p>
+                          )}
+                        </td>
+                        <td className="max-w-[260px] px-5 py-4 text-sm text-slate-600 dark:text-slate-300">{request.reason || '-'}</td>
+                        <td className="px-5 py-4">
+                          <span className={`rounded-full px-2.5 py-1 text-xs font-black uppercase ${STATUS_STYLE[request.status] || STATUS_STYLE.pending}`}>
+                            {STATUS_LABELS[request.status] || request.status}
+                          </span>
+                          {(changePolicy.hasApprovalHistory || !changePolicy.canChangeStatus) && (
+                            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                              <span className={`rounded-full px-2 py-0.5 text-[11px] font-black uppercase ring-1 ${CHANGE_STATUS_STYLE[changePolicy.changeStatus] || CHANGE_STATUS_STYLE.open}`}>
+                                {changePolicy.changeStatusLabel}
+                              </span>
+                              <span className="text-xs font-semibold text-slate-500">
+                                {changePolicy.changeStatusDetail}
+                                {changePolicy.canChangeStatus && changePolicy.hasApprovalHistory ? `, sisa ${changePolicy.remaining}` : ''}
+                              </span>
                             </div>
                           )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                          {request.reviewNote && <p className="mt-2 text-xs text-slate-500">Catatan: {request.reviewNote}</p>}
+                          {!changePolicy.canChangeStatus && (
+                            <p className="mt-2 rounded-lg bg-red-50 px-2 py-1.5 text-xs font-semibold text-red-700">
+                              {changePolicy.blockedReason}
+                            </p>
+                          )}
+                        </td>
+                        <td className="px-5 py-4">
+                          <div className="ml-auto flex w-[260px] flex-col gap-2">
+                            <textarea
+                              value={reviewNotes[request.id] || ''}
+                              onChange={(e) => setReviewNotes((prev) => ({ ...prev, [request.id]: e.target.value }))}
+                              rows={2}
+                              disabled={!changePolicy.canChangeStatus}
+                              placeholder={changePolicy.canChangeStatus ? 'Catatan admin' : 'Pengajuan terkunci'}
+                              className="w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400 dark:border-primary/20 dark:bg-background-dark dark:disabled:bg-slate-900/50"
+                            />
+                            {request.status === 'pending' ? (
+                              changePolicy.canChangeStatus ? (
+                                <div className="flex justify-end gap-2">
+                                  <button
+                                    onClick={() => updateStatus(request, 'rejected')}
+                                    className="rounded-lg bg-red-50 px-3 py-2 text-xs font-black text-red-700 hover:bg-red-100"
+                                  >
+                                    Tolak
+                                  </button>
+                                  <button
+                                    onClick={() => updateStatus(request, 'approved')}
+                                    className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-700 hover:bg-emerald-100"
+                                  >
+                                    Setujui
+                                  </button>
+                                </div>
+                              ) : (
+                                <p className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs font-bold text-red-700">
+                                  Terapis perlu membuat pengajuan baru.
+                                </p>
+                              )
+                            ) : (
+                              <div className="flex flex-wrap justify-end gap-2">
+                                {!changePolicy.canChangeStatus ? (
+                                  <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-500">
+                                    Tidak bisa diubah lagi.
+                                  </p>
+                                ) : !statusEditOpen[request.id] ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => setStatusEditOpen((prev) => ({ ...prev, [request.id]: true }))}
+                                    className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-200 dark:bg-primary/10 dark:text-slate-200"
+                                  >
+                                    Ubah
+                                  </button>
+                                ) : (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => updateStatus(request, 'pending')}
+                                      className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-black text-amber-700 hover:bg-amber-100"
+                                    >
+                                      Jadikan Pending
+                                    </button>
+                                    {request.status === 'approved' ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => updateStatus(request, 'rejected')}
+                                        className="rounded-lg bg-red-50 px-3 py-2 text-xs font-black text-red-700 hover:bg-red-100"
+                                      >
+                                        Batal Cuti
+                                      </button>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={() => updateStatus(request, 'approved')}
+                                        className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-700 hover:bg-emerald-100"
+                                      >
+                                        Setujui
+                                      </button>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
