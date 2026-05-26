@@ -99,9 +99,9 @@ function DashboardLayout() {
   }, [handlePortalLogout]);
 
   return (
-    <div className="flex h-[100dvh] w-full overflow-hidden" data-build-scope="therapist-progress-refresh">
+    <div className="flex h-[100dvh] w-full max-w-full overflow-hidden" data-build-scope="therapist-progress-refresh">
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <MobileTopBar onMenuOpen={() => setSidebarOpen(true)} />
         <AutoRefreshHost
           user={user}
@@ -117,7 +117,7 @@ function DashboardLayout() {
           onOpenNotifications={(notification) => navigate(getNotificationDestination(notification, 'therapist'))}
         />
         <LocationPermissionHost user={user} role="therapist" required />
-        <div className="relative min-h-0 flex-1 overflow-y-auto bg-background-light dark:bg-background-dark">
+        <div className="relative min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto bg-background-light dark:bg-background-dark">
           <GuideHost user={user} role="therapist" currentPath={location.pathname} />
           <Suspense fallback={<Loading />}>
             <Routes key={refreshKey}>

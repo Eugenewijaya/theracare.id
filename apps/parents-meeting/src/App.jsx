@@ -235,7 +235,7 @@ export default function App({ mode = 'therapist' }) {
                 {isAdmin && <span className="self-start sm:self-auto px-3 py-1 rounded-full bg-amber-50 text-amber-700 text-xs font-black">{statusCounts.pending_admin_review || 0} pending</span>}
             </div>
 
-            <div className="grid grid-cols-1 xl:grid-cols-[420px_1fr] gap-0 flex-1 min-h-0">
+            <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)] gap-0 flex-1 min-h-0 min-w-0">
                 <section className="p-4 sm:p-6 border-b xl:border-b-0 xl:border-r border-slate-200 dark:border-slate-800 overflow-y-auto">
                     <div className="flex flex-col gap-4">
                         <div>

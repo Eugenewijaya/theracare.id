@@ -1122,7 +1122,7 @@ const RescheduleForm = () => {
             </div>
           </div>
 
-          <div className="mt-6 grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
+          <div className="mt-6 grid min-w-0 gap-4 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
             <div>
               <h3 className="text-base font-black text-slate-950 dark:text-white">Alasan perubahan</h3>
               <div className="mt-3 flex flex-col gap-4">

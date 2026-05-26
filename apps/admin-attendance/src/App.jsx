@@ -124,7 +124,7 @@ function App() {
     return (
         <>
             <Header />
-            <main className="flex-1 max-w-[1400px] mx-auto w-full px-4 sm:px-6 py-8 flex flex-col gap-8">
+            <main className="mx-auto flex w-full max-w-[1400px] min-w-0 flex-1 flex-col gap-8 px-4 py-8 sm:px-6">
 
                 {/* Tabs & Search */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-2">

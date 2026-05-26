@@ -185,7 +185,7 @@ const CalendarGrid = ({ currentView, onDateClick, onEventClick, selectedMonth, s
                             const slotSessions = daySessions.filter(session => sessionOverlapsSlot(session, slotStart));
                             const therapistIssue = getTherapistSlotIssue(selectedTherapist, toDateKey(anchorDate), hour);
                             return (
-                                <div key={hour} className="grid gap-2 border-b border-slate-100 pb-3 dark:border-slate-800/70 sm:grid-cols-[84px_1fr]">
+                                <div key={hour} className="grid min-w-0 gap-2 border-b border-slate-100 pb-3 dark:border-slate-800/70 sm:grid-cols-[84px_minmax(0,1fr)]">
                                     <span className="text-sm font-bold text-slate-500 sm:pt-3">{hour}</span>
                                     <div className="min-h-[52px] rounded-xl bg-slate-50 p-2 dark:bg-slate-900/50">
                                         {slotSessions.length > 0 ? (

@@ -433,7 +433,7 @@ function App() {
                 {toast.msg}
             </div>
         )}
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col gap-8 bg-background-light dark:bg-background-dark">
+        <main className="mx-auto flex w-full max-w-7xl min-w-0 flex-col gap-8 bg-background-light px-4 py-8 dark:bg-background-dark sm:px-6 lg:px-8">
             {/* Header */}
             <header className="flex flex-col gap-4 border-b border-solid border-slate-200 pb-6 dark:border-slate-800 lg:flex-row lg:items-start lg:justify-between">
                 <div className="flex items-center gap-4 text-slate-900 dark:text-slate-100">
@@ -473,7 +473,7 @@ function App() {
                         </p>
                     )}
                     {timeframe === 'CUSTOM' && (
-                        <div className="grid w-full grid-cols-1 gap-2 sm:w-auto sm:grid-cols-[1fr_1fr]">
+                        <div className="grid min-w-0 w-full grid-cols-1 gap-2 sm:w-auto sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                             <label className="flex flex-col gap-1 text-xs font-bold text-slate-500 dark:text-slate-400">
                                 Dari tanggal
                                 <input

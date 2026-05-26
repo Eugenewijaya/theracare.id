@@ -194,7 +194,7 @@ export default function LeaveRequests() {
       </header>
 
       <main className="flex-1 p-4 md:p-8">
-        <div className="mx-auto grid w-full max-w-6xl gap-6 lg:grid-cols-[380px_1fr]">
+        <div className="mx-auto grid w-full max-w-6xl min-w-0 gap-6 lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]">
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-800">
             <h2 className="text-base font-black text-slate-900 dark:text-white">Buat Pengajuan</h2>
             <form onSubmit={handleSubmit} className="mt-5 flex flex-col gap-4">

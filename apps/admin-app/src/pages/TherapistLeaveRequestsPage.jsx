@@ -233,7 +233,7 @@ export default function TherapistLeaveRequestsPage() {
   };
 
   return (
-    <div className="flex flex-1 flex-col bg-background-light dark:bg-background-dark">
+    <div className="flex min-w-0 flex-1 flex-col overflow-x-hidden bg-background-light dark:bg-background-dark">
       {toast && (
         <div className="fixed bottom-5 left-4 right-4 z-50 sm:left-auto sm:right-6 sm:w-[360px]">
           <div className={`rounded-2xl border px-4 py-3 text-sm font-bold shadow-xl ${
@@ -309,8 +309,8 @@ export default function TherapistLeaveRequestsPage() {
         </div>
       )}
 
-      <main className="flex flex-1 justify-center px-4 py-6 md:px-10 md:py-8">
-        <div className="flex w-full max-w-[1200px] flex-col gap-6">
+      <main className="flex min-w-0 flex-1 justify-center px-4 py-6 md:px-10 md:py-8">
+        <div className="flex w-full max-w-[1200px] min-w-0 flex-col gap-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <h1 className="text-2xl font-black leading-tight text-slate-900 dark:text-white sm:text-3xl">Pengajuan Cuti Terapis</h1>

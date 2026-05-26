@@ -297,8 +297,8 @@ export default function ProgramEnrollmentPage() {
   };
 
   return (
-    <div className="min-h-full bg-background-light dark:bg-background-dark">
-      <main className="mx-auto flex w-full max-w-[1280px] flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
+    <div className="min-h-full min-w-0 overflow-x-hidden bg-background-light dark:bg-background-dark">
+      <main className="mx-auto flex w-full max-w-[1280px] min-w-0 flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
         <div className="flex flex-col gap-3 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-xs font-black uppercase tracking-widest text-primary">Program Anak</p>
@@ -329,7 +329,7 @@ export default function ProgramEnrollmentPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
+        <div className="grid min-w-0 grid-cols-1 gap-6 xl:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">
           <aside className="flex flex-col gap-4">
             <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-800">
               <label className="mb-2 block text-sm font-bold text-slate-700 dark:text-slate-300">Pilih Anak</label>

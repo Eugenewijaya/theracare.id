@@ -433,8 +433,8 @@ function App() {
                 }} 
                 onConfirm={confirmAction}
             />
-            <main className="px-6 md:px-10 flex flex-1 justify-center py-8 bg-background-light dark:bg-background-dark">
-                <div className="layout-content-container flex flex-col max-w-[1200px] flex-1 w-full">
+            <main className="flex min-w-0 flex-1 justify-center bg-background-light px-6 py-8 dark:bg-background-dark md:px-10">
+                <div className="layout-content-container flex w-full max-w-[1200px] min-w-0 flex-1 flex-col">
 
                     {/* Page Header */}
                     <div className="flex flex-wrap justify-between gap-3 mb-6">

@@ -1507,7 +1507,7 @@ function App() {
 
     return (
         <div className="relative flex min-h-full w-full flex-col bg-slate-50 dark:bg-background-dark font-sans text-slate-900 dark:text-slate-100">
-            <main className="flex min-h-full flex-1 flex-col">
+            <main className="flex min-h-full min-w-0 flex-1 flex-col overflow-x-hidden">
                 <Header />
                 <div className="flex-1">
                     {loadingData ? (

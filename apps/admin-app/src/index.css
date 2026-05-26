@@ -28,6 +28,10 @@
   body,
   #root {
     font-family: var(--theracare-font-sans);
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: hidden;
   }
 
   body {

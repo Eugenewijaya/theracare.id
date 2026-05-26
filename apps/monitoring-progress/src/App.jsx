@@ -192,9 +192,9 @@ function App() {
     };
 
     return (
-        <div className="layout-container flex h-full grow flex-col">
+        <div className="layout-container flex h-full min-w-0 grow flex-col overflow-x-hidden">
             <Header />
-            <main className="flex-1 max-w-[1200px] mx-auto w-full p-4 sm:p-8 flex flex-col gap-6 sm:gap-8">
+            <main className="mx-auto flex w-full max-w-[1200px] min-w-0 flex-1 flex-col gap-6 p-4 sm:gap-8 sm:p-8">
 
                 {/* Page Header */}
                 <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">

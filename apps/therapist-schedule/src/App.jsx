@@ -221,7 +221,7 @@ function App({ onLogout }) {
 
     return (
         <>
-            <main className="relative flex min-h-full flex-1 flex-col">
+            <main className="relative flex min-h-full min-w-0 flex-1 flex-col overflow-x-hidden">
                 {/* Header */}
                 <header className="h-16 sm:h-20 bg-white/90 dark:bg-slate-900/90 backdrop-blur border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-4 sm:px-10 sticky top-0 z-20 shrink-0">
                     <h1 className="text-xl sm:text-2xl font-bold">My Schedule</h1>

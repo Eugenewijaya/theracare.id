@@ -130,7 +130,7 @@ function App() {
         </div>
       )}
     <div className="flex min-h-full bg-slate-50 dark:bg-slate-900 w-full overflow-hidden text-slate-900 dark:text-slate-100 font-sans">
-      <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         {/* Header */}
         <header className="px-4 sm:px-8 py-4 sm:py-6 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between shrink-0">
           <div>

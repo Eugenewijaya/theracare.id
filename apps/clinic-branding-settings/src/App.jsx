@@ -486,13 +486,13 @@ function App() {
                 {toast.msg}
             </div>
         )}
-        <div className="relative flex min-h-full flex-col bg-background-light pb-24 dark:bg-background-dark">
+        <div className="relative flex min-h-full min-w-0 flex-col overflow-x-hidden bg-background-light pb-24 dark:bg-background-dark">
             <Header />
 
-            <div className="flex flex-1 w-full max-w-[1200px] mx-auto pt-6 px-4 md:px-8 gap-8">
+            <div className="mx-auto flex w-full max-w-[1200px] min-w-0 flex-1 gap-8 px-4 pt-6 md:px-8">
                 <Sidebar activeSection={activeSection} onSectionChange={setActiveSection} />
 
-                <main className="flex-1 flex flex-col pb-10">
+                <main className="flex min-w-0 flex-1 flex-col overflow-x-hidden pb-10">
                     <div className="flex flex-col gap-2 mb-8">
                         <h2 className="text-[32px] font-bold leading-tight">{SECTION_META[activeSection]?.title || 'Pengaturan'}</h2>
                         <p className="text-slate-500 dark:text-slate-400 text-base font-normal leading-normal">
@@ -761,7 +761,7 @@ function App() {
                                 </div>
                             </section>
 
-                            <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+                            <section className="grid min-w-0 grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
                                 <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
                                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                                         <div>

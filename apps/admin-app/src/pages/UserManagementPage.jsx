@@ -271,7 +271,7 @@ export default function UserManagementPage() {
     });
 
     return (
-        <div className="flex flex-col flex-1 bg-background-light dark:bg-background-dark">
+        <div className="flex min-w-0 flex-1 flex-col overflow-x-hidden bg-background-light dark:bg-background-dark">
             {/* Pop-up Notification Modal */}
             {toast && (
                 <div className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center p-4 sm:p-0 bg-slate-900/30 backdrop-blur-sm" onClick={() => setToast(null)}>
@@ -447,8 +447,8 @@ export default function UserManagementPage() {
             )}
 
             {isUnlocked && (
-            <main className="flex flex-1 justify-center px-4 py-6 md:px-6 xl:px-10 xl:py-8">
-                <div className="layout-content-container flex flex-col max-w-[1500px] flex-1 w-full gap-6">
+            <main className="flex min-w-0 flex-1 justify-center px-4 py-6 md:px-6 xl:px-10 xl:py-8">
+                <div className="layout-content-container flex w-full max-w-[1500px] min-w-0 flex-1 flex-col gap-6">
 
                     {/* Page Header */}
                     <div className="flex flex-wrap justify-between gap-3">

@@ -230,7 +230,7 @@ function App() {
     return (
         <>
             <Header user={currentUser} />
-            <main className="flex-1 flex justify-center py-6 sm:py-8 px-3 sm:px-6 lg:px-12 bg-background-light dark:bg-background-dark">
+            <main className="flex min-w-0 flex-1 justify-center bg-background-light px-3 py-6 dark:bg-background-dark sm:px-6 sm:py-8 lg:px-12">
                 <div className="w-full max-w-7xl min-w-0 flex flex-col lg:flex-row gap-6 lg:gap-8">
 
                     {/* Main Content Area */}
@@ -302,7 +302,7 @@ function App() {
                                 <div className="mb-8 p-5 rounded-xl border border-primary/30 bg-primary/5">
                                     <h3 className="font-bold mb-3 text-slate-800 dark:text-white">Pengumuman Baru</h3>
                                     <div className="flex min-w-0 flex-col gap-3">
-                                        <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_1.2fr]">
+                                        <div className="grid min-w-0 grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
                                             <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
                                                 <p className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">Kategori</p>
                                                 <select

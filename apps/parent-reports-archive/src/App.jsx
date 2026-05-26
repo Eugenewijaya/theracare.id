@@ -720,9 +720,9 @@ function App({ onLogout }) {
     };
 
     return (
-        <div className="layout-container flex h-full grow flex-col">
-            <div className="px-4 sm:px-8 md:px-12 lg:px-20 flex flex-1 justify-center py-5">
-                <div className="layout-content-container flex flex-col max-w-[900px] flex-1 w-full gap-6">
+        <div className="layout-container flex h-full min-w-0 grow flex-col overflow-x-hidden">
+            <div className="flex min-w-0 flex-1 justify-center px-4 py-5 sm:px-8 md:px-12 lg:px-20">
+                <div className="layout-content-container flex w-full max-w-[900px] min-w-0 flex-1 flex-col gap-6">
                     <Header onLogout={onLogout} />
 
                     {/* Top Header */}

@@ -190,7 +190,7 @@ function TherapistScheduleModal({ therapist, onClose, onSave, saving }) {
                         {WORK_DAYS.map((day) => {
                             const active = Boolean(schedule?.[day]);
                             return (
-                                <div key={day} className="grid gap-3 border-b border-slate-100 p-4 last:border-b-0 dark:border-slate-800 sm:grid-cols-[160px_1fr] sm:items-center">
+                                <div key={day} className="grid min-w-0 gap-3 border-b border-slate-100 p-4 last:border-b-0 dark:border-slate-800 sm:grid-cols-[160px_minmax(0,1fr)] sm:items-center">
                                     <label className="flex items-center gap-3 text-sm font-black text-slate-800 dark:text-slate-100">
                                         <input
                                             type="checkbox"
@@ -592,8 +592,8 @@ function App() {
                 </div>
             )}
             <Header searchValue={searchQuery} onSearchChange={setSearchQuery} />
-            <main className="px-4 sm:px-10 flex flex-1 justify-center py-6 sm:py-8">
-                <div className="layout-content-container flex flex-col max-w-[1200px] flex-1 w-full">
+            <main className="flex min-w-0 flex-1 justify-center px-4 py-6 sm:px-10 sm:py-8">
+                <div className="layout-content-container flex w-full max-w-[1200px] min-w-0 flex-1 flex-col">
 
                     {/* Page Header */}
                     <div className="flex flex-wrap justify-between gap-3 mb-6 items-center">
