@@ -85,6 +85,7 @@ function MobileTopBar({ onMenuOpen }) {
 function DashboardLayout() {
   const { logout, refreshProfile, user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const handlePortalLogout = useCallback(async () => {
@@ -116,8 +117,8 @@ function DashboardLayout() {
           onOpenNotifications={(notification) => navigate(getNotificationDestination(notification, 'therapist'))}
         />
         <LocationPermissionHost user={user} role="therapist" required />
-        <GuideHost user={user} role="therapist" />
-        <div className="min-h-0 flex-1 overflow-y-auto bg-background-light dark:bg-background-dark">
+        <div className="relative min-h-0 flex-1 overflow-y-auto bg-background-light dark:bg-background-dark">
+          <GuideHost user={user} role="therapist" currentPath={location.pathname} />
           <Suspense fallback={<Loading />}>
             <Routes key={refreshKey}>
               <Route index element={<TherapistDashboard onLogout={handlePortalLogout} />} />

@@ -40,9 +40,29 @@ type TherapistScheduleValue = string | Array<unknown> | {
   selesai?: string;
   begin?: string;
   finish?: string;
+  workStart?: string;
+  workEnd?: string;
+  work_start?: string;
+  work_end?: string;
+  availableFrom?: string;
+  availableUntil?: string;
+  available_from?: string;
+  available_until?: string;
+  until?: string;
   active?: boolean;
   enabled?: boolean;
   isActive?: boolean;
+  available?: boolean;
+  isAvailable?: boolean;
+  off?: boolean;
+  isOff?: boolean;
+  closed?: boolean;
+  isClosed?: boolean;
+  hours?: TherapistScheduleValue;
+  workingHours?: TherapistScheduleValue;
+  time?: TherapistScheduleValue;
+  window?: TherapistScheduleValue;
+  range?: TherapistScheduleValue;
 } | null | undefined;
 
 type TherapistSchedule = Record<string, TherapistScheduleValue>;
@@ -75,9 +95,16 @@ function parseJsonArray(value?: string | null) {
 }
 
 function normalizeClockValue(value?: string | null) {
-  const match = String(value || "").trim().match(/^(\d{1,2})[:.](\d{2})$/);
+  const raw = String(value || "").trim();
+  const shortHour = raw.match(/^(\d{1,2})$/);
+  const match = shortHour
+    ? [raw, shortHour[1], "00"]
+    : raw.match(/^(\d{1,2})[:.](\d{1,2})$/);
   if (!match) return "";
-  return `${match[1].padStart(2, "0")}:${match[2]}`;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) return "";
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
 function parseMinutes(value?: string | null) {
@@ -181,19 +208,29 @@ function normalizeScheduleKey(value: string) {
 
 function parseWorkWindow(value: TherapistScheduleValue): { start?: string; end?: string } | null {
   if (!value) return null;
-  if (Array.isArray(value)) return parseWorkWindow(value.find(Boolean) as TherapistScheduleValue);
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const parsed = parseWorkWindow(item as TherapistScheduleValue);
+      if (parsed) return parsed;
+    }
+    return null;
+  }
   if (typeof value === "string") {
-    if (/off|libur|tutup|inactive/i.test(value)) return null;
-    const match = value.match(/(\d{1,2}[:.]\d{2}).*?(\d{1,2}[:.]\d{2})/);
+    if (/off|libur|tutup|inactive|closed/i.test(value)) return null;
+    const match = value.match(/(\d{1,2}(?:[:.]\d{1,2})?).*?(\d{1,2}(?:[:.]\d{1,2})?)/);
     return match ? { start: normalizeClockValue(match[1]), end: normalizeClockValue(match[2]) } : null;
   }
   if (typeof value === "object") {
-    if (value.active === false || value.enabled === false || value.isActive === false) return null;
-    const start = value.start || value.startTime || value.start_time || value.from || value.open || value.clockIn || value.jamMulai || value.mulai || value.begin;
-    const end = value.end || value.endTime || value.end_time || value.to || value.close || value.clockOut || value.jamSelesai || value.selesai || value.finish;
+    if (value.active === false || value.enabled === false || value.isActive === false
+      || value.available === false || value.isAvailable === false
+      || value.off === true || value.isOff === true || value.closed === true || value.isClosed === true) return null;
+    const nested = value.hours || value.workingHours || value.time || value.window || value.range;
+    const start = value.start || value.startTime || value.start_time || value.from || value.open || value.clockIn || value.jamMulai || value.mulai || value.begin || value.workStart || value.work_start || value.availableFrom || value.available_from;
+    const end = value.end || value.endTime || value.end_time || value.to || value.close || value.clockOut || value.jamSelesai || value.selesai || value.finish || value.workEnd || value.work_end || value.availableUntil || value.available_until || value.until;
+    if ((!start || !end) && nested) return parseWorkWindow(nested);
     return {
-      start: normalizeClockValue(start) || start,
-      end: normalizeClockValue(end) || end,
+      start: normalizeClockValue(start),
+      end: normalizeClockValue(end),
     };
   }
   return null;
@@ -202,9 +239,7 @@ function parseWorkWindow(value: TherapistScheduleValue): { start?: string; end?:
 function hasRecognizedSchedule(schedule: TherapistSchedule | null | undefined) {
   if (!schedule || typeof schedule !== "object" || Array.isArray(schedule)) return false;
   const recognizedKeys = new Set(Object.values(DAY_SCHEDULE_KEYS).flat().map(normalizeScheduleKey));
-  return Object.entries(schedule).some(([key, value]) => (
-    recognizedKeys.has(normalizeScheduleKey(key)) && Boolean(parseWorkWindow(value))
-  ));
+  return Object.keys(schedule).some((key) => recognizedKeys.has(normalizeScheduleKey(key)));
 }
 
 function getTherapistScheduleForDate(schedule: TherapistSchedule | null | undefined, date: string) {

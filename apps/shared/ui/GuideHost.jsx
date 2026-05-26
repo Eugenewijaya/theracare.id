@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { getRoleGuide } from '../roleGuides.js';
+import { getFeatureGuideForPath, getRoleGuide } from '../roleGuides.js';
 
 const GUIDE_EVENT = 'theracare-guide-open';
 const GUIDE_SESSION_PREFIX = 'theracare_guide_session';
@@ -205,7 +205,7 @@ function TourOverlay({ guide, index, onNext, onSkip }) {
   );
 }
 
-export default function GuideHost({ role, user }) {
+export default function GuideHost({ role, user, currentPath = '/' }) {
   const guide = getRoleGuide(role);
   const userId = getUserId(user);
   const [open, setOpen] = useState(false);
@@ -217,6 +217,9 @@ export default function GuideHost({ role, user }) {
     session: getGuideSessionKey(role, userId),
     seen: getGuideSeenKey(role, userId),
   }), [role, userId]);
+  const currentFeature = useMemo(() => (
+    getFeatureGuideForPath(role, currentPath) || guide?.features[0] || null
+  ), [currentPath, guide, role]);
 
   useEffect(() => {
     if (!guide) return undefined;
@@ -233,7 +236,7 @@ export default function GuideHost({ role, user }) {
 
   useEffect(() => {
     if (!guide || !userId) return;
-    setSelectedId((current) => current || guide.features[0]?.id || '');
+    setSelectedId((current) => current || currentFeature?.id || guide.features[0]?.id || '');
     const alreadyThisSession = readStorage(sessionStorage, keys.session);
     const alreadySeen = readStorage(localStorage, keys.seen);
     if (!alreadyThisSession && !alreadySeen) {
@@ -241,7 +244,7 @@ export default function GuideHost({ role, user }) {
       setTourIndex(0);
       setTourOpen(true);
     }
-  }, [guide, keys.seen, keys.session, userId]);
+  }, [currentFeature?.id, guide, keys.seen, keys.session, userId]);
 
   if (!guide) return null;
 
@@ -269,14 +272,20 @@ export default function GuideHost({ role, user }) {
       <button
         type="button"
         onClick={() => {
-          setSelectedId(guide.features[0]?.id || '');
+          setSelectedId(currentFeature?.id || guide.features[0]?.id || '');
           setOpen(true);
         }}
-        className="fixed bottom-5 right-5 z-[170] inline-flex items-center gap-2 rounded-full border border-blue-200 bg-white px-4 py-2 text-xs font-black text-blue-700 shadow-xl transition hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-300 dark:border-blue-800 dark:bg-slate-900 dark:text-blue-200 dark:hover:bg-slate-800"
-        title="Buka buku panduan"
+        className="absolute right-4 top-4 z-[170] inline-flex max-w-[min(320px,calc(100%-32px))] items-center gap-2 rounded-full border border-blue-200 bg-white px-3.5 py-2 text-xs font-black text-blue-700 shadow-lg shadow-blue-900/10 transition hover:-translate-y-0.5 hover:bg-blue-50 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-blue-300 dark:border-blue-800 dark:bg-slate-900 dark:text-blue-200 dark:hover:bg-slate-800"
+        title={`Panduan fitur: ${currentFeature?.label || guide.title}`}
       >
-        <span className="material-symbols-outlined text-[18px]">info</span>
-        Panduan
+        <span className="pointer-events-none absolute -inset-1 rounded-full bg-blue-400/20 opacity-70 motion-safe:animate-ping" />
+        <span className="relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white">
+          <span className="material-symbols-outlined text-[17px]">info</span>
+        </span>
+        <span className="relative min-w-0 truncate">
+          <span>Panduan</span>
+          {currentFeature?.label && <span className="hidden sm:inline">: {currentFeature.label}</span>}
+        </span>
       </button>
 
       {tourOpen && (

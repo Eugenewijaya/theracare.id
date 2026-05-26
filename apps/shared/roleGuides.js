@@ -7,7 +7,7 @@ export const ROLE_GUIDES = {
     tour: [
       {
         title: 'Mulai dari menu kiri',
-        body: 'Gunakan sidebar untuk pindah fitur. Setiap menu memiliki tombol info untuk membuka panduan fitur tersebut.',
+        body: 'Gunakan menu untuk pindah fitur. Tombol Panduan di header fitur akan membuka instruksi sesuai halaman yang sedang dibuka.',
       },
       {
         title: 'Cek permintaan masuk',
@@ -151,7 +151,7 @@ export const ROLE_GUIDES = {
       { title: 'Lihat jadwal hari ini', body: 'Mulai dari Dasbor atau Jadwal Terapi untuk mengetahui sesi aktif dan perubahan terbaru.' },
       { title: 'Isi laporan setelah sesi', body: 'Gunakan Laporan Anak setelah sesi selesai agar progress anak dan laporan akhir tetap lengkap.' },
       { title: 'Kelola perubahan jadwal', body: 'Pembaruan Jadwal dan Pengajuan Cuti dipakai untuk komunikasi resmi dengan admin.' },
-      { title: 'Buka tombol info', body: 'Setiap menu memiliki tombol info yang menjelaskan alur kerja fitur tersebut.' },
+      { title: 'Buka tombol Panduan', body: 'Tombol Panduan di header fitur menjelaskan alur kerja halaman yang sedang dibuka.' },
     ],
     features: [
       {
@@ -240,7 +240,7 @@ export const ROLE_GUIDES = {
       { title: 'Mulai dari ringkasan anak', body: 'Dasbor menampilkan ringkasan sesi, progress, dan notifikasi penting.' },
       { title: 'Baca laporan dan progress', body: 'Gunakan Kemajuan Anak dan Daftar Laporan untuk melihat perkembangan dari sesi ke sesi.' },
       { title: 'Ajukan perubahan resmi', body: 'Gunakan Penjadwalan Ulang untuk request perubahan jadwal, bukan chat informal.' },
-      { title: 'Panduan selalu tersedia', body: 'Tekan tombol info di menu atau tombol Panduan untuk membuka bantuan kapan saja.' },
+      { title: 'Panduan selalu tersedia', body: 'Tekan tombol Panduan di header fitur untuk membuka bantuan kapan saja.' },
     ],
     features: [
       {
@@ -310,6 +310,60 @@ export const ROLE_GUIDES = {
   },
 };
 
+const ROLE_GUIDE_ROUTES = {
+  admin: [
+    ['/', 'dashboard'],
+    ['/scheduling', 'scheduling'],
+    ['/bulk-schedule', 'scheduling'],
+    ['/requests', 'requests'],
+    ['/parent-meetings', 'parent-meetings'],
+    ['/therapist-leave-requests', 'therapist-leave-requests'],
+    ['/children/program-registration', 'program-registration'],
+    ['/children/register', 'children'],
+    ['/children', 'children'],
+    ['/migration', 'migration'],
+    ['/therapists', 'therapists'],
+    ['/rooms', 'rooms'],
+    ['/programs', 'programs'],
+    ['/attendance', 'attendance'],
+    ['/monitoring', 'monitoring'],
+    ['/reports', 'reports'],
+    ['/notifications', 'notifications'],
+    ['/announcements', 'notifications'],
+    ['/users', 'users'],
+    ['/settings/branding', 'branding'],
+  ],
+  therapist: [
+    ['/', 'dashboard'],
+    ['/schedule-updates', 'schedule-updates'],
+    ['/leave-requests', 'leave-requests'],
+    ['/schedule', 'schedule'],
+    ['/availability', 'availability'],
+    ['/reports', 'reports'],
+    ['/performance', 'performance'],
+    ['/meetings', 'meetings'],
+    ['/child-progress', 'child-progress'],
+    ['/announcements', 'announcements'],
+    ['/settings', 'settings'],
+  ],
+  parent: [
+    ['/', 'dashboard'],
+    ['/progress', 'progress'],
+    ['/profile', 'profile'],
+    ['/attendance', 'attendance'],
+    ['/reports', 'reports'],
+    ['/reschedule', 'reschedule'],
+    ['/announcements', 'announcements'],
+    ['/meetings', 'meetings'],
+    ['/settings', 'settings'],
+  ],
+};
+
+function normalizePathname(pathname) {
+  const value = String(pathname || '/').split('?')[0].split('#')[0] || '/';
+  return value.startsWith('/') ? value : `/${value}`;
+}
+
 export function getRoleGuide(role) {
   return ROLE_GUIDES[role] || null;
 }
@@ -318,4 +372,11 @@ export function getFeatureGuide(role, featureId) {
   const guide = getRoleGuide(role);
   if (!guide) return null;
   return guide.features.find((feature) => feature.id === featureId) || null;
+}
+
+export function getFeatureGuideForPath(role, pathname) {
+  const path = normalizePathname(pathname);
+  const routes = [...(ROLE_GUIDE_ROUTES[role] || [])].sort((a, b) => b[0].length - a[0].length);
+  const match = routes.find(([route]) => (route === '/' ? path === '/' : path === route || path.startsWith(`${route}/`)));
+  return getFeatureGuide(role, match?.[1]) || getRoleGuide(role)?.features[0] || null;
 }

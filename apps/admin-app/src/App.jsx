@@ -93,6 +93,7 @@ function DashboardLayout() {
   const [refreshKey, setRefreshKey] = useState(0);
   const { refreshSession, user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   return (
     <div className="flex h-[100dvh] w-full overflow-hidden">
@@ -113,8 +114,8 @@ function DashboardLayout() {
           onOpenNotifications={(notification) => navigate(getNotificationDestination(notification, 'admin'))}
         />
         <LocationPermissionHost user={user} role="admin" required />
-        <GuideHost user={user} role="admin" />
-        <div className="min-h-0 flex-1 overflow-y-auto bg-background-light dark:bg-background-dark">
+        <div className="relative min-h-0 flex-1 overflow-y-auto bg-background-light dark:bg-background-dark">
+          <GuideHost user={user} role="admin" currentPath={location.pathname} />
           <Suspense fallback={<Loading />}>
             <Routes key={refreshKey}>
               <Route index element={<ClinicAdmin />} />

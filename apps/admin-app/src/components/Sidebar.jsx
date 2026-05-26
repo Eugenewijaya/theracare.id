@@ -4,7 +4,6 @@ import { useAuth } from '../context/AuthContext';
 import { useAdmin } from '../context/AdminContext';
 import { meetingsApi, rescheduleApi, notificationsApi, leaveRequestsApi } from '../../../shared/api/client';
 import ClinicLogoMark from '../../../shared/ui/ClinicLogoMark';
-import { FeatureInfoButton } from '../../../shared/ui/GuideHost';
 
 const navGroups = [
   {
@@ -45,27 +44,6 @@ const navGroups = [
     ],
   },
 ];
-
-const adminGuideIdByPath = {
-  '/': 'dashboard',
-  '/scheduling': 'scheduling',
-  '/requests': 'requests',
-  '/parent-meetings': 'parent-meetings',
-  '/therapist-leave-requests': 'therapist-leave-requests',
-  '/children': 'children',
-  '/children/program-registration': 'program-registration',
-  '/migration': 'migration',
-  '/therapists': 'therapists',
-  '/rooms': 'rooms',
-  '/programs': 'programs',
-  '/attendance': 'attendance',
-  '/monitoring': 'monitoring',
-  '/reports': 'reports',
-  '/notifications': 'notifications',
-  '/users': 'users',
-  '/settings/branding': 'branding',
-};
-
 
 export default function Sidebar({ isOpen, onClose }) {
   const { user, logout } = useAuth();
@@ -188,7 +166,6 @@ export default function Sidebar({ isOpen, onClose }) {
                 <div className="flex flex-col gap-0.5">
                   {group.items.map(item => {
                     const badgeNum = item.badgeKey ? badgeCounts[item.badgeKey] : 0;
-                    const guideId = item.guideId || adminGuideIdByPath[item.path];
                     return (
                       <NavLink
                         key={item.path}
@@ -210,7 +187,6 @@ export default function Sidebar({ isOpen, onClose }) {
                           )}
                         </span>
                         {!isCollapsed && <span className="truncate flex-1">{item.label}</span>}
-                        {!isCollapsed && <FeatureInfoButton role="admin" featureId={guideId} className="opacity-70 hover:opacity-100" />}
                         {!isCollapsed && badgeNum > 0 && (
                           <span className="bg-red-500 text-white text-[10px] font-black min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center leading-none animate-pulse">
                             {badgeNum > 9 ? '9+' : badgeNum}

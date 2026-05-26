@@ -1,4 +1,5 @@
 import React from 'react';
+import { getTherapistSlotAvailability } from '../therapistSchedule';
 
 const DAY_COLUMNS = [
   { key: 'Senin', english: 'Monday', short: 'SEN', offset: 0, aliases: ['senin', 'sen', 'monday', 'mon'] },
@@ -231,20 +232,11 @@ function hasRecognizedSchedule(schedule) {
 }
 
 function isInsideWorkWindow(therapist, day, slot) {
-  const schedule = therapist?.schedule;
-  if (!hasRecognizedSchedule(schedule)) return { available: true, severity: 'unknown' };
-  const daySchedule = getScheduleForDay(schedule, day);
-  if (!daySchedule) return { available: false, label: 'OFF', severity: 'day_off' };
-
-  const start = parseMinutes(daySchedule.start);
-  const end = parseMinutes(daySchedule.end);
-  const slotStart = parseMinutes(slot.start);
-  if (start === null || end === null || slotStart === null) return { available: true, severity: 'unknown' };
-  const slotEnd = slotStart + slot.duration;
-  if (slotStart < start || slotEnd > end) {
-    return { available: false, label: 'Di luar jam', severity: 'outside_hours' };
-  }
-  return { available: true, severity: 'work_hours' };
+  const availability = getTherapistSlotAvailability(therapist, day.date, slot.start, slot.duration);
+  if (!availability.known) return { available: true, severity: 'unknown' };
+  if (availability.available) return { available: true, severity: 'work_hours' };
+  if (availability.label === 'Off hari ini') return { available: false, label: 'OFF', severity: 'day_off' };
+  return { available: false, label: availability.label || 'Di luar jam', severity: 'outside_hours' };
 }
 
 function getClosureForDate(centerClosures, dateKey) {

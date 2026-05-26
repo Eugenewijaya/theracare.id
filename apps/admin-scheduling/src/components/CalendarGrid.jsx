@@ -1,16 +1,8 @@
 import React, { useMemo } from 'react';
+import { getTherapistSlotAvailability } from '../../../shared/therapistSchedule';
 
 const WEEKDAY_LABELS = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
 const HOUR_SLOTS = ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00'];
-const DAY_SCHEDULE_KEYS = {
-    0: ['Minggu', 'Min', 'Sunday', 'Sun'],
-    1: ['Senin', 'Sen', 'Monday', 'Mon'],
-    2: ['Selasa', 'Sel', 'Tuesday', 'Tue', 'Tues'],
-    3: ['Rabu', 'Rab', 'Wednesday', 'Wed'],
-    4: ['Kamis', 'Kam', 'Thursday', 'Thu', 'Thur', 'Thurs'],
-    5: ['Jumat', 'Jum', 'Friday', 'Fri'],
-    6: ['Sabtu', 'Sab', 'Saturday', 'Sat'],
-};
 
 const PROGRAM_COLORS = {
     'Occupational Therapy (OT)': { bg: 'bg-blue-100 dark:bg-blue-900/30', border: 'border-blue-200 dark:border-blue-800', text: 'text-blue-700 dark:text-blue-300' },
@@ -55,56 +47,10 @@ const parseDurationMinutes = (duration = '') => {
     return match ? Number(match[0]) : 60;
 };
 
-const normalizeScheduleKey = (value = '') =>
-    String(value).toLowerCase().replace(/hari/g, '').replace(/[^a-z]/g, '');
-
-const normalizeClockValue = (value = '') => {
-    const match = String(value || '').trim().match(/^(\d{1,2})[:.](\d{2})$/);
-    return match ? `${match[1].padStart(2, '0')}:${match[2]}` : '';
-};
-
-const parseWorkWindow = (value) => {
-    if (!value) return null;
-    if (Array.isArray(value)) return parseWorkWindow(value.find(Boolean));
-    if (typeof value === 'string') {
-        if (/off|libur|tutup|inactive/i.test(value)) return null;
-        const match = value.match(/(\d{1,2}[:.]\d{2}).*?(\d{1,2}[:.]\d{2})/);
-        return match ? { start: normalizeClockValue(match[1]), end: normalizeClockValue(match[2]) } : null;
-    }
-    if (typeof value === 'object') {
-        if (value.active === false || value.enabled === false || value.isActive === false) return null;
-        return {
-            start: normalizeClockValue(value.start || value.startTime || value.from || value.open || value.jamMulai || value.mulai),
-            end: normalizeClockValue(value.end || value.endTime || value.to || value.close || value.jamSelesai || value.selesai),
-        };
-    }
-    return null;
-};
-
-const getTherapistWorkWindowForDate = (therapist, dateStr) => {
-    const schedule = therapist?.schedule;
-    if (!schedule || typeof schedule !== 'object') return { known: false, window: null };
-    const day = new Date(`${dateStr}T00:00:00`).getDay();
-    const keys = (DAY_SCHEDULE_KEYS[day] || []).map(normalizeScheduleKey);
-    const knownKeys = new Set(Object.values(DAY_SCHEDULE_KEYS).flat().map(normalizeScheduleKey));
-    const hasKnownSchedule = Object.entries(schedule).some(([key, value]) => knownKeys.has(normalizeScheduleKey(key)) && parseWorkWindow(value));
-    if (!hasKnownSchedule) return { known: false, window: null };
-    const entry = Object.entries(schedule).find(([key]) => keys.includes(normalizeScheduleKey(key)));
-    return { known: true, window: entry ? parseWorkWindow(entry[1]) : null };
-};
-
 const getTherapistSlotIssue = (therapist, dateStr, startTime) => {
     if (!therapist || !dateStr || !startTime) return '';
-    const { known, window } = getTherapistWorkWindowForDate(therapist, dateStr);
-    if (!known) return '';
-    if (!window?.start || !window?.end) return 'Off hari ini';
-    const slotStart = parseTimeToMinutes(startTime);
-    const slotEnd = slotStart + 60;
-    const workStart = parseTimeToMinutes(window.start);
-    const workEnd = parseTimeToMinutes(window.end);
-    if (slotStart < workStart) return `Mulai ${window.start}`;
-    if (slotEnd > workEnd) return `Off mulai ${window.end}`;
-    return '';
+    const availability = getTherapistSlotAvailability(therapist, dateStr, startTime, 60);
+    return availability.known && !availability.available ? availability.label : '';
 };
 
 const getSessionsForDate = (sessions, dateObj) =>
@@ -243,24 +189,31 @@ const CalendarGrid = ({ currentView, onDateClick, onEventClick, selectedMonth, s
                                     <span className="text-sm font-bold text-slate-500 sm:pt-3">{hour}</span>
                                     <div className="min-h-[52px] rounded-xl bg-slate-50 p-2 dark:bg-slate-900/50">
                                         {slotSessions.length > 0 ? (
-                                            <div className="grid gap-2 lg:grid-cols-2">
-                                                {slotSessions.map((session, idx) => {
-                                                    const colors = getEventColor(session.focus, false, session.status);
-                                                    const displayName = getSessionDisplayName(session, childrenList);
-                                                    return (
-                                                        <button
-                                                            key={session.id || idx}
-                                                            type="button"
-                                                            onClick={e => onEventClick && onEventClick(session, e)}
-                                                            className={`${colors.bg} ${colors.text} ${colors.border} rounded-lg border px-3 py-2 text-left text-xs font-semibold transition hover:opacity-80`}
-                                                            title="Klik untuk lihat detail sesi"
-                                                        >
-                                                            <span className="block text-[11px] opacity-80">{session.startTime} ({session.duration})</span>
-                                                            <span className="mt-0.5 block truncate text-sm font-black">{displayName}</span>
-                                                            <span className="mt-0.5 block truncate">{session.focus || 'Program belum diisi'}</span>
-                                                        </button>
-                                                    );
-                                                })}
+                                            <div className="space-y-2">
+                                                {therapistIssue && (
+                                                    <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-black text-red-700 dark:border-red-900/50 dark:bg-red-950/20 dark:text-red-300">
+                                                        {therapistIssue}
+                                                    </div>
+                                                )}
+                                                <div className="grid gap-2 lg:grid-cols-2">
+                                                    {slotSessions.map((session, idx) => {
+                                                        const colors = getEventColor(session.focus, false, session.status);
+                                                        const displayName = getSessionDisplayName(session, childrenList);
+                                                        return (
+                                                            <button
+                                                                key={session.id || idx}
+                                                                type="button"
+                                                                onClick={e => onEventClick && onEventClick(session, e)}
+                                                                className={`${colors.bg} ${colors.text} ${colors.border} rounded-lg border px-3 py-2 text-left text-xs font-semibold transition hover:opacity-80`}
+                                                                title="Klik untuk lihat detail sesi"
+                                                            >
+                                                                <span className="block text-[11px] opacity-80">{session.startTime} ({session.duration})</span>
+                                                                <span className="mt-0.5 block truncate text-sm font-black">{displayName}</span>
+                                                                <span className="mt-0.5 block truncate">{session.focus || 'Program belum diisi'}</span>
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
                                             </div>
                                         ) : (
                                             <button

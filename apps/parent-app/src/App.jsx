@@ -88,6 +88,7 @@ function MobileTopBar({ onMenuOpen }) {
 function DashboardLayout() {
   const { logout, refreshProfile, user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const handlePortalLogout = useCallback(async () => {
@@ -118,8 +119,8 @@ function DashboardLayout() {
           role="parent"
           onOpenNotifications={(notification) => navigate(getNotificationDestination(notification, 'parent'))}
         />
-        <GuideHost user={user} role="parent" />
-        <div className="min-h-0 flex-1 overflow-y-auto bg-background-light dark:bg-background-dark">
+        <div className="relative min-h-0 flex-1 overflow-y-auto bg-background-light dark:bg-background-dark">
+          <GuideHost user={user} role="parent" currentPath={location.pathname} />
           <Suspense fallback={<Loading />}>
             <Routes key={refreshKey}>
               <Route index element={<ParentWebDashboard onLogout={handlePortalLogout} />} />

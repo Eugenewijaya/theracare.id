@@ -6,6 +6,7 @@ import Legend from './components/Legend';
 import SidePanel from './components/SidePanel';
 import { sessionsApi, childrenApi, therapistsApi, adminApi, substituteRequestsApi } from '../../shared/api/client';
 import { confirmAction } from '../../shared/ui/confirmDialog';
+import { getTherapistSlotAvailability } from '../../shared/therapistSchedule';
 
 const LEAVE_REASONS = [
     { value: 'cuti', label: 'Cuti' },
@@ -50,66 +51,14 @@ const sessionsOverlap = (a, b) => {
     return aStart < bEnd && aEnd > bStart;
 };
 
-const DAY_SCHEDULE_KEYS = {
-    0: ['Minggu', 'Min', 'Sunday', 'Sun'],
-    1: ['Senin', 'Sen', 'Monday', 'Mon'],
-    2: ['Selasa', 'Sel', 'Tuesday', 'Tue', 'Tues'],
-    3: ['Rabu', 'Rab', 'Wednesday', 'Wed'],
-    4: ['Kamis', 'Kam', 'Thursday', 'Thu', 'Thur', 'Thurs'],
-    5: ['Jumat', 'Jum', 'Friday', 'Fri'],
-    6: ['Sabtu', 'Sab', 'Saturday', 'Sat'],
-};
-
-const normalizeScheduleKey = (value = '') =>
-    String(value).toLowerCase().replace(/hari/g, '').replace(/[^a-z]/g, '');
-
-const normalizeClockValue = (value = '') => {
-    const match = String(value || '').trim().match(/^(\d{1,2})[:.](\d{2})$/);
-    return match ? `${match[1].padStart(2, '0')}:${match[2]}` : '';
-};
-
-const parseWorkWindow = (value) => {
-    if (!value) return null;
-    if (Array.isArray(value)) return parseWorkWindow(value.find(Boolean));
-    if (typeof value === 'string') {
-        if (/off|libur|tutup|inactive/i.test(value)) return null;
-        const match = value.match(/(\d{1,2}[:.]\d{2}).*?(\d{1,2}[:.]\d{2})/);
-        return match ? { start: normalizeClockValue(match[1]), end: normalizeClockValue(match[2]) } : null;
-    }
-    if (typeof value === 'object') {
-        if (value.active === false || value.enabled === false || value.isActive === false) return null;
-        return {
-            start: normalizeClockValue(value.start || value.startTime || value.from || value.open || value.jamMulai || value.mulai),
-            end: normalizeClockValue(value.end || value.endTime || value.to || value.close || value.jamSelesai || value.selesai),
-        };
-    }
-    return null;
-};
-
-const getTherapistWorkWindowForDate = (therapist, dateStr) => {
-    const schedule = therapist?.schedule;
-    if (!schedule || typeof schedule !== 'object') return { known: false, window: null };
-    const day = new Date(`${dateStr}T00:00:00`).getDay();
-    const keys = (DAY_SCHEDULE_KEYS[day] || []).map(normalizeScheduleKey);
-    const knownKeys = new Set(Object.values(DAY_SCHEDULE_KEYS).flat().map(normalizeScheduleKey));
-    const hasKnownSchedule = Object.entries(schedule).some(([key, value]) => knownKeys.has(normalizeScheduleKey(key)) && parseWorkWindow(value));
-    if (!hasKnownSchedule) return { known: false, window: null };
-    const entry = Object.entries(schedule).find(([key]) => keys.includes(normalizeScheduleKey(key)));
-    return { known: true, window: entry ? parseWorkWindow(entry[1]) : null };
-};
-
 const getTherapistSlotIssue = (therapist, dateStr, startTime, duration) => {
     if (!therapist || !dateStr || !startTime) return '';
-    const { known, window } = getTherapistWorkWindowForDate(therapist, dateStr);
-    if (!known) return '';
-    if (!window?.start || !window?.end) return 'Terapis off pada hari tersebut.';
-    const slotStart = parseTimeToMinutes(startTime);
-    const slotEnd = slotStart + parseDurationMinutes(duration);
-    const workStart = parseTimeToMinutes(window.start);
-    const workEnd = parseTimeToMinutes(window.end);
-    if (slotStart < workStart) return `Terapis mulai tersedia pukul ${window.start}.`;
-    if (slotEnd > workEnd) return `Terapis off mulai pukul ${window.end}.`;
-    return '';
+    const availability = getTherapistSlotAvailability(therapist, dateStr, startTime, duration);
+    if (!availability.known || availability.available) return '';
+    if (!availability.window?.start || !availability.window?.end) return 'Terapis off pada hari tersebut.';
+    if (availability.label.startsWith('Mulai')) return `Terapis mulai tersedia pukul ${availability.window.start}.`;
+    if (availability.label.startsWith('Off mulai')) return `Terapis off mulai pukul ${availability.window.end}.`;
+    return availability.label;
 };
 
 const toDateKey = (dateObj) => {

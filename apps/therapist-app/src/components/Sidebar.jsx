@@ -4,7 +4,6 @@ import { useAuth } from '../context/AuthContext';
 import { notificationsApi } from '../../../shared/api/client';
 import { useClinicSettings } from '../../../shared/clinicSettings';
 import ClinicLogoMark from '../../../shared/ui/ClinicLogoMark';
-import { FeatureInfoButton } from '../../../shared/ui/GuideHost';
 
 const navItems = [
   { path: '/', icon: 'space_dashboard', label: 'Dasbor', end: true, guideId: 'dashboard' },
@@ -164,7 +163,6 @@ export default function Sidebar({ isOpen, onClose }) {
                     {isActive && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-teal-500 dark:bg-teal-400 rounded-r-md"></div>}
                     <span className={`material-symbols-outlined text-[20px] transition-transform duration-200 ${isActive ? 'scale-110' : 'group-hover:scale-110'}`} style={isActive ? {fontVariationSettings: "'FILL' 1"} : {}}>{item.icon}</span>
                     <span className="min-w-0 flex-1 break-words leading-snug">{item.label}</span>
-                    <FeatureInfoButton role="therapist" featureId={item.guideId} className="opacity-70 group-hover:opacity-100" />
                     {badgeNum > 0 && (
                       <span className="bg-red-500 text-white text-[10px] font-black min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center leading-none animate-pulse">
                         {badgeNum > 9 ? '9+' : badgeNum}
