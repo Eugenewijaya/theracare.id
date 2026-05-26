@@ -269,24 +269,26 @@ export default function GuideHost({ role, user, currentPath = '/' }) {
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => {
-          setSelectedId(currentFeature?.id || guide.features[0]?.id || '');
-          setOpen(true);
-        }}
-        className="absolute right-4 top-4 z-[170] inline-flex max-w-[min(320px,calc(100%-32px))] items-center gap-2 rounded-full border border-blue-200 bg-white px-3.5 py-2 text-xs font-black text-blue-700 shadow-lg shadow-blue-900/10 transition hover:-translate-y-0.5 hover:bg-blue-50 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-blue-300 dark:border-blue-800 dark:bg-slate-900 dark:text-blue-200 dark:hover:bg-slate-800"
-        title={`Panduan fitur: ${currentFeature?.label || guide.title}`}
-      >
-        <span className="pointer-events-none absolute -inset-1 rounded-full bg-blue-400/20 opacity-70 motion-safe:animate-ping" />
-        <span className="relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white">
-          <span className="material-symbols-outlined text-[17px]">info</span>
-        </span>
-        <span className="relative min-w-0 truncate">
-          <span>Panduan</span>
-          {currentFeature?.label && <span className="hidden sm:inline">: {currentFeature.label}</span>}
-        </span>
-      </button>
+      <div className="flex min-h-[52px] shrink-0 items-center justify-end border-b border-slate-200/80 bg-background-light px-4 py-2 dark:border-slate-800/80 dark:bg-background-dark sm:px-6">
+        <button
+          type="button"
+          onClick={() => {
+            setSelectedId(currentFeature?.id || guide.features[0]?.id || '');
+            setOpen(true);
+          }}
+          className="relative inline-flex max-w-full items-center gap-2 rounded-full border border-blue-200 bg-white px-3.5 py-2 text-xs font-black text-blue-700 shadow-sm shadow-blue-900/5 transition hover:-translate-y-0.5 hover:bg-blue-50 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-300 dark:border-blue-800 dark:bg-slate-900 dark:text-blue-200 dark:hover:bg-slate-800"
+          title={`Panduan fitur: ${currentFeature?.label || guide.title}`}
+        >
+          <span className="pointer-events-none absolute -inset-1 rounded-full bg-blue-400/15 opacity-70 motion-safe:animate-ping" />
+          <span className="relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white">
+            <span className="material-symbols-outlined text-[17px]">info</span>
+          </span>
+          <span className="relative min-w-0 truncate">
+            <span>Panduan</span>
+            {currentFeature?.label && <span className="hidden sm:inline">: {currentFeature.label}</span>}
+          </span>
+        </button>
+      </div>
 
       {tourOpen && (
         <TourOverlay guide={guide} index={tourIndex} onNext={nextTour} onSkip={completeTour} />
