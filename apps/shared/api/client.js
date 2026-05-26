@@ -8,6 +8,15 @@ const LOCAL_API_BASE = 'http://localhost:3000/api';
 const PRODUCTION_API_BASE = 'https://theracare-id-server.vercel.app/api';
 const LEGACY_API_HOSTS = new Set(['theracare-api.vercel.app']);
 
+function isLegacyApiHost(hostname) {
+  const host = String(hostname || '').toLowerCase();
+  return (
+    LEGACY_API_HOSTS.has(host) ||
+    host.endsWith('.railway.app') ||
+    host.endsWith('.up.railway.app')
+  );
+}
+
 function getDefaultApiBase() {
   if (typeof window === 'undefined') return LOCAL_API_BASE;
   const host = window.location.hostname.toLowerCase();
@@ -28,7 +37,7 @@ function resolveApiBase(value) {
   const normalized = normalizeApiBase(value);
   try {
     const parsed = new URL(normalized);
-    if (LEGACY_API_HOSTS.has(parsed.hostname.toLowerCase())) {
+    if (isLegacyApiHost(parsed.hostname)) {
       return PRODUCTION_API_BASE;
     }
   } catch {}
@@ -248,6 +257,7 @@ export const childrenApi = {
   getByParent: (parentId) => api.get(`/children/by-parent/${parentId}`),
   create: (data) => api.post('/children', data),
   update: (id, data) => api.patch(`/children/${id}`, data),
+  reassignTherapist: (id, data) => api.post(`/children/${id}/therapist-reassignment`, data),
   updatePhoto: (id, photoUrl) => api.patch(`/children/${id}/photo`, { photoUrl }),
   delete: (id) => api.delete(`/children/${id}`),
 };
@@ -384,6 +394,13 @@ export const auditLogsApi = {
     const query = params.toString();
     return api.get(`/audit-logs${query ? `?${query}` : ''}`);
   },
+};
+
+export const migrationApi = {
+  dryRun: (data) => api.post('/migration/batches/dry-run', data),
+  getBatch: (id) => api.get(`/migration/batches/${id}`),
+  applyBatch: (id) => api.post(`/migration/batches/${id}/apply`),
+  manualIntake: (data) => api.post('/migration/manual-intake', data),
 };
 
 export const uploadsApi = {

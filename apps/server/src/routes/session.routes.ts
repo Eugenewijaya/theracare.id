@@ -40,6 +40,13 @@ async function canAccessChildSchedule(req: any, childId: string) {
       ownProfile?.id
         && Array.isArray(child.sessions)
         && child.sessions.some((session: any) => session?.therapistId === ownProfile.id),
+    ) || Boolean(
+      ownProfile?.id
+        && Array.isArray(child.periods)
+        && child.periods.some((period: any) => (
+          (Array.isArray(period?.scheduleRules) && period.scheduleRules.some((rule: any) => rule?.therapistId === ownProfile.id))
+          || (Array.isArray(period?.assistantTherapistIds) && period.assistantTherapistIds.includes(ownProfile.id))
+        )),
     );
   }
   return false;

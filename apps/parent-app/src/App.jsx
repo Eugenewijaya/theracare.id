@@ -16,7 +16,7 @@ import NotificationToastHost from '../../shared/ui/NotificationToastHost';
 import AutoRefreshHost from '../../shared/ui/AutoRefreshHost';
 import LanguageRuntime from '../../shared/ui/LanguageRuntime';
 import FriendlyLoader from '../../shared/ui/FriendlyLoader';
-import LocationPermissionHost from '../../shared/ui/LocationPermissionHost';
+import GuideHost from '../../shared/ui/GuideHost';
 import { getNotificationDestination } from '../../shared/notifications';
 
 const ParentWebDashboard = lazy(() => import('../../parent-web-dashboard/src/App'));
@@ -118,7 +118,7 @@ function DashboardLayout() {
           role="parent"
           onOpenNotifications={(notification) => navigate(getNotificationDestination(notification, 'parent'))}
         />
-        <LocationPermissionHost user={user} role="parent" />
+        <GuideHost user={user} role="parent" />
         <div className="min-h-0 flex-1 overflow-y-auto bg-background-light dark:bg-background-dark">
           <Suspense fallback={<Loading />}>
             <Routes key={refreshKey}>

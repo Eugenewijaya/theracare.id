@@ -161,6 +161,54 @@ export async function ensureProductionSchema() {
     CREATE INDEX IF NOT EXISTS audit_logs_entity_idx ON audit_logs(entity_type, entity_id);
     CREATE INDEX IF NOT EXISTS audit_logs_actor_user_id_idx ON audit_logs(actor_user_id);
 
+    CREATE TABLE IF NOT EXISTS migration_batches (
+      id text PRIMARY KEY,
+      status text NOT NULL DEFAULT 'dry_run',
+      source_type text NOT NULL DEFAULT 'excel_csv',
+      file_name text,
+      created_by text REFERENCES "user"(id),
+      summary jsonb,
+      applied_at timestamp,
+      created_at timestamp NOT NULL DEFAULT now(),
+      updated_at timestamp NOT NULL DEFAULT now()
+    );
+
+    CREATE TABLE IF NOT EXISTS migration_records (
+      id text PRIMARY KEY,
+      batch_id text NOT NULL REFERENCES migration_batches(id),
+      status text NOT NULL DEFAULT 'ready',
+      row_number integer NOT NULL,
+      child_id text REFERENCES children(id),
+      therapy_period_id text REFERENCES therapy_periods(id),
+      confidence integer NOT NULL DEFAULT 0,
+      errors jsonb,
+      warnings jsonb,
+      source_snapshot jsonb,
+      normalized_data jsonb,
+      created_at timestamp NOT NULL DEFAULT now(),
+      updated_at timestamp NOT NULL DEFAULT now()
+    );
+
+    CREATE TABLE IF NOT EXISTS historical_session_summaries (
+      id text PRIMARY KEY,
+      migration_batch_id text REFERENCES migration_batches(id),
+      child_id text NOT NULL REFERENCES children(id),
+      therapy_period_id text NOT NULL REFERENCES therapy_periods(id),
+      completed_count integer NOT NULL DEFAULT 0,
+      first_known_date date,
+      last_known_date date,
+      source_note text,
+      created_at timestamp NOT NULL DEFAULT now()
+    );
+
+    CREATE INDEX IF NOT EXISTS migration_batches_status_idx ON migration_batches(status);
+    CREATE INDEX IF NOT EXISTS migration_batches_created_by_idx ON migration_batches(created_by);
+    CREATE INDEX IF NOT EXISTS migration_records_batch_id_idx ON migration_records(batch_id);
+    CREATE INDEX IF NOT EXISTS migration_records_child_id_idx ON migration_records(child_id);
+    CREATE INDEX IF NOT EXISTS migration_records_therapy_period_id_idx ON migration_records(therapy_period_id);
+    CREATE INDEX IF NOT EXISTS historical_session_summaries_child_id_idx ON historical_session_summaries(child_id);
+    CREATE INDEX IF NOT EXISTS historical_session_summaries_therapy_period_id_idx ON historical_session_summaries(therapy_period_id);
+
     DO $$
     BEGIN
       IF to_regclass('public.announcements') IS NOT NULL THEN

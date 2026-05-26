@@ -9,6 +9,9 @@ const EditChildModal = ({ child, onClose }) => {
     const [programsList, setProgramsList] = useState([]);
     const [isSaving, setIsSaving] = useState(false);
     const activePeriod = child.activePeriod || (Array.isArray(child.periods) ? child.periods.find(p => ['active', 'planned'].includes(p.status)) || child.periods[0] : null);
+    const todayKey = new Date().toISOString().slice(0, 10);
+    const primaryTherapistId = child.assignmentSummary?.primaryTherapistId || child.therapistId || '';
+    const firstAssistantId = child.assistantTherapistIds?.[0] || '';
 
     const [formData, setFormData] = useState({
         firstName: child.firstName || child.name?.split(' ')[0] || '',
@@ -16,7 +19,15 @@ const EditChildModal = ({ child, onClose }) => {
         dob: child.dob || '',
         diagnosis: child.diagnosis || '',
         program: child.programs?.[0]?.name || child.program || '',
-        therapistId: child.therapistId || ''
+    });
+    const [assignmentForm, setAssignmentForm] = useState({
+        roleType: 'primary',
+        fromTherapistId: primaryTherapistId,
+        toTherapistId: '',
+        effectiveDate: todayKey,
+        transferFutureSessions: true,
+        reason: '',
+        superAdminPassword: '',
     });
     
     useEffect(() => {
@@ -40,6 +51,19 @@ const EditChildModal = ({ child, onClose }) => {
         setFormData(prev => ({ ...prev, [name]: value }));
     };
 
+    const updateAssignment = (name, value) => {
+        setAssignmentForm(prev => ({
+            ...prev,
+            [name]: value,
+            ...(name === 'roleType'
+                ? {
+                    fromTherapistId: value === 'assistant' ? firstAssistantId : primaryTherapistId,
+                    transferFutureSessions: value === 'primary',
+                  }
+                : {}),
+        }));
+    };
+
     const handleSave = async () => {
         const changedFields = Object.keys(formData).filter(key => String(formData[key] || '') !== String({
             firstName: child.firstName || child.name?.split(' ')[0] || '',
@@ -47,7 +71,6 @@ const EditChildModal = ({ child, onClose }) => {
             dob: child.dob || '',
             diagnosis: child.diagnosis || '',
             program: child.programs?.[0]?.name || child.program || '',
-            therapistId: child.therapistId || '',
         }[key] || ''));
         if (changedFields.length > 0) {
             const confirmed = await confirmAction({
@@ -68,12 +91,9 @@ const EditChildModal = ({ child, onClose }) => {
             updates.programs = [{ name: updates.program, color: 'emerald' }];
         }
         
-        // Find therapist name for display purposes if needed
-        const t = therapists.find(th => th.id === updates.therapistId);
-        if (t) updates.therapist = t.name;
-
         try {
-            await childrenApi.update(child.id || child.nita, updates);
+            const res = await childrenApi.update(child.id || child.nita, updates);
+            if (!res.ok) throw new Error(res.data?.error || 'Gagal menyimpan perubahan data anak.');
             // Dispatch event so UI updates
             window.dispatchEvent(new CustomEvent('childUpdated'));
             onClose();
@@ -90,6 +110,63 @@ const EditChildModal = ({ child, onClose }) => {
         }
     };
 
+    const handleCriticalReassignment = async () => {
+        const roleLabel = assignmentForm.roleType === 'assistant' ? 'terapis pendamping' : 'terapis utama';
+        if (!assignmentForm.fromTherapistId || !assignmentForm.toTherapistId) {
+            await notifyDialog({ tone: 'warning', title: 'Terapis belum lengkap', message: `Pilih ${roleLabel} lama dan pengganti.` });
+            return;
+        }
+        if (!assignmentForm.reason.trim() || assignmentForm.reason.trim().length < 8) {
+            await notifyDialog({ tone: 'warning', title: 'Alasan wajib jelas', message: 'Isi alasan critical decision minimal 8 karakter.' });
+            return;
+        }
+        if (!assignmentForm.superAdminPassword) {
+            await notifyDialog({ tone: 'warning', title: 'Password wajib diisi', message: 'Masukkan password super admin untuk menyimpan keputusan kritis.' });
+            return;
+        }
+
+        const confirmed = await confirmAction({
+            tone: 'danger',
+            icon: 'rule',
+            title: `Critical decision: ganti ${roleLabel}?`,
+            message: 'Sistem akan meminta password, mencatat audit log, memberi notifikasi ke terapis sebelumnya, terapis pengganti, orang tua, dan tim pendamping/utama. Riwayat laporan lama tidak akan diganti.',
+            details: `Mulai ${assignmentForm.effectiveDate}. Future sessions ${assignmentForm.transferFutureSessions && assignmentForm.roleType === 'primary' ? 'akan dialihkan' : 'tidak dialihkan otomatis'}.`,
+            confirmText: 'Simpan critical decision',
+            cancelText: 'Batal',
+        });
+        if (!confirmed) return;
+
+        setIsSaving(true);
+        try {
+            const res = await childrenApi.reassignTherapist(child.id || child.nita, {
+                ...assignmentForm,
+                reason: assignmentForm.reason.trim(),
+                periodId: activePeriod?.id || undefined,
+            });
+            if (!res.ok) throw new Error(res.data?.error || res.data?.message || 'Penggantian terapis gagal.');
+            const summary = res.data?.data?.summary;
+            window.dispatchEvent(new CustomEvent('childUpdated'));
+            window.dispatchEvent(new Event('sessionUpdated'));
+            window.dispatchEvent(new Event('notificationsUpdated'));
+            await notifyDialog({
+                tone: 'success',
+                icon: 'verified',
+                title: 'Critical decision tersimpan',
+                message: `${summary?.updatedPeriods || 0} periode diperbarui, ${summary?.transferredSessions || 0} sesi mendatang dialihkan. Riwayat laporan lama tetap memakai terapis sebelumnya.`,
+            });
+            onClose();
+        } catch (e) {
+            await notifyDialog({
+                tone: 'danger',
+                icon: 'error',
+                title: 'Penggantian belum tersimpan',
+                message: e.message || 'Gagal menyimpan critical decision penggantian terapis.',
+            });
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
     const openProgramEnrollment = () => {
         const childId = child.id || child.nita;
         onClose();
@@ -98,7 +175,7 @@ const EditChildModal = ({ child, onClose }) => {
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-            <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col border border-slate-200 dark:border-slate-800">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col border border-slate-200 dark:border-slate-800">
                 <div className="px-6 py-4 flex items-center justify-between border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
                     <h3 className="font-bold text-lg text-slate-900 dark:text-slate-100 flex items-center gap-2">
                         <span className="material-symbols-outlined text-primary">edit</span>
@@ -140,12 +217,56 @@ const EditChildModal = ({ child, onClose }) => {
                         </select>
                     </div>
 
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Terapis Utama</label>
-                        <select name="therapistId" value={formData.therapistId} onChange={handleChange} className="w-full h-11 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 focus:ring-primary focus:border-primary focus:outline-none">
-                            <option value="">Pilih Terapis...</option>
-                            {therapists.map(t => <option key={t.id} value={t.id}>{t.name} ({t.specialty})</option>)}
-                        </select>
+                    <div className="border-t border-red-200 dark:border-red-900/50 pt-4 mt-2">
+                        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-semibold text-red-800 dark:border-red-900/50 dark:bg-red-950/20 dark:text-red-200">
+                            <p className="text-sm font-black">Critical decision: penggantian terapis case</p>
+                            <p className="mt-1">Gunakan ini saat terapis utama/pendamping resign atau case harus dialihkan. Laporan dan sesi yang sudah selesai tetap atas nama terapis lama.</p>
+                        </div>
+                        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                            <label className="flex flex-col gap-1 text-sm font-bold text-slate-700 dark:text-slate-300">
+                                Jenis penggantian
+                                <select value={assignmentForm.roleType} onChange={e => updateAssignment('roleType', e.target.value)} className="h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 outline-none focus:border-primary dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
+                                    <option value="primary">Terapis utama</option>
+                                    <option value="assistant">Terapis pendamping</option>
+                                </select>
+                            </label>
+                            <label className="flex flex-col gap-1 text-sm font-bold text-slate-700 dark:text-slate-300">
+                                Berlaku mulai
+                                <input type="date" value={assignmentForm.effectiveDate} onChange={e => updateAssignment('effectiveDate', e.target.value)} className="h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 outline-none focus:border-primary dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" />
+                            </label>
+                            <label className="flex flex-col gap-1 text-sm font-bold text-slate-700 dark:text-slate-300">
+                                Terapis sebelumnya
+                                <select value={assignmentForm.fromTherapistId} onChange={e => updateAssignment('fromTherapistId', e.target.value)} className="h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 outline-none focus:border-primary dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
+                                    <option value="">Pilih terapis lama...</option>
+                                    {therapists.map(t => <option key={t.id} value={t.id}>{t.name} ({t.specialty})</option>)}
+                                </select>
+                            </label>
+                            <label className="flex flex-col gap-1 text-sm font-bold text-slate-700 dark:text-slate-300">
+                                Terapis pengganti
+                                <select value={assignmentForm.toTherapistId} onChange={e => updateAssignment('toTherapistId', e.target.value)} className="h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 outline-none focus:border-primary dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
+                                    <option value="">Pilih pengganti...</option>
+                                    {therapists.filter(t => t.id !== assignmentForm.fromTherapistId && (t.status || 'active') === 'active').map(t => <option key={t.id} value={t.id}>{t.name} ({t.specialty})</option>)}
+                                </select>
+                            </label>
+                        </div>
+                        {assignmentForm.roleType === 'primary' && (
+                            <label className="mt-3 flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
+                                <input type="checkbox" checked={assignmentForm.transferFutureSessions} onChange={e => updateAssignment('transferFutureSessions', e.target.checked)} className="mt-0.5 h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary" />
+                                Alihkan sesi mendatang mulai tanggal berlaku. Sesi selesai, laporan, dan histori klinis tidak diganti.
+                            </label>
+                        )}
+                        <label className="mt-3 flex flex-col gap-1 text-sm font-bold text-slate-700 dark:text-slate-300">
+                            Alasan critical decision
+                            <textarea value={assignmentForm.reason} onChange={e => updateAssignment('reason', e.target.value)} rows={3} placeholder="Contoh: Terapis resign, case dialihkan agar jadwal anak tetap berjalan." className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-primary dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" />
+                        </label>
+                        <label className="mt-3 flex flex-col gap-1 text-sm font-bold text-slate-700 dark:text-slate-300">
+                            Password super admin
+                            <input type="password" value={assignmentForm.superAdminPassword} onChange={e => updateAssignment('superAdminPassword', e.target.value)} className="h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 outline-none focus:border-primary dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" autoComplete="current-password" />
+                        </label>
+                        <button type="button" onClick={handleCriticalReassignment} disabled={isSaving} className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-black text-white hover:bg-red-700 disabled:opacity-50">
+                            <span className="material-symbols-outlined text-base">rule</span>
+                            Simpan Critical Decision
+                        </button>
                     </div>
 
                     <div className="border-t border-slate-200 dark:border-slate-800 pt-4 mt-2">

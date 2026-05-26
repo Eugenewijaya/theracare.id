@@ -184,8 +184,12 @@ async function canTherapistReportForChild(childId: string, therapistId: string) 
   const periods = await db.query.therapyPeriods.findMany({
     where: eq(therapyPeriods.childId, childId),
   });
-  return periods.some((period: any) => Array.isArray(period.scheduleRules)
-    && period.scheduleRules.some((rule: any) => rule?.therapistId === therapistId));
+  return periods.some((period: any) => (
+    (Array.isArray(period.scheduleRules)
+      && period.scheduleRules.some((rule: any) => rule?.therapistId === therapistId))
+    || (Array.isArray(period.assistantTherapistIds)
+      && period.assistantTherapistIds.includes(therapistId))
+  ));
 }
 
 async function canTherapistWriteProgramReport(childId: string, therapistId: string, therapyPeriodId?: string) {
@@ -193,8 +197,12 @@ async function canTherapistWriteProgramReport(childId: string, therapistId: stri
   const periods = therapyPeriodId
     ? await db.query.therapyPeriods.findMany({ where: and(eq(therapyPeriods.id, therapyPeriodId), eq(therapyPeriods.childId, childId)) })
     : await db.query.therapyPeriods.findMany({ where: eq(therapyPeriods.childId, childId) });
-  return periods.some((period: any) => Array.isArray(period.scheduleRules)
-    && period.scheduleRules.some((rule: any) => rule?.therapistId === therapistId));
+  return periods.some((period: any) => (
+    (Array.isArray(period.scheduleRules)
+      && period.scheduleRules.some((rule: any) => rule?.therapistId === therapistId))
+    || (Array.isArray(period.assistantTherapistIds)
+      && period.assistantTherapistIds.includes(therapistId))
+  ));
 }
 
 async function getLastReportSeq(client: DbClient = db) {
@@ -231,8 +239,29 @@ async function writeReportAudit(
 function formatReport(report: any) {
   if (!report) return null;
   const editWindow = getReportEditWindow(report);
+  const historicalSummaries = Array.isArray(report.therapyPeriod?.historicalSummaries)
+    ? report.therapyPeriod.historicalSummaries
+    : [];
+  const historicalCompletedSessions = historicalSummaries.reduce((sum: number, summary: any) => sum + Number(summary.completedCount || 0), 0);
+  const periodCompletedSessions = Math.max(Number(report.therapyPeriod?.completedSessions || 0), historicalCompletedSessions);
+  const periodTotalSessions = Number(report.therapyPeriod?.totalSessions || 0);
+  const therapyPeriod = report.therapyPeriod
+    ? {
+      ...report.therapyPeriod,
+      completedSessions: periodCompletedSessions,
+      totalSessions: periodTotalSessions,
+      sessionLabel: periodTotalSessions > 0 ? `${periodCompletedSessions}/${periodTotalSessions} sesi` : `${periodCompletedSessions} sesi selesai`,
+      historicalOpeningBalance: {
+        completedCount: historicalCompletedSessions,
+        firstKnownDate: historicalSummaries[0]?.firstKnownDate || null,
+        lastKnownDate: historicalSummaries[0]?.lastKnownDate || null,
+        sourceNote: historicalSummaries[0]?.sourceNote || "",
+      },
+    }
+    : report.therapyPeriod;
   return {
     ...report,
+    therapyPeriod,
     childName: report.child?.name || report.childName || "",
     therapistName: report.therapist?.user?.name || report.therapistName || "",
     ...editWindow,
@@ -283,7 +312,7 @@ export const reportService = {
   async getById(id: string) {
     const report = await db.query.reports.findFirst({
       where: eq(reports.id, id),
-      with: { child: true, therapist: { with: { user: true } }, session: true, therapyPeriod: { with: { program: true } } },
+      with: { child: true, therapist: { with: { user: true } }, session: true, therapyPeriod: { with: { program: true, historicalSummaries: true } } },
     });
     return formatReport(report);
   },
@@ -293,7 +322,7 @@ export const reportService = {
     if (type) conditions.push(eq(reports.type, type));
     const rows = await db.query.reports.findMany({
       where: and(...conditions),
-      with: { child: true, session: true, therapyPeriod: { with: { program: true } } },
+      with: { child: true, session: true, therapyPeriod: { with: { program: true, historicalSummaries: true } } },
       orderBy: (r, { desc }) => [desc(r.createdAt)],
     });
     return rows.map(formatReport);
@@ -310,7 +339,7 @@ export const reportService = {
     }
     const rows = await db.query.reports.findMany({
       where: and(...conditions),
-      with: { therapist: { with: { user: true } }, session: true, therapyPeriod: { with: { program: true } } },
+      with: { therapist: { with: { user: true } }, session: true, therapyPeriod: { with: { program: true, historicalSummaries: true } } },
       orderBy: (r, { desc }) => [desc(r.createdAt)],
     });
     return rows.map(formatReport);
@@ -321,7 +350,7 @@ export const reportService = {
     if (status) conditions.push(eq(reports.status, status));
     const rows = await db.query.reports.findMany({
       where: conditions.length ? and(...conditions) : undefined,
-      with: { child: true, therapist: { with: { user: true } }, session: true, therapyPeriod: { with: { program: true } } },
+      with: { child: true, therapist: { with: { user: true } }, session: true, therapyPeriod: { with: { program: true, historicalSummaries: true } } },
       orderBy: (r, { desc }) => [desc(r.createdAt)],
     });
     return rows.map(formatReport);
@@ -330,7 +359,7 @@ export const reportService = {
   async getSessionReport(sessionId: string) {
     const report = await db.query.reports.findFirst({
       where: and(eq(reports.type, "harian"), eq(reports.sessionId, sessionId)),
-      with: { child: true, therapist: { with: { user: true } }, session: true, therapyPeriod: { with: { program: true } } },
+      with: { child: true, therapist: { with: { user: true } }, session: true, therapyPeriod: { with: { program: true, historicalSummaries: true } } },
     });
     return formatReport(report);
   },

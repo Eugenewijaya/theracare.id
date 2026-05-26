@@ -1,5 +1,5 @@
 import { db } from "../db/index.js";
-import { reports, rescheduleRequests, sessionRatings, therapySessions } from "../db/schema.js";
+import { historicalSessionSummaries, reports, rescheduleRequests, sessionRatings, therapyPeriods, therapySessions } from "../db/schema.js";
 import { eq, and, gte, inArray, sql } from "drizzle-orm";
 import { generateId } from "../utils/id-generators.js";
 import { httpError } from "../utils/http-error.js";
@@ -81,6 +81,24 @@ async function autoCompleteExpiredActiveSessions() {
   }
 }
 
+async function refreshPeriodCompletedCount(client: any, periodId?: string | null) {
+  if (!periodId) return;
+  const [sessionRow] = await client
+    .select({ count: sql<number>`count(*)` })
+    .from(therapySessions)
+    .where(and(eq(therapySessions.therapyPeriodId, periodId), inArray(therapySessions.status, ["done", "completed"])));
+  const [historicalRow] = await client
+    .select({ count: sql<number>`coalesce(sum(${historicalSessionSummaries.completedCount}), 0)` })
+    .from(historicalSessionSummaries)
+    .where(eq(historicalSessionSummaries.therapyPeriodId, periodId));
+  await client.update(therapyPeriods)
+    .set({
+      completedSessions: Number(sessionRow?.count || 0) + Number(historicalRow?.count || 0),
+      updatedAt: new Date(),
+    })
+    .where(eq(therapyPeriods.id, periodId));
+}
+
 async function assertSessionAvailable(
   values: Pick<TherapySessionInsert, "therapistId" | "childId" | "date" | "startTime"> & Partial<Pick<TherapySessionInsert, "roomId" | "duration">>,
   excludeSessionId?: string,
@@ -103,7 +121,7 @@ export const sessionService = {
   async getAllWithDetails() {
     await autoCompleteExpiredActiveSessions();
     const sessions = await db.query.therapySessions.findMany({
-      with: { therapist: { with: { user: true } }, child: { with: { parent: true, therapyPeriods: { with: { program: true, therapyProgram: true, sessions: true } } } }, room: true, therapyPeriod: { with: { program: true } } },
+      with: { therapist: { with: { user: true } }, child: { with: { parent: true, therapyPeriods: { with: { program: true, therapyProgram: true, sessions: true, historicalSummaries: true } } } }, room: true, therapyPeriod: { with: { program: true, historicalSummaries: true } } },
       orderBy: (s, { desc }) => [desc(s.date), desc(s.startTime)],
     });
     return enrichSessionDetails(sessions);
@@ -113,7 +131,7 @@ export const sessionService = {
     await autoCompleteExpiredActiveSessions();
     const session = await db.query.therapySessions.findFirst({
       where: eq(therapySessions.id, id),
-      with: { therapist: { with: { user: true } }, child: { with: { parent: true, therapyPeriods: { with: { program: true, therapyProgram: true, sessions: true } } } }, room: true, therapyPeriod: { with: { program: true } } },
+      with: { therapist: { with: { user: true } }, child: { with: { parent: true, therapyPeriods: { with: { program: true, therapyProgram: true, sessions: true, historicalSummaries: true } } } }, room: true, therapyPeriod: { with: { program: true, historicalSummaries: true } } },
     });
     if (!session) return null;
     const [enriched] = await enrichSessionDetails([session]);
@@ -127,7 +145,7 @@ export const sessionService = {
 
     const sessions = await db.query.therapySessions.findMany({
       where: and(...conditions),
-      with: { child: { with: { parent: true, therapyPeriods: { with: { program: true, therapyProgram: true, sessions: true } } } }, room: true, therapyPeriod: { with: { program: true } } },
+      with: { child: { with: { parent: true, therapyPeriods: { with: { program: true, therapyProgram: true, sessions: true, historicalSummaries: true } } } }, room: true, therapyPeriod: { with: { program: true, historicalSummaries: true } } },
       orderBy: (s, { asc }) => [asc(s.date), asc(s.startTime)],
     });
     return enrichSessionDetails(sessions);
@@ -142,7 +160,7 @@ export const sessionService = {
         gte(therapySessions.date, today),
         sql`${therapySessions.status} not in ('done', 'completed', 'cancelled')`
       ),
-      with: { therapist: { with: { user: true } }, therapyPeriod: { with: { program: true } } },
+      with: { therapist: { with: { user: true } }, therapyPeriod: { with: { program: true, historicalSummaries: true } } },
       orderBy: (s, { asc }) => [asc(s.date), asc(s.startTime)],
     });
     return enrichSessionDetails(sessions);
@@ -152,7 +170,7 @@ export const sessionService = {
     await autoCompleteExpiredActiveSessions();
     const sessions = await db.query.therapySessions.findMany({
       where: and(eq(therapySessions.childId, childId), inArray(therapySessions.status, ["done", "completed"])),
-      with: { therapist: { with: { user: true } }, therapyPeriod: { with: { program: true } } },
+      with: { therapist: { with: { user: true } }, therapyPeriod: { with: { program: true, historicalSummaries: true } } },
       orderBy: (s, { desc }) => [desc(s.date), desc(s.startTime)],
     });
     return enrichSessionDetails(sessions);
@@ -235,6 +253,7 @@ export const sessionService = {
         .set({ status, ...timestampUpdates, ...(cancelReason ? { cancelReason } : {}) })
         .where(eq(therapySessions.id, id))
         .returning();
+      await refreshPeriodCompletedCount(tx, updated?.therapyPeriodId || existing.therapyPeriodId);
 
       const therapistUserId = existing.therapist?.userId || existing.therapist?.user?.id;
       const parentUserId = existing.child?.parent?.userId;

@@ -119,6 +119,11 @@ const ChildTable = ({ children, onDelete }) => {
                                         )}
                                         <span className="min-w-0 truncate text-sm text-slate-700 dark:text-slate-300" title={child.therapist}>{child.therapist}</span>
                                     </div>
+                                    {Array.isArray(child.assistantTherapists) && child.assistantTherapists.length > 0 && (
+                                        <p className="mt-1 truncate text-[11px] font-semibold text-slate-400" title={child.assistantTherapists.map(t => t.name || t.id).join(', ')}>
+                                            Pendamping: {child.assistantTherapists.map(t => t.name || t.id).join(', ')}
+                                        </p>
+                                    )}
                                 </td>
                                 <td className="px-5 py-4 align-middle">
                                     <div className="flex flex-col gap-1.5 w-full">
@@ -205,6 +210,9 @@ const ChildTable = ({ children, onDelete }) => {
                                     )}
                                     <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 truncate leading-tight">{child.therapist}</span>
                                 </div>
+                                {Array.isArray(child.assistantTherapists) && child.assistantTherapists.length > 0 && (
+                                    <p className="mt-1 truncate text-[10px] font-semibold text-slate-400">Pendamping: {child.assistantTherapists.map(t => t.name || t.id).join(', ')}</p>
+                                )}
                             </div>
                             <div className="bg-slate-50 dark:bg-slate-900 rounded-lg p-2.5 sm:p-3 border border-slate-100 dark:border-slate-700 flex flex-col">
                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Programs</p>

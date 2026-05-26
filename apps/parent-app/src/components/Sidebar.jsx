@@ -5,17 +5,18 @@ import { notificationsApi } from '../../../shared/api/client';
 import { isNotificationRead } from '../../../shared/notifications';
 import { useClinicSettings } from '../../../shared/clinicSettings';
 import ClinicLogoMark from '../../../shared/ui/ClinicLogoMark';
+import { FeatureInfoButton } from '../../../shared/ui/GuideHost';
 
 const navItems = [
-  { path: '/', icon: 'dashboard', label: 'Dasbor', end: true },
-  { path: '/progress', icon: 'bar_chart', label: 'Kemajuan Anak' },
-  { path: '/profile', icon: 'account_circle', label: 'Profil Anak' },
-  { path: '/attendance', icon: 'co_present', label: 'Log Kehadiran' },
-  { path: '/reports', icon: 'folder_open', label: 'Daftar Laporan', badgeType: 'reports' },
-  { path: '/reschedule', icon: 'swap_horiz', label: 'Penjadwalan Ulang', badgeType: 'reschedule' },
-  { path: '/announcements', icon: 'campaign', label: 'Pengumuman', badgeType: 'announcement' },
-  { path: '/meetings', icon: 'groups', label: 'Parent Meeting' },
-  { path: '/settings', icon: 'settings', label: 'Pengaturan' },
+  { path: '/', icon: 'dashboard', label: 'Dasbor', end: true, guideId: 'dashboard' },
+  { path: '/progress', icon: 'bar_chart', label: 'Kemajuan Anak', guideId: 'progress' },
+  { path: '/profile', icon: 'account_circle', label: 'Profil Anak', guideId: 'profile' },
+  { path: '/attendance', icon: 'co_present', label: 'Log Kehadiran', guideId: 'attendance' },
+  { path: '/reports', icon: 'folder_open', label: 'Daftar Laporan', badgeType: 'reports', guideId: 'reports' },
+  { path: '/reschedule', icon: 'swap_horiz', label: 'Penjadwalan Ulang', badgeType: 'reschedule', guideId: 'reschedule' },
+  { path: '/announcements', icon: 'campaign', label: 'Pengumuman', badgeType: 'announcement', guideId: 'announcements' },
+  { path: '/meetings', icon: 'groups', label: 'Parent Meeting', guideId: 'meetings' },
+  { path: '/settings', icon: 'settings', label: 'Pengaturan', guideId: 'settings' },
 ];
 
 function getParentBadgeType(notification) {
@@ -153,6 +154,7 @@ export default function Sidebar({ isOpen, onClose }) {
                 className={({ isActive }) => `flex min-w-0 items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${isActive ? 'bg-sky-50 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300 font-semibold' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 font-medium'}`}>
                 <span className="material-symbols-outlined text-[20px]">{item.icon}</span>
                 <span className="min-w-0 flex-1 break-words leading-snug">{item.label}</span>
+                <FeatureInfoButton role="parent" featureId={item.guideId} className="opacity-70" />
                 {badgeNum > 0 && (
                   <span className="bg-red-500 text-white text-[10px] font-black min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center leading-none animate-pulse">
                     {badgeNum > 9 ? '9+' : badgeNum}

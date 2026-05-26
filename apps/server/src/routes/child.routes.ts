@@ -5,6 +5,7 @@ import { parentService } from "../services/parent.service.js";
 import { therapistService } from "../services/therapist.service.js";
 import { auditLogService } from "../services/audit-log.service.js";
 import { notificationService } from "../services/notification.service.js";
+import { verifyCredentialPassword } from "../services/auth-password.service.js";
 import { ok, created, notFound, badRequest, conflict } from "../utils/response.js";
 
 const router = Router();
@@ -29,7 +30,10 @@ async function canAccessChild(req: any, child: any) {
     const hasPeriodRule = Array.isArray(child?.periods)
       && child.periods.some((period: any) => Array.isArray(period?.scheduleRules)
         && period.scheduleRules.some((rule: any) => rule?.therapistId === therapist.id));
-    return hasSession || hasPeriodRule;
+    const isAssistant = Array.isArray(child?.periods)
+      && child.periods.some((period: any) => Array.isArray(period?.assistantTherapistIds)
+        && period.assistantTherapistIds.includes(therapist.id));
+    return hasSession || hasPeriodRule || isAssistant;
   }
   return false;
 }
@@ -96,6 +100,28 @@ router.patch("/:id", requireAuth, requireRole("admin"), async (req, res, next) =
       relatedId: updated.id,
     });
     ok(res, updated);
+  } catch (e) { next(e); }
+});
+
+router.post("/:id/therapist-reassignment", requireAuth, requireRole("admin"), async (req, res, next) => {
+  try {
+    const password = String(req.body?.superAdminPassword || "");
+    if (!password) return badRequest(res, "Password super admin wajib diisi untuk critical decision.");
+    if (!(await verifyCredentialPassword(req.user!.id, password))) {
+      return res.status(403).json({ success: false, error: "Password super admin tidak valid." });
+    }
+
+    const result = await childService.reassignTherapist(req.params.id as string, {
+      roleType: req.body?.roleType,
+      fromTherapistId: req.body?.fromTherapistId,
+      toTherapistId: req.body?.toTherapistId,
+      effectiveDate: req.body?.effectiveDate,
+      reason: req.body?.reason,
+      transferFutureSessions: req.body?.transferFutureSessions,
+      periodId: req.body?.periodId,
+    }, req.user);
+    if (!result) return notFound(res);
+    ok(res, result, "Critical decision penggantian terapis tersimpan");
   } catch (e) { next(e); }
 });
 

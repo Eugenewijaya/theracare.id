@@ -1,6 +1,6 @@
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { children, programs, therapists, therapyPeriods, therapyPrograms, therapySessions } from "../db/schema.js";
+import { children, historicalSessionSummaries, programs, therapists, therapyPeriods, therapyPrograms, therapySessions } from "../db/schema.js";
 import { generateId } from "../utils/id-generators.js";
 import { evaluateSessionSlot } from "./scheduling-availability.service.js";
 import { notificationService } from "./notification.service.js";
@@ -134,8 +134,12 @@ function pickPeriodValues(data: any): Partial<TherapyPeriodInsert> {
 function normalizePeriod(period: any) {
   if (!period) return null;
   const sessions = Array.isArray(period.sessions) ? period.sessions : [];
+  const historicalSummaries = Array.isArray(period.historicalSummaries) ? period.historicalSummaries : [];
+  const historicalCompletedSessions = historicalSummaries.reduce((sum: number, summary: any) => sum + Number(summary.completedCount || 0), 0);
   const completedFromSessions = sessions.filter((session: any) => session.status === "done" || session.status === "completed").length;
-  const completedSessions = Math.max(Number(period.completedSessions || 0), completedFromSessions);
+  const completedSessions = historicalCompletedSessions > 0
+    ? Math.max(Number(period.completedSessions || 0), historicalCompletedSessions + completedFromSessions)
+    : Math.max(Number(period.completedSessions || 0), completedFromSessions);
   const totalSessions = Number(period.totalSessions || sessions.length || 0);
   const programName = period.program?.name || period.therapyProgram?.type || "Program Terapi";
   const progress = totalSessions > 0 ? Math.min(100, Math.round((completedSessions / totalSessions) * 100)) : 0;
@@ -149,6 +153,12 @@ function normalizePeriod(period: any) {
     pricePerSession: Number(period.pricePerSession || 0),
     pricePerMonth: Number(period.pricePerMonth || 0),
     totalPrice: Number(period.totalPrice || 0),
+    historicalOpeningBalance: {
+      completedCount: historicalCompletedSessions,
+      firstKnownDate: historicalSummaries[0]?.firstKnownDate || null,
+      lastKnownDate: historicalSummaries[0]?.lastKnownDate || null,
+      sourceNote: historicalSummaries[0]?.sourceNote || "",
+    },
   };
 }
 
@@ -252,6 +262,7 @@ export const therapyPeriodService = {
         therapyProgram: true,
         sessions: true,
         reports: true,
+        historicalSummaries: true,
       },
       orderBy: (p, { desc }) => [desc(p.startDate), desc(p.createdAt)],
     });
@@ -267,6 +278,7 @@ export const therapyPeriodService = {
         therapyProgram: true,
         sessions: { with: { therapist: { with: { user: true } }, room: true } },
         reports: true,
+        historicalSummaries: true,
       },
     });
     return normalizePeriod(row);
@@ -346,10 +358,14 @@ export const therapyPeriodService = {
       .select({ count: sql<number>`count(*)` })
       .from(therapySessions)
       .where(and(eq(therapySessions.therapyPeriodId, id), eq(therapySessions.status, "done")));
+    const [historicalRow] = await db
+      .select({ count: sql<number>`coalesce(sum(${historicalSessionSummaries.completedCount}), 0)` })
+      .from(historicalSessionSummaries)
+      .where(eq(historicalSessionSummaries.therapyPeriodId, id));
     const [updated] = await db.update(therapyPeriods)
       .set({
         status: "completed",
-        completedSessions: Number(countRow?.count || 0),
+        completedSessions: Number(countRow?.count || 0) + Number(historicalRow?.count || 0),
         ...(data.finalReportId ? { finalReportId: data.finalReportId } : {}),
         ...(data.notes ? { notes: data.notes } : {}),
         updatedAt: new Date(),

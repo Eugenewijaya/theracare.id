@@ -1,10 +1,19 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Header from './components/Header';
-import { sessionsApi } from '../../shared/api/client';
+import { sessionsApi, therapistsApi } from '../../shared/api/client';
 import { readTherapistUser } from '../../shared/sessionIdentity';
 
 const WEEK_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const HOURS = Array.from({ length: 10 }, (_, index) => 8 + index);
+const DAY_SCHEDULE_KEYS = {
+    0: ['Minggu', 'Min', 'Sunday', 'Sun'],
+    1: ['Senin', 'Sen', 'Monday', 'Mon'],
+    2: ['Selasa', 'Sel', 'Tuesday', 'Tue', 'Tues'],
+    3: ['Rabu', 'Rab', 'Wednesday', 'Wed'],
+    4: ['Kamis', 'Kam', 'Thursday', 'Thu', 'Thur', 'Thurs'],
+    5: ['Jumat', 'Jum', 'Friday', 'Fri'],
+    6: ['Sabtu', 'Sab', 'Saturday', 'Sat'],
+};
 
 function formatDateKey(date) {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -36,6 +45,61 @@ function calculateEndTime(startTime, durationStr) {
     const date = new Date();
     date.setHours(hour, minute + durationMinutes, 0, 0);
     return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+function normalizeScheduleKey(value = '') {
+    return String(value).toLowerCase().replace(/hari/g, '').replace(/[^a-z]/g, '');
+}
+
+function normalizeClockValue(value = '') {
+    const match = String(value || '').trim().match(/^(\d{1,2})[:.](\d{2})$/);
+    return match ? `${match[1].padStart(2, '0')}:${match[2]}` : '';
+}
+
+function parseMinutes(value = '') {
+    const [hour = '0', minute = '0'] = String(value).split(':');
+    return Number(hour) * 60 + Number(minute);
+}
+
+function parseWorkWindow(value) {
+    if (!value) return null;
+    if (Array.isArray(value)) return parseWorkWindow(value.find(Boolean));
+    if (typeof value === 'string') {
+        if (/off|libur|tutup|inactive/i.test(value)) return null;
+        const match = value.match(/(\d{1,2}[:.]\d{2}).*?(\d{1,2}[:.]\d{2})/);
+        return match ? { start: normalizeClockValue(match[1]), end: normalizeClockValue(match[2]) } : null;
+    }
+    if (typeof value === 'object') {
+        if (value.active === false || value.enabled === false || value.isActive === false) return null;
+        return {
+            start: normalizeClockValue(value.start || value.startTime || value.from || value.open || value.jamMulai || value.mulai),
+            end: normalizeClockValue(value.end || value.endTime || value.to || value.close || value.jamSelesai || value.selesai),
+        };
+    }
+    return null;
+}
+
+function getWorkWindowForDate(schedule, date) {
+    if (!schedule || typeof schedule !== 'object') return { known: false, window: null };
+    const keys = (DAY_SCHEDULE_KEYS[date.getDay()] || []).map(normalizeScheduleKey);
+    const knownKeys = new Set(Object.values(DAY_SCHEDULE_KEYS).flat().map(normalizeScheduleKey));
+    const hasKnownSchedule = Object.entries(schedule).some(([key, value]) => knownKeys.has(normalizeScheduleKey(key)) && parseWorkWindow(value));
+    if (!hasKnownSchedule) return { known: false, window: null };
+    const entry = Object.entries(schedule).find(([key]) => keys.includes(normalizeScheduleKey(key)));
+    return { known: true, window: entry ? parseWorkWindow(entry[1]) : null };
+}
+
+function getOffLabel(schedule, date, hour) {
+    const { known, window } = getWorkWindowForDate(schedule, date);
+    if (!known) return '';
+    if (!window?.start || !window?.end) return 'Off';
+    const slotStart = hour * 60;
+    const slotEnd = slotStart + 60;
+    const workStart = parseMinutes(window.start);
+    const workEnd = parseMinutes(window.end);
+    if (slotStart < workStart) return `Mulai ${window.start}`;
+    if (slotEnd > workEnd) return `Off ${window.end}`;
+    return '';
 }
 
 function getStatusStyle(status) {
@@ -91,6 +155,7 @@ function App() {
     const [viewMode, setViewMode] = useState('week');
     const [anchorDate, setAnchorDate] = useState(() => new Date());
     const [events, setEvents] = useState([]);
+    const [profile, setProfile] = useState(() => currentUser || {});
 
     useEffect(() => {
         const loadEvents = async () => {
@@ -100,13 +165,17 @@ function App() {
             }
 
             try {
-                const res = await sessionsApi.getForTherapist(currentUser.id);
+                const [res, profileRes] = await Promise.all([
+                    sessionsApi.getForTherapist(currentUser.id),
+                    therapistsApi.getMe().catch(() => ({ data: { data: currentUser } })),
+                ]);
                 const rawSessions = res.data?.data || [];
                 const mapped = rawSessions
                     .map(toCalendarEvent)
                     .sort((a, b) => `${a.date} ${a.startTime}`.localeCompare(`${b.date} ${b.startTime}`));
 
                 setEvents(mapped);
+                if (profileRes.data?.data) setProfile(profileRes.data.data);
             } catch (e) {
                 console.error('Failed to load sessions', e);
             }
@@ -302,10 +371,16 @@ function App() {
                                                 const dayEvents = eventsByDate.get(key) || [];
 
                                                 return (
-                                                    <div key={key} className="relative border-r border-slate-200 bg-white last:border-r-0 dark:border-slate-700 dark:bg-slate-800">
-                                                        {HOURS.map(hour => (
-                                                            <div key={hour} className="h-[60px] border-b border-slate-100 last:border-b-0 dark:border-slate-800" />
-                                                        ))}
+                                                            <div key={key} className="relative border-r border-slate-200 bg-white last:border-r-0 dark:border-slate-700 dark:bg-slate-800">
+                                                        {HOURS.map(hour => {
+                                                            const offLabel = getOffLabel(profile?.schedule, date, hour);
+                                                            return (
+                                                            <div key={hour} className={`flex h-[60px] items-center justify-center border-b text-[10px] font-black uppercase tracking-wide last:border-b-0 dark:border-slate-800 ${
+                                                                offLabel ? 'bg-red-50 text-red-500 dark:bg-red-950/20 dark:text-red-300' : 'border-slate-100 text-transparent'
+                                                            }`}>
+                                                                {offLabel}
+                                                            </div>
+                                                        );})}
 
                                                         {dayEvents.map(event => (
                                                             <div

@@ -50,6 +50,76 @@ const sessionsOverlap = (a, b) => {
     return aStart < bEnd && aEnd > bStart;
 };
 
+const DAY_SCHEDULE_KEYS = {
+    0: ['Minggu', 'Min', 'Sunday', 'Sun'],
+    1: ['Senin', 'Sen', 'Monday', 'Mon'],
+    2: ['Selasa', 'Sel', 'Tuesday', 'Tue', 'Tues'],
+    3: ['Rabu', 'Rab', 'Wednesday', 'Wed'],
+    4: ['Kamis', 'Kam', 'Thursday', 'Thu', 'Thur', 'Thurs'],
+    5: ['Jumat', 'Jum', 'Friday', 'Fri'],
+    6: ['Sabtu', 'Sab', 'Saturday', 'Sat'],
+};
+
+const normalizeScheduleKey = (value = '') =>
+    String(value).toLowerCase().replace(/hari/g, '').replace(/[^a-z]/g, '');
+
+const normalizeClockValue = (value = '') => {
+    const match = String(value || '').trim().match(/^(\d{1,2})[:.](\d{2})$/);
+    return match ? `${match[1].padStart(2, '0')}:${match[2]}` : '';
+};
+
+const parseWorkWindow = (value) => {
+    if (!value) return null;
+    if (Array.isArray(value)) return parseWorkWindow(value.find(Boolean));
+    if (typeof value === 'string') {
+        if (/off|libur|tutup|inactive/i.test(value)) return null;
+        const match = value.match(/(\d{1,2}[:.]\d{2}).*?(\d{1,2}[:.]\d{2})/);
+        return match ? { start: normalizeClockValue(match[1]), end: normalizeClockValue(match[2]) } : null;
+    }
+    if (typeof value === 'object') {
+        if (value.active === false || value.enabled === false || value.isActive === false) return null;
+        return {
+            start: normalizeClockValue(value.start || value.startTime || value.from || value.open || value.jamMulai || value.mulai),
+            end: normalizeClockValue(value.end || value.endTime || value.to || value.close || value.jamSelesai || value.selesai),
+        };
+    }
+    return null;
+};
+
+const getTherapistWorkWindowForDate = (therapist, dateStr) => {
+    const schedule = therapist?.schedule;
+    if (!schedule || typeof schedule !== 'object') return { known: false, window: null };
+    const day = new Date(`${dateStr}T00:00:00`).getDay();
+    const keys = (DAY_SCHEDULE_KEYS[day] || []).map(normalizeScheduleKey);
+    const knownKeys = new Set(Object.values(DAY_SCHEDULE_KEYS).flat().map(normalizeScheduleKey));
+    const hasKnownSchedule = Object.entries(schedule).some(([key, value]) => knownKeys.has(normalizeScheduleKey(key)) && parseWorkWindow(value));
+    if (!hasKnownSchedule) return { known: false, window: null };
+    const entry = Object.entries(schedule).find(([key]) => keys.includes(normalizeScheduleKey(key)));
+    return { known: true, window: entry ? parseWorkWindow(entry[1]) : null };
+};
+
+const getTherapistSlotIssue = (therapist, dateStr, startTime, duration) => {
+    if (!therapist || !dateStr || !startTime) return '';
+    const { known, window } = getTherapistWorkWindowForDate(therapist, dateStr);
+    if (!known) return '';
+    if (!window?.start || !window?.end) return 'Terapis off pada hari tersebut.';
+    const slotStart = parseTimeToMinutes(startTime);
+    const slotEnd = slotStart + parseDurationMinutes(duration);
+    const workStart = parseTimeToMinutes(window.start);
+    const workEnd = parseTimeToMinutes(window.end);
+    if (slotStart < workStart) return `Terapis mulai tersedia pukul ${window.start}.`;
+    if (slotEnd > workEnd) return `Terapis off mulai pukul ${window.end}.`;
+    return '';
+};
+
+const toDateKey = (dateObj) => {
+    if (!dateObj) return '';
+    const y = dateObj.getFullYear();
+    const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const d = String(dateObj.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+};
+
 // ── Toast Notification ──────────────────────────────────────────────────────
 function Toast({ message, type = 'success', onClose }) {
     React.useEffect(() => {
@@ -469,6 +539,11 @@ function App() {
             return true;
         });
     }, [calendarSessions, filters, childrenList, therapistsList]);
+    const selectedTherapistForGrid = React.useMemo(() => (
+        filters.therapist !== 'All Therapists'
+            ? therapistsList.find(t => t.name === filters.therapist) || null
+            : null
+    ), [filters.therapist, therapistsList]);
 
     // New session form state
     const [newSession, setNewSession] = useState({
@@ -575,6 +650,12 @@ function App() {
         }
 
         if (newSession.sessionKind === 'one_time') {
+            const selectedTherapist = therapistsList.find(t => t.id === newSession.therapistId);
+            const therapistIssue = getTherapistSlotIssue(selectedTherapist, dateStr, newSession.startTime, `${newSession.duration} mins`);
+            if (therapistIssue) {
+                showToast(therapistIssue, 'error');
+                return;
+            }
             const visit = {
                 id: `OTV-${Date.now().toString(36).toUpperCase()}`,
                 visitorName: newSession.visitorName.trim(),
@@ -609,6 +690,12 @@ function App() {
             status: 'upcoming',
             notes: '',
         };
+        const selectedTherapist = therapistsList.find(t => t.id === sessionObj.therapistId);
+        const therapistIssue = getTherapistSlotIssue(selectedTherapist, dateStr, sessionObj.startTime, sessionObj.duration);
+        if (therapistIssue) {
+            showToast(therapistIssue, 'error');
+            return;
+        }
 
         try {
             const res = await sessionsApi.create(sessionObj);
@@ -800,6 +887,15 @@ function App() {
         }
     };
 
+    const selectedDateKey = toDateKey(selectedDate);
+    const newSessionTherapist = therapistsList.find(t => t.id === newSession.therapistId);
+    const newSessionTherapistIssue = getTherapistSlotIssue(
+        newSessionTherapist,
+        selectedDateKey,
+        newSession.startTime,
+        `${newSession.duration} mins`,
+    );
+
     return (
         <>
             {/* Top Navigation Bar */}
@@ -831,6 +927,7 @@ function App() {
                             selectedDate={selectedDate}
                             sessions={filteredSessions}
                             childrenList={childrenList}
+                            selectedTherapist={selectedTherapistForGrid}
                         />
                         <Legend />
                     </div>
@@ -942,9 +1039,20 @@ function App() {
                                 >
                                     <option value="">Pilih Terapis...</option>
                                     {therapistsList.map((t) => (
-                                        <option key={t.id} value={t.id}>{t.name} ({t.specialty})</option>
+                                        <option
+                                            key={t.id}
+                                            value={t.id}
+                                            disabled={Boolean(getTherapistSlotIssue(t, selectedDateKey, newSession.startTime, `${newSession.duration} mins`))}
+                                        >
+                                            {t.name} ({t.specialty}){getTherapistSlotIssue(t, selectedDateKey, newSession.startTime, `${newSession.duration} mins`) ? ` - ${getTherapistSlotIssue(t, selectedDateKey, newSession.startTime, `${newSession.duration} mins`)}` : ''}
+                                        </option>
                                     ))}
                                 </select>
+                                {newSessionTherapistIssue && (
+                                    <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700">
+                                        {newSessionTherapistIssue} Pilih jam lain atau terapis pengganti.
+                                    </p>
+                                )}
                             </div>
 
                             <div className="flex flex-col gap-2">
@@ -998,7 +1106,8 @@ function App() {
                             </button>
                             <button
                                 onClick={handleSaveSession}
-                                className="px-5 py-2 text-sm font-semibold text-white bg-primary hover:bg-primary/90 rounded-lg shadow-sm transition-colors flex items-center gap-2"
+                                disabled={Boolean(newSessionTherapistIssue)}
+                                className="px-5 py-2 text-sm font-semibold text-white bg-primary hover:bg-primary/90 rounded-lg shadow-sm transition-colors flex items-center gap-2 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
                             >
                                 <span className="material-symbols-outlined text-[16px]">save</span>
                                 Simpan Sesi

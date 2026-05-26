@@ -1,6 +1,6 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { clinicSettings, therapists, therapyPeriods, therapySessions } from "../db/schema.js";
+import { clinicSettings, historicalSessionSummaries, therapists, therapyPeriods, therapySessions } from "../db/schema.js";
 import { generateId } from "../utils/id-generators.js";
 import { notificationService } from "./notification.service.js";
 
@@ -174,11 +174,15 @@ async function executeApprovedRequest(request: PeriodDeletionRequest) {
     const doneCount = Array.isArray(period.sessions)
       ? period.sessions.filter((session: any) => session.status === "done" || session.status === "completed").length
       : 0;
+    const [historicalRow] = await tx
+      .select({ count: sql<number>`coalesce(sum(${historicalSessionSummaries.completedCount}), 0)` })
+      .from(historicalSessionSummaries)
+      .where(eq(historicalSessionSummaries.therapyPeriodId, request.periodId));
     const previousNotes = typeof period.notes === "string" && period.notes.trim() ? `${period.notes.trim()}\n\n` : "";
     await tx.update(therapyPeriods)
       .set({
         status: "cancelled",
-        completedSessions: doneCount,
+        completedSessions: doneCount + Number(historicalRow?.count || 0),
         notes: `${previousNotes}Periode dibatalkan melalui persetujuan orang tua dan terapis pada ${new Date().toISOString()}. Alasan: ${request.reason}`,
         updatedAt: new Date(),
       })

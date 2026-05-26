@@ -4,19 +4,20 @@ import { useAuth } from '../context/AuthContext';
 import { notificationsApi } from '../../../shared/api/client';
 import { useClinicSettings } from '../../../shared/clinicSettings';
 import ClinicLogoMark from '../../../shared/ui/ClinicLogoMark';
+import { FeatureInfoButton } from '../../../shared/ui/GuideHost';
 
 const navItems = [
-  { path: '/', icon: 'space_dashboard', label: 'Dasbor', end: true },
-  { path: '/schedule', icon: 'calendar_today', label: 'Jadwal Terapi' },
-  { path: '/schedule-updates', icon: 'event_repeat', label: 'Pembaruan Jadwal', badgeType: 'schedule' },
-  { path: '/leave-requests', icon: 'event_busy', label: 'Pengajuan Cuti', badgeType: 'leave' },
-  { path: '/availability', icon: 'date_range', label: 'Ketersediaan' },
-  { path: '/reports', icon: 'description', label: 'Laporan Anak', badgeType: 'report' },
-  { path: '/performance', icon: 'insights', label: 'Kinerja' },
-  { path: '/meetings', icon: 'groups', label: 'Pertemuan Orang Tua' },
-  { path: '/child-progress', icon: 'trending_up', label: 'Kemajuan Anak' },
-  { path: '/announcements', icon: 'notifications', label: 'Notifikasi', badgeType: 'notification' },
-  { path: '/settings', icon: 'settings', label: 'Pengaturan' },
+  { path: '/', icon: 'space_dashboard', label: 'Dasbor', end: true, guideId: 'dashboard' },
+  { path: '/schedule', icon: 'calendar_today', label: 'Jadwal Terapi', guideId: 'schedule' },
+  { path: '/schedule-updates', icon: 'event_repeat', label: 'Pembaruan Jadwal', badgeType: 'schedule', guideId: 'schedule-updates' },
+  { path: '/leave-requests', icon: 'event_busy', label: 'Pengajuan Cuti', badgeType: 'leave', guideId: 'leave-requests' },
+  { path: '/availability', icon: 'date_range', label: 'Ketersediaan', guideId: 'availability' },
+  { path: '/reports', icon: 'description', label: 'Laporan Anak', badgeType: 'report', guideId: 'reports' },
+  { path: '/performance', icon: 'insights', label: 'Kinerja', guideId: 'performance' },
+  { path: '/meetings', icon: 'groups', label: 'Pertemuan Orang Tua', guideId: 'meetings' },
+  { path: '/child-progress', icon: 'trending_up', label: 'Kemajuan Anak', guideId: 'child-progress' },
+  { path: '/announcements', icon: 'notifications', label: 'Notifikasi', badgeType: 'notification', guideId: 'announcements' },
+  { path: '/settings', icon: 'settings', label: 'Pengaturan', guideId: 'settings' },
 ];
 
 const SCHEDULE_NOTIFICATION_TYPES = [
@@ -163,6 +164,7 @@ export default function Sidebar({ isOpen, onClose }) {
                     {isActive && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-teal-500 dark:bg-teal-400 rounded-r-md"></div>}
                     <span className={`material-symbols-outlined text-[20px] transition-transform duration-200 ${isActive ? 'scale-110' : 'group-hover:scale-110'}`} style={isActive ? {fontVariationSettings: "'FILL' 1"} : {}}>{item.icon}</span>
                     <span className="min-w-0 flex-1 break-words leading-snug">{item.label}</span>
+                    <FeatureInfoButton role="therapist" featureId={item.guideId} className="opacity-70 group-hover:opacity-100" />
                     {badgeNum > 0 && (
                       <span className="bg-red-500 text-white text-[10px] font-black min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center leading-none animate-pulse">
                         {badgeNum > 9 ? '9+' : badgeNum}

@@ -135,6 +135,9 @@ function normalizeReport(report = {}) {
     observationSessions: report.evaluations?.observationSessions || '',
     progressPoints: asList(report.progressPoints),
     improvementPoints: asList(report.improvementPoints),
+    periodGoals: asList(report.periodGoals || report.therapyPeriod?.goals),
+    historicalOpeningBalance: report.historicalOpeningBalance || report.therapyPeriod?.historicalOpeningBalance || null,
+    periodSessionLabel: report.therapyPeriod?.sessionLabel || '',
     toysUsed: asList(report.toysUsed),
     roomsUsed: asList(report.roomsUsed),
     toolsUsed: asList(report.toolsUsed),
@@ -170,6 +173,29 @@ function renderListSection(title, items, variant = 'default') {
       <ul class="point-list ${variant}">
         ${list.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}
       </ul>
+    </section>
+  `;
+}
+
+function renderContinuitySection(report) {
+  const opening = report.historicalOpeningBalance || {};
+  const completedCount = Number(opening.completedCount || 0);
+  if (!completedCount && !report.periodGoals.length && !report.periodSessionLabel) return '';
+  return `
+    <section class="section">
+      <h2>Ringkasan Continuity Periode</h2>
+      <div class="meta-grid">
+        ${renderMeta('Opening Balance Historis', completedCount ? `${completedCount} sesi sebelum Theracare` : '-')}
+        ${renderMeta('Rentang Data Lama', compact([formatDate(opening.firstKnownDate), formatDate(opening.lastKnownDate)]).join(' - ') || '-')}
+        ${renderMeta('Progress Periode', report.periodSessionLabel || '-')}
+        ${renderMeta('Sumber Migrasi', opening.sourceNote || '-')}
+      </div>
+      ${report.periodGoals.length ? `
+        <h3>Target IEP Periode</h3>
+        <ul class="point-list focus">
+          ${report.periodGoals.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}
+        </ul>
+      ` : ''}
     </section>
   `;
 }
@@ -381,6 +407,7 @@ function buildReportHtml(reportInput, settingsInput) {
 
     ${renderEvaluations(report.evaluations)}
     ${renderObservationItems(report.observationItems)}
+    ${renderContinuitySection(report)}
     ${renderListSection('Aspek Terapi yang Ditangani', report.aspects)}
     ${renderTextSection(report.isInitialObservation ? 'Kesimpulan Observasi' : report.isPeriodic ? 'Kesimpulan & Evaluasi Deskriptif' : 'Goals / Aktivitas Hari Ini', report.description || report.summary)}
     ${renderListSection('Mainan yang Digunakan', report.toysUsed)}

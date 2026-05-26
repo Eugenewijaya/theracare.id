@@ -8,9 +8,25 @@ const REQUEST_COPY = {
 
 const MIN_SEND_INTERVAL_MS = 45_000;
 const STORAGE_PREFIX = 'theracare_location_prompt';
+const SESSION_PREFIX = 'theracare_location_session';
+
+const ROLE_COPY = {
+  admin: {
+    title: 'Lokasi wajib untuk admin',
+    requiredNote: 'Akses admin akan terbuka setelah lokasi aktif agar GOD dapat memantau sesi dashboard dengan akurat.',
+  },
+  therapist: {
+    title: 'Lokasi wajib untuk terapis',
+    requiredNote: 'Akses terapis akan terbuka setelah lokasi aktif agar sesi kerja dan jadwal klinis dapat dipantau dengan aman.',
+  },
+};
 
 function getStorageKey(role, userId) {
   return `${STORAGE_PREFIX}:${role || 'user'}:${userId || 'anonymous'}`;
+}
+
+function getSessionKey(role, userId) {
+  return `${SESSION_PREFIX}:${role || 'user'}:${userId || 'anonymous'}`;
 }
 
 function readPromptState(role, userId) {
@@ -24,6 +40,24 @@ function readPromptState(role, userId) {
 function writePromptState(role, userId, data) {
   try {
     localStorage.setItem(getStorageKey(role, userId), JSON.stringify({ ...readPromptState(role, userId), ...data }));
+  } catch {}
+}
+
+function readSessionGrant(role, userId) {
+  try {
+    const value = JSON.parse(sessionStorage.getItem(getSessionKey(role, userId)) || '{}');
+    return value?.status === 'granted';
+  } catch {
+    return false;
+  }
+}
+
+function writeSessionGrant(role, userId) {
+  try {
+    sessionStorage.setItem(getSessionKey(role, userId), JSON.stringify({
+      status: 'granted',
+      grantedAt: new Date().toISOString(),
+    }));
   } catch {}
 }
 
@@ -58,9 +92,16 @@ export default function LocationPermissionHost({ user, role, required = false })
   const [message, setMessage] = useState('');
   const [hidden, setHidden] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [sessionGranted, setSessionGranted] = useState(false);
   const watchIdRef = useRef(null);
   const lastSentRef = useRef(0);
+  const sessionGrantedRef = useRef(false);
   const userId = user?.id || user?.userId || '';
+  const roleCopy = ROLE_COPY[role] || ROLE_COPY.admin;
+
+  useEffect(() => {
+    sessionGrantedRef.current = sessionGranted;
+  }, [sessionGranted]);
 
   const sendSignal = useCallback(async (payload) => {
     const now = Date.now();
@@ -86,9 +127,10 @@ export default function LocationPermissionHost({ user, role, required = false })
       },
       (error) => {
         const nextStatus = errorStatus(error);
+        sendSignal({ permissionStatus: nextStatus, source: 'web-watch', reason: error?.message || 'Gagal membaca lokasi.' }).catch(() => {});
+        if (sessionGrantedRef.current) return;
         setStatus(nextStatus);
         setMessage(nextStatus === 'denied' ? 'Izin lokasi ditolak di browser.' : 'Lokasi belum dapat dibaca dari perangkat.');
-        sendSignal({ permissionStatus: nextStatus, source: 'web-watch', reason: error?.message || 'Gagal membaca lokasi.' }).catch(() => {});
       },
       { enableHighAccuracy: true, maximumAge: 60_000, timeout: 15_000 },
     );
@@ -96,6 +138,7 @@ export default function LocationPermissionHost({ user, role, required = false })
 
   const requestLocation = useCallback(async (source = 'web-request') => {
     if (!userId || typeof navigator === 'undefined' || !navigator?.geolocation?.getCurrentPosition) {
+      setBusy(false);
       setStatus('unsupported');
       setMessage('Browser ini belum mendukung lokasi.');
       await sendSignal({ permissionStatus: 'unsupported', source, reason: 'Browser tidak mendukung Geolocation API.' }).catch(() => {});
@@ -109,6 +152,8 @@ export default function LocationPermissionHost({ user, role, required = false })
         setStatus('granted');
         setHidden(false);
         setMessage('Lokasi aktif saat aplikasi terbuka.');
+        writeSessionGrant(role, userId);
+        setSessionGranted(true);
         writePromptState(role, userId, { askedAt: new Date().toISOString(), status: 'granted' });
         await sendSignal(positionPayload(position, source)).catch(() => {});
         startWatch();
@@ -130,12 +175,21 @@ export default function LocationPermissionHost({ user, role, required = false })
     let cancelled = false;
 
     (async () => {
+      const alreadyGrantedThisSession = readSessionGrant(role, userId);
+      setSessionGranted(alreadyGrantedThisSession);
       const permission = await getPermissionState();
       if (cancelled) return;
+
+      if (alreadyGrantedThisSession) {
+        setStatus(permission);
+        if (permission === 'granted') requestLocation(`${role || 'user'}-session-refresh`);
+        return;
+      }
+
       setStatus(permission);
 
       if (permission === 'granted') {
-        requestLocation('web-granted-refresh');
+        requestLocation(`${role || 'user'}-granted-refresh`);
         return;
       }
 
@@ -149,7 +203,7 @@ export default function LocationPermissionHost({ user, role, required = false })
       const recently = (value) => value && Date.now() - new Date(value).getTime() < 24 * 60 * 60 * 1000;
       const shouldStayHidden = !required && (recently(promptState.askedAt) || recently(promptState.dismissedAt));
       setHidden(shouldStayHidden);
-      if (required) requestLocation('admin-default-request');
+      if (required) requestLocation(`${role || 'user'}-default-request`);
     })();
 
     return () => {
@@ -158,9 +212,53 @@ export default function LocationPermissionHost({ user, role, required = false })
     };
   }, [required, requestLocation, role, sendSignal, stopWatch, userId]);
 
-  if (!userId || status === 'granted' || hidden) return null;
+  if (!userId || sessionGranted || status === 'granted' || hidden) return null;
 
   const isRequiredBlocked = required && status === 'denied';
+  if (required) {
+    return (
+      <div className="fixed inset-0 z-[220] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
+        <div className={`w-[min(520px,100%)] rounded-2xl border p-5 shadow-2xl ${
+          isRequiredBlocked
+            ? 'border-red-200 bg-red-50 text-red-950'
+            : 'border-blue-100 bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white'
+        }`}>
+          <div className="flex items-start gap-4">
+            <span className={`material-symbols-outlined mt-0.5 text-[32px] ${isRequiredBlocked ? 'text-red-600' : 'text-blue-600'}`}>
+              {isRequiredBlocked ? 'location_disabled' : 'my_location'}
+            </span>
+            <div className="min-w-0 flex-1">
+              <h2 className="text-lg font-black">{roleCopy.title}</h2>
+              <p className="mt-2 text-sm leading-6 opacity-85">
+                {message || REQUEST_COPY.message}
+              </p>
+              <p className={`mt-3 rounded-xl px-3 py-2 text-xs font-bold leading-5 ${
+                isRequiredBlocked
+                  ? 'bg-white/80 text-red-700'
+                  : 'bg-blue-50 text-blue-800 dark:bg-blue-950/40 dark:text-blue-200'
+              }`}>
+                {roleCopy.requiredNote} Pengecekan ini hanya diminta sekali pada sesi login aktif.
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => requestLocation(`${role || 'user'}-manual-request`)}
+                  disabled={busy}
+                  className={`rounded-xl px-4 py-2.5 text-xs font-black text-white ${isRequiredBlocked ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'} disabled:opacity-50`}
+                >
+                  {busy ? 'Meminta izin...' : 'Aktifkan lokasi'}
+                </button>
+                <span className="inline-flex items-center rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 dark:border-slate-700 dark:text-slate-300">
+                  Status: {status === 'checking' ? 'memeriksa' : status}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={`fixed bottom-4 right-4 z-[160] w-[min(420px,calc(100vw-32px))] rounded-2xl border p-4 shadow-2xl ${
       isRequiredBlocked
@@ -172,36 +270,29 @@ export default function LocationPermissionHost({ user, role, required = false })
           {isRequiredBlocked ? 'location_disabled' : 'my_location'}
         </span>
         <div className="min-w-0 flex-1">
-          <h2 className="text-sm font-black">{required ? 'Lokasi wajib untuk admin' : REQUEST_COPY.title}</h2>
+          <h2 className="text-sm font-black">{REQUEST_COPY.title}</h2>
           <p className="mt-1 text-sm leading-5 opacity-80">
             {message || REQUEST_COPY.message}
           </p>
-          {required && (
-            <p className="mt-2 rounded-xl bg-white/70 px-3 py-2 text-xs font-bold text-red-700 dark:bg-red-950/30">
-              Admin perlu mengaktifkan lokasi untuk akses monitoring yang lebih aman.
-            </p>
-          )}
           <div className="mt-3 flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={() => requestLocation(required ? 'admin-manual-request' : 'user-manual-request')}
+              onClick={() => requestLocation('user-manual-request')}
               disabled={busy}
               className={`rounded-xl px-4 py-2 text-xs font-black text-white ${isRequiredBlocked ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'} disabled:opacity-50`}
             >
               {busy ? 'Meminta izin...' : 'Aktifkan lokasi'}
             </button>
-            {!required && (
-              <button
-                type="button"
-                onClick={() => {
-                  writePromptState(role, userId, { dismissedAt: new Date().toISOString() });
-                  setHidden(true);
-                }}
-                className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-black text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-              >
-                Nanti
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => {
+                writePromptState(role, userId, { dismissedAt: new Date().toISOString() });
+                setHidden(true);
+              }}
+              className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-black text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              Nanti
+            </button>
           </div>
         </div>
       </div>

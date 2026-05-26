@@ -11,6 +11,7 @@ import AutoRefreshHost from '../../shared/ui/AutoRefreshHost';
 import LanguageRuntime from '../../shared/ui/LanguageRuntime';
 import FriendlyLoader from '../../shared/ui/FriendlyLoader';
 import LocationPermissionHost from '../../shared/ui/LocationPermissionHost';
+import GuideHost from '../../shared/ui/GuideHost';
 import { setClinicPortalTitle } from '../../shared/clinicSettings';
 import { getNotificationDestination } from '../../shared/notifications';
 
@@ -32,6 +33,7 @@ const AdminRooms = lazy(() => import('../../admin-rooms/src/App'));
 const AdminPrograms = lazy(() => import('../../admin-programs/src/App'));
 const UserManagement = lazy(() => import('./pages/UserManagementPage'));
 const TherapistLeaveRequests = lazy(() => import('./pages/TherapistLeaveRequestsPage'));
+const CenterMigration = lazy(() => import('./pages/CenterMigrationPage'));
 
 function Loading() {
   return (
@@ -111,6 +113,7 @@ function DashboardLayout() {
           onOpenNotifications={(notification) => navigate(getNotificationDestination(notification, 'admin'))}
         />
         <LocationPermissionHost user={user} role="admin" required />
+        <GuideHost user={user} role="admin" />
         <div className="min-h-0 flex-1 overflow-y-auto bg-background-light dark:bg-background-dark">
           <Suspense fallback={<Loading />}>
             <Routes key={refreshKey}>
@@ -126,6 +129,7 @@ function DashboardLayout() {
               <Route path="children" element={<ChildManagement />} />
               <Route path="children/register" element={<ChildRegistration />} />
               <Route path="children/program-registration" element={<ProgramEnrollment />} />
+              <Route path="migration" element={<CenterMigration />} />
               <Route path="therapists" element={<TherapistManagement />} />
               <Route path="rooms" element={<AdminRooms />} />
               <Route path="programs" element={<AdminPrograms />} />

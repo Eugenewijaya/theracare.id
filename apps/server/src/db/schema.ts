@@ -375,6 +375,52 @@ export const auditLogs = pgTable("audit_logs", {
 
 // ── Announcements ──────────────────────────────────────────────────
 
+export const migrationBatches = pgTable("migration_batches", {
+  id: text("id").primaryKey(),
+  status: text("status").notNull().default("dry_run"),
+  sourceType: text("source_type").notNull().default("excel_csv"),
+  fileName: text("file_name"),
+  createdBy: text("created_by").references(() => user.id),
+  summary: jsonb("summary").$type<Record<string, unknown>>(),
+  appliedAt: timestamp("applied_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const migrationRecords = pgTable("migration_records", {
+  id: text("id").primaryKey(),
+  batchId: text("batch_id")
+    .notNull()
+    .references(() => migrationBatches.id),
+  status: text("status").notNull().default("ready"),
+  rowNumber: integer("row_number").notNull(),
+  childId: text("child_id").references(() => children.id),
+  therapyPeriodId: text("therapy_period_id").references(() => therapyPeriods.id),
+  confidence: integer("confidence").notNull().default(0),
+  errors: jsonb("errors").$type<string[]>(),
+  warnings: jsonb("warnings").$type<string[]>(),
+  sourceSnapshot: jsonb("source_snapshot").$type<Record<string, unknown>>(),
+  normalizedData: jsonb("normalized_data").$type<Record<string, unknown>>(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const historicalSessionSummaries = pgTable("historical_session_summaries", {
+  id: text("id").primaryKey(),
+  migrationBatchId: text("migration_batch_id").references(() => migrationBatches.id),
+  childId: text("child_id")
+    .notNull()
+    .references(() => children.id),
+  therapyPeriodId: text("therapy_period_id")
+    .notNull()
+    .references(() => therapyPeriods.id),
+  completedCount: integer("completed_count").notNull().default(0),
+  firstKnownDate: date("first_known_date"),
+  lastKnownDate: date("last_known_date"),
+  sourceNote: text("source_note"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 export const announcements = pgTable("announcements", {
   id: text("id").primaryKey(),
   title: text("title").notNull(),
@@ -461,6 +507,7 @@ export const therapyPeriodsRelations = relations(therapyPeriods, ({ one, many })
   }),
   sessions: many(therapySessions),
   reports: many(reports),
+  historicalSummaries: many(historicalSessionSummaries),
 }));
 
 export const roomsRelations = relations(rooms, ({ many }) => ({
@@ -504,6 +551,45 @@ export const reportsRelations = relations(reports, ({ one }) => ({
   }),
   therapyPeriod: one(therapyPeriods, {
     fields: [reports.therapyPeriodId],
+    references: [therapyPeriods.id],
+  }),
+}));
+
+export const migrationBatchesRelations = relations(migrationBatches, ({ one, many }) => ({
+  creator: one(user, {
+    fields: [migrationBatches.createdBy],
+    references: [user.id],
+  }),
+  records: many(migrationRecords),
+  historicalSummaries: many(historicalSessionSummaries),
+}));
+
+export const migrationRecordsRelations = relations(migrationRecords, ({ one }) => ({
+  batch: one(migrationBatches, {
+    fields: [migrationRecords.batchId],
+    references: [migrationBatches.id],
+  }),
+  child: one(children, {
+    fields: [migrationRecords.childId],
+    references: [children.id],
+  }),
+  therapyPeriod: one(therapyPeriods, {
+    fields: [migrationRecords.therapyPeriodId],
+    references: [therapyPeriods.id],
+  }),
+}));
+
+export const historicalSessionSummariesRelations = relations(historicalSessionSummaries, ({ one }) => ({
+  batch: one(migrationBatches, {
+    fields: [historicalSessionSummaries.migrationBatchId],
+    references: [migrationBatches.id],
+  }),
+  child: one(children, {
+    fields: [historicalSessionSummaries.childId],
+    references: [children.id],
+  }),
+  therapyPeriod: one(therapyPeriods, {
+    fields: [historicalSessionSummaries.therapyPeriodId],
     references: [therapyPeriods.id],
   }),
 }));
