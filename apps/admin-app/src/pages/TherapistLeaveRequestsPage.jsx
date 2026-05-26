@@ -20,6 +20,7 @@ const STATUS_STYLE = {
   pending: 'bg-amber-100 text-amber-700',
   approved: 'bg-emerald-100 text-emerald-700',
   rejected: 'bg-red-100 text-red-700',
+  completed: 'bg-slate-100 text-slate-700',
 };
 
 const CHANGE_STATUS_STYLE = {
@@ -31,6 +32,7 @@ const STATUS_LABELS = {
   pending: 'Menunggu Review',
   approved: 'Disetujui',
   rejected: 'Ditolak',
+  completed: 'Selesai',
 };
 
 const DEFAULT_POST_APPROVAL_CHANGE_LIMIT = 3;
@@ -61,12 +63,13 @@ function getRequestChangePolicy(request) {
   const hasApprovalHistory = Boolean(request.wasApproved || request.status === 'approved' || used > 0);
   const isExpired = Boolean(request.isExpired ?? (request.endDate && request.endDate < todayKey()));
   const isFinalRejected = Boolean(request.isFinalRejected ?? request.status === 'rejected');
+  const isCompleted = request.status === 'completed';
   const isChangeLimitReached = Boolean(request.isChangeLimitReached ?? (hasApprovalHistory && remaining <= 0));
   let blockedReason = request.changeBlockedReason || '';
 
   if (!blockedReason && isFinalRejected) {
     blockedReason = 'Pengajuan ini sudah ditolak final. Terapis perlu membuat pengajuan baru jika masih diperlukan.';
-  } else if (!blockedReason && isExpired) {
+  } else if (!blockedReason && (isCompleted || isExpired)) {
     blockedReason = 'Tanggal pengajuan sudah lewat. Terapis perlu membuat pengajuan baru agar riwayat cuti tidak bertumpuk.';
   } else if (!blockedReason && hasApprovalHistory && remaining <= 0) {
     blockedReason = 'Kuota 3x perubahan setelah disetujui sudah habis. Terapis perlu membuat pengajuan baru.';
@@ -85,9 +88,15 @@ function getRequestChangePolicy(request) {
     canChangeStatus: request.canChangeStatus === false ? false : !blockedReason,
     changeStatus: request.changeStatus || (blockedReason ? 'completed' : 'open'),
     changeStatusLabel: request.changeStatusLabel || (blockedReason ? 'Selesai' : 'Aktif'),
-    changeStatusDetail: request.changeStatusDetail || (hasApprovalHistory ? `Perubahan status ${used}/${limit}` : 'Belum pernah disetujui'),
+    changeStatusDetail: request.changeStatusDetail || (hasApprovalHistory ? `Perubahan status ${used}/${limit}` : (isCompleted || isExpired) ? 'Tanggal lewat otomatis selesai' : 'Belum pernah disetujui'),
     blockedReason,
   };
+}
+
+function getDisplayStatus(request) {
+  const changePolicy = getRequestChangePolicy(request);
+  if (request.status === 'pending' && !changePolicy.canChangeStatus) return 'completed';
+  return request.status || 'pending';
 }
 
 export default function TherapistLeaveRequestsPage() {
@@ -165,9 +174,10 @@ export default function TherapistLeaveRequestsPage() {
   };
 
   const stats = useMemo(() => ({
-    pending: requests.filter((item) => item.status === 'pending').length,
-    approved: requests.filter((item) => item.status === 'approved').length,
-    rejected: requests.filter((item) => item.status === 'rejected').length,
+    pending: requests.filter((item) => getDisplayStatus(item) === 'pending').length,
+    approved: requests.filter((item) => getDisplayStatus(item) === 'approved').length,
+    rejected: requests.filter((item) => getDisplayStatus(item) === 'rejected').length,
+    completed: requests.filter((item) => getDisplayStatus(item) === 'completed').length,
   }), [requests]);
 
   const updateStatus = async (request, status) => {
@@ -317,7 +327,7 @@ export default function TherapistLeaveRequestsPage() {
             </button>
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-800">
               <p className="text-xs font-bold uppercase">Pending</p>
               <p className="mt-1 text-2xl font-black">{stats.pending}</p>
@@ -329,6 +339,10 @@ export default function TherapistLeaveRequestsPage() {
             <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-red-800">
               <p className="text-xs font-bold uppercase">Rejected</p>
               <p className="mt-1 text-2xl font-black">{stats.rejected}</p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-slate-700">
+              <p className="text-xs font-bold uppercase">Selesai</p>
+              <p className="mt-1 text-2xl font-black">{stats.completed}</p>
             </div>
           </div>
 
@@ -356,6 +370,7 @@ export default function TherapistLeaveRequestsPage() {
                     </tr>
                   ) : requests.map((request) => {
                     const changePolicy = getRequestChangePolicy(request);
+                    const displayStatus = getDisplayStatus(request);
                     return (
                       <tr key={request.id} className="align-top hover:bg-slate-50/70 dark:hover:bg-primary/5">
                         <td className="px-5 py-4">
@@ -371,8 +386,8 @@ export default function TherapistLeaveRequestsPage() {
                         </td>
                         <td className="max-w-[260px] px-5 py-4 text-sm text-slate-600 dark:text-slate-300">{request.reason || '-'}</td>
                         <td className="px-5 py-4">
-                          <span className={`rounded-full px-2.5 py-1 text-xs font-black uppercase ${STATUS_STYLE[request.status] || STATUS_STYLE.pending}`}>
-                            {STATUS_LABELS[request.status] || request.status}
+                          <span className={`rounded-full px-2.5 py-1 text-xs font-black uppercase ${STATUS_STYLE[displayStatus] || STATUS_STYLE.pending}`}>
+                            {STATUS_LABELS[displayStatus] || displayStatus}
                           </span>
                           {(changePolicy.hasApprovalHistory || !changePolicy.canChangeStatus) && (
                             <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -402,7 +417,7 @@ export default function TherapistLeaveRequestsPage() {
                               placeholder={changePolicy.canChangeStatus ? 'Catatan admin' : 'Pengajuan terkunci'}
                               className="w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400 dark:border-primary/20 dark:bg-background-dark dark:disabled:bg-slate-900/50"
                             />
-                            {request.status === 'pending' ? (
+                            {displayStatus === 'pending' ? (
                               changePolicy.canChangeStatus ? (
                                 <div className="flex justify-end gap-2">
                                   <button

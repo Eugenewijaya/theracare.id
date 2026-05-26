@@ -11,7 +11,7 @@ const VALID_STATUSES = new Set(["pending", "approved", "rejected"]);
 const POST_APPROVAL_CHANGE_LIMIT = 3;
 const APP_TIME_ZONE = "Asia/Jakarta";
 
-type LeaveRequestStatus = "pending" | "approved" | "rejected";
+type LeaveRequestStatus = "pending" | "approved" | "rejected" | "completed";
 
 type TherapistLeaveRequest = {
   id: string;
@@ -85,12 +85,13 @@ function getChangePolicy(request: TherapistLeaveRequest) {
   const endDate = normalizeDateKey(request.endDate);
   const isExpired = Boolean(endDate && endDate < todayKey());
   const isFinalRejected = request.status === "rejected";
+  const isCompleted = request.status === "completed";
   const isChangeLimitReached = hasApprovalHistory && remainingPostApprovalChanges <= 0;
 
   let changeBlockedReason = "";
   if (isFinalRejected) {
     changeBlockedReason = "Pengajuan ini sudah ditolak final. Terapis perlu membuat pengajuan baru jika masih diperlukan.";
-  } else if (isExpired) {
+  } else if (isCompleted || isExpired) {
     changeBlockedReason = "Tanggal pengajuan ini sudah lewat. Terapis perlu membuat pengajuan baru agar riwayat cuti tidak bertumpuk.";
   } else if (isChangeLimitReached) {
     changeBlockedReason = "Kuota 3x perubahan setelah disetujui sudah habis. Terapis perlu membuat pengajuan baru.";
@@ -100,7 +101,9 @@ function getChangePolicy(request: TherapistLeaveRequest) {
   const changeStatus = canChangeStatus ? "open" : "completed";
   const changeStatusDetail = hasApprovalHistory
     ? `Perubahan status ${changeCount}/${POST_APPROVAL_CHANGE_LIMIT}`
-    : "Belum pernah disetujui";
+    : (isCompleted || isExpired)
+      ? "Tanggal lewat otomatis selesai"
+      : "Belum pernah disetujui";
 
   return {
     postApprovalChangeLimit: POST_APPROVAL_CHANGE_LIMIT,
@@ -123,11 +126,45 @@ function withChangePolicy(request: TherapistLeaveRequest) {
   };
 }
 
+function shouldAutoCompleteExpiredPending(request: TherapistLeaveRequest) {
+  const endDate = normalizeDateKey(request.endDate);
+  return request.status === "pending" && Boolean(endDate && endDate < todayKey());
+}
+
+function completeExpiredPendingRequests(requests: TherapistLeaveRequest[]) {
+  let changed = false;
+  const now = new Date().toISOString();
+  const nextRequests = requests.map((request) => {
+    if (!shouldAutoCompleteExpiredPending(request)) return request;
+    changed = true;
+    return {
+      ...request,
+      status: "completed" as LeaveRequestStatus,
+      reviewNote: request.reviewNote || "Tanggal pengajuan sudah lewat otomatis ditandai selesai.",
+      reviewedAt: request.reviewedAt || now,
+      history: [
+        ...(Array.isArray(request.history) ? request.history : []),
+        {
+          status: "completed" as LeaveRequestStatus,
+          note: "Tanggal pengajuan sudah lewat otomatis ditandai selesai.",
+          createdAt: now,
+        },
+      ],
+    };
+  });
+  return { requests: nextRequests, changed };
+}
+
 async function readRequests() {
   const row = await db.query.clinicSettings.findFirst({
     where: eq(clinicSettings.key, LEAVE_REQUESTS_KEY),
   });
-  return parseRequests(row?.value);
+  const parsed = parseRequests(row?.value);
+  const completed = completeExpiredPendingRequests(parsed);
+  if (completed.changed) {
+    await writeRequests(completed.requests);
+  }
+  return completed.requests;
 }
 
 async function writeRequests(requests: TherapistLeaveRequest[]) {

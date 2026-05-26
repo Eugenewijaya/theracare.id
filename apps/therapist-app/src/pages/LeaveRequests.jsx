@@ -11,6 +11,7 @@ const STATUS_STYLE = {
   pending: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
   approved: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
   rejected: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+  completed: 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200',
 };
 
 const CHANGE_STATUS_STYLE = {
@@ -22,6 +23,7 @@ const STATUS_LABELS = {
   pending: 'Menunggu Review',
   approved: 'Disetujui',
   rejected: 'Ditolak',
+  completed: 'Selesai',
 };
 
 const DEFAULT_POST_APPROVAL_CHANGE_LIMIT = 3;
@@ -56,12 +58,13 @@ function getRequestFollowUpInfo(request) {
   const hasApprovalHistory = Boolean(request.wasApproved || request.status === 'approved' || used > 0);
   const isExpired = Boolean(request.isExpired ?? (request.endDate && request.endDate < todayKey()));
   const isFinalRejected = Boolean(request.isFinalRejected ?? request.status === 'rejected');
+  const isCompleted = request.status === 'completed';
   const isChangeLimitReached = Boolean(request.isChangeLimitReached ?? (hasApprovalHistory && remaining <= 0));
   let message = '';
 
   if (isFinalRejected) {
     message = 'Pengajuan ini sudah ditolak final. Buat pengajuan baru jika masih diperlukan.';
-  } else if (isExpired) {
+  } else if (isCompleted || isExpired) {
     message = 'Tanggal pengajuan ini sudah lewat. Buat pengajuan baru jika masih memerlukan cuti.';
   } else if (hasApprovalHistory && remaining <= 0) {
     message = 'Kuota perubahan setelah disetujui sudah habis. Buat pengajuan baru jika ada perubahan lain.';
@@ -77,9 +80,15 @@ function getRequestFollowUpInfo(request) {
     isChangeLimitReached,
     changeStatus: request.changeStatus || (message ? 'completed' : 'open'),
     changeStatusLabel: request.changeStatusLabel || (message ? 'Selesai' : 'Aktif'),
-    changeStatusDetail: request.changeStatusDetail || (hasApprovalHistory ? `Perubahan status ${used}/${limit}` : 'Belum pernah disetujui'),
+    changeStatusDetail: request.changeStatusDetail || (hasApprovalHistory ? `Perubahan status ${used}/${limit}` : (isCompleted || isExpired) ? 'Tanggal lewat otomatis selesai' : 'Belum pernah disetujui'),
     message,
   };
+}
+
+function getDisplayStatus(request) {
+  const followUpInfo = getRequestFollowUpInfo(request);
+  if (request.status === 'pending' && followUpInfo.changeStatus === 'completed') return 'completed';
+  return request.status || 'pending';
 }
 
 export default function LeaveRequests() {
@@ -122,12 +131,13 @@ export default function LeaveRequests() {
   }, []);
 
   const stats = useMemo(() => ({
-    pending: requests.filter((item) => item.status === 'pending').length,
-    approved: requests.filter((item) => item.status === 'approved').length,
-    rejected: requests.filter((item) => item.status === 'rejected').length,
+    pending: requests.filter((item) => getDisplayStatus(item) === 'pending').length,
+    approved: requests.filter((item) => getDisplayStatus(item) === 'approved').length,
+    rejected: requests.filter((item) => getDisplayStatus(item) === 'rejected').length,
+    completed: requests.filter((item) => getDisplayStatus(item) === 'completed').length,
   }), [requests]);
   const filteredRequests = useMemo(() => (
-    statusFilter === 'all' ? requests : requests.filter((item) => item.status === statusFilter)
+    statusFilter === 'all' ? requests : requests.filter((item) => getDisplayStatus(item) === statusFilter)
   ), [requests, statusFilter]);
 
   const handleSubmit = async (e) => {
@@ -240,7 +250,7 @@ export default function LeaveRequests() {
           </section>
 
           <section className="flex min-w-0 flex-col gap-4">
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-800 dark:border-amber-800/50 dark:bg-amber-900/20 dark:text-amber-300">
                 <p className="text-xs font-bold uppercase">Pending</p>
                 <p className="mt-1 text-2xl font-black">{stats.pending}</p>
@@ -252,6 +262,10 @@ export default function LeaveRequests() {
               <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-red-800 dark:border-red-800/50 dark:bg-red-900/20 dark:text-red-300">
                 <p className="text-xs font-bold uppercase">Rejected</p>
                 <p className="mt-1 text-2xl font-black">{stats.rejected}</p>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                <p className="text-xs font-bold uppercase">Selesai</p>
+                <p className="mt-1 text-2xl font-black">{stats.completed}</p>
               </div>
             </div>
 
@@ -267,6 +281,7 @@ export default function LeaveRequests() {
                     ['pending', 'Pending'],
                     ['approved', 'Approved'],
                     ['rejected', 'Rejected'],
+                    ['completed', 'Selesai'],
                   ].map(([value, label]) => (
                     <button
                       key={value}
@@ -292,14 +307,15 @@ export default function LeaveRequests() {
                   </div>
                 ) : filteredRequests.map((request) => {
                   const followUpInfo = getRequestFollowUpInfo(request);
+                  const displayStatus = getDisplayStatus(request);
                   return (
                     <article key={request.id} className="p-5">
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
                             <h3 className="text-sm font-black text-slate-900 dark:text-white">{getTypeLabel(request.type)}</h3>
-                            <span className={`rounded-full px-2.5 py-1 text-[11px] font-black uppercase ${STATUS_STYLE[request.status] || STATUS_STYLE.pending}`}>
-                              {STATUS_LABELS[request.status] || request.status}
+                            <span className={`rounded-full px-2.5 py-1 text-[11px] font-black uppercase ${STATUS_STYLE[displayStatus] || STATUS_STYLE.pending}`}>
+                              {STATUS_LABELS[displayStatus] || displayStatus}
                             </span>
                           </div>
                           <p className="mt-1 text-sm font-semibold text-slate-600 dark:text-slate-300">
