@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { adminApi, notificationsApi, therapyPeriodsApi } from '../../../shared/api/client';
+import { confirmAction } from '../../../shared/ui/confirmDialog';
 import {
   formatNotificationTime,
   getNotificationDestination,
@@ -294,7 +295,14 @@ export default function Announcements() {
 
   const respondDeletionRequest = async (request, decision) => {
     const approved = decision === 'approved';
-    const confirmed = window.confirm(`${approved ? 'Setujui' : 'Tolak'} penghapusan periode ${request.periodName} untuk ${request.childName}?`);
+    const confirmed = await confirmAction({
+      title: approved ? 'Setujui penghapusan periode?' : 'Tolak penghapusan periode?',
+      message: `${approved ? 'Setujui' : 'Tolak'} penghapusan periode ${request.periodName} untuk ${request.childName}?`,
+      details: 'Keputusan ini akan dikirim ke admin dan dipakai untuk melanjutkan atau membatalkan perubahan periode anak.',
+      tone: approved ? 'warning' : 'danger',
+      confirmText: approved ? 'Setujui' : 'Tolak',
+      cancelText: 'Kembali',
+    });
     if (!confirmed) return;
     setDeletionProcessingId(request.id);
     setDeletionFeedback('');

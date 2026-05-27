@@ -2,35 +2,28 @@ import React, { useState, useEffect } from 'react';
 import { parentsApi } from '../../../shared/api/client';
 import { readParentUser } from '../../../shared/sessionIdentity';
 import LanguageSettingsPanel from '../../../shared/ui/LanguageSettingsPanel';
-
-const PARENT_SETTINGS_KEY = 'theracare_parent_portal_preferences';
-
-function readPreferences() {
-    try {
-        return JSON.parse(localStorage.getItem(PARENT_SETTINGS_KEY) || '{}');
-    } catch {
-        return {};
-    }
-}
+import {
+    applyParentThemePreference,
+    getResolvedParentThemePreference,
+    readParentPreferences,
+    writeParentPreferences,
+} from '../../../shared/parentPreferences';
 
 export default function Settings() {
-    const [theme, setTheme] = useState('light');
-    const [notifEmail, setNotifEmail] = useState(() => readPreferences().notifEmail ?? true);
-    const [notifSms, setNotifSms] = useState(() => readPreferences().notifSms ?? false);
+    const [theme, setTheme] = useState(() => getResolvedParentThemePreference(readParentPreferences().theme));
+    const [notifEmail, setNotifEmail] = useState(() => readParentPreferences().notifEmail ?? true);
+    const [notifSms, setNotifSms] = useState(() => readParentPreferences().notifSms ?? false);
     const [parentData, setParentData] = useState({ name: '', email: '', phone: '' });
     const [profileNotice, setProfileNotice] = useState('');
+    const [preferenceNotice, setPreferenceNotice] = useState('');
     
     const [toast, setToast] = useState(null);
 
     useEffect(() => {
-        const prefs = readPreferences();
-        if (prefs.theme === 'dark' || (!prefs.theme && document.documentElement.classList.contains('dark'))) {
-            document.documentElement.classList.add('dark');
-            setTheme('dark');
-        } else if (prefs.theme === 'light') {
-            document.documentElement.classList.remove('dark');
-            setTheme('light');
-        }
+        const prefs = readParentPreferences();
+        setNotifEmail(prefs.notifEmail ?? true);
+        setNotifSms(prefs.notifSms ?? false);
+        setTheme(applyParentThemePreference(prefs.theme));
         
         const load = async () => {
             const user = readParentUser();
@@ -63,16 +56,22 @@ export default function Settings() {
 
 
     const toggleTheme = () => {
-        const isDark = document.documentElement.classList.toggle('dark');
-        setTheme(isDark ? 'dark' : 'light');
+        const nextTheme = applyParentThemePreference(theme === 'dark' ? 'light' : 'dark');
+        setTheme(nextTheme);
+        setPreferenceNotice('');
     };
     
     const handleSave = (e) => {
         e.preventDefault();
         try {
-            localStorage.setItem(PARENT_SETTINGS_KEY, JSON.stringify({ notifEmail, notifSms, theme }));
-        } catch {}
-        setToast('Preferensi berhasil disimpan.');
+            const saved = writeParentPreferences({ notifEmail, notifSms, theme });
+            setTheme(applyParentThemePreference(saved.theme));
+            setPreferenceNotice('Preferensi tersimpan di perangkat ini. Pengiriman email dan WhatsApp tetap mengikuti konfigurasi admin center.');
+            setToast('Preferensi tampilan perangkat ini berhasil disimpan.');
+        } catch {
+            setPreferenceNotice('Preferensi belum bisa disimpan di perangkat ini.');
+            setToast('Preferensi belum bisa disimpan.');
+        }
         setTimeout(() => setToast(null), 3000);
     };
 
@@ -157,24 +156,32 @@ export default function Settings() {
                                     <span className="material-symbols-outlined text-sm text-slate-400">notifications_active</span> 
                                     Preferensi Notifikasi
                                 </h2>
+                                <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+                                    Toggle ini menyimpan prioritas pengingat di perangkat ini. Kanal pengiriman email dan WhatsApp dikelola oleh admin center.
+                                </p>
+                                {preferenceNotice && (
+                                    <p className="mt-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-bold text-sky-800 dark:border-sky-900 dark:bg-sky-950/30 dark:text-sky-200">
+                                        {preferenceNotice}
+                                    </p>
+                                )}
                             </div>
                             <div className="p-6 flex flex-col gap-4">
-                                <label className="flex items-center justify-between cursor-pointer p-4 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-                                    <div>
+                                <label className="flex items-center justify-between gap-4 cursor-pointer p-4 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+                                    <div className="min-w-0">
                                         <p className="text-sm font-bold text-slate-900 dark:text-white mb-0.5">Notifikasi Email</p>
-                                        <p className="text-xs text-slate-500 dark:text-slate-400">Terima pengingat jadwal dan laporan ke email.</p>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400">Prioritaskan pengingat email pada tampilan perangkat ini.</p>
                                     </div>
-                                    <div className={`w-12 h-6 rounded-full transition-colors relative ${notifEmail ? 'bg-sky-500' : 'bg-slate-300 dark:bg-slate-600'}`}>
+                                    <div className={`h-6 w-12 shrink-0 rounded-full transition-colors relative ${notifEmail ? 'bg-sky-500' : 'bg-slate-300 dark:bg-slate-600'}`}>
                                         <input type="checkbox" className="sr-only" checked={notifEmail} onChange={() => setNotifEmail(!notifEmail)} />
                                         <div className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform ${notifEmail ? 'translate-x-6' : 'translate-x-0'}`}></div>
                                     </div>
                                 </label>
-                                <label className="flex items-center justify-between cursor-pointer p-4 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-                                    <div>
+                                <label className="flex items-center justify-between gap-4 cursor-pointer p-4 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+                                    <div className="min-w-0">
                                         <p className="text-sm font-bold text-slate-900 dark:text-white mb-0.5">Notifikasi SMS / WhatsApp</p>
-                                        <p className="text-xs text-slate-500 dark:text-slate-400">Pemberitahuan darurat atau penjadwalan batal.</p>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400">Prioritaskan pengingat darurat dan jadwal pada perangkat ini.</p>
                                     </div>
-                                    <div className={`w-12 h-6 rounded-full transition-colors relative ${notifSms ? 'bg-sky-500' : 'bg-slate-300 dark:bg-slate-600'}`}>
+                                    <div className={`h-6 w-12 shrink-0 rounded-full transition-colors relative ${notifSms ? 'bg-sky-500' : 'bg-slate-300 dark:bg-slate-600'}`}>
                                         <input type="checkbox" className="sr-only" checked={notifSms} onChange={() => setNotifSms(!notifSms)} />
                                         <div className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform ${notifSms ? 'translate-x-6' : 'translate-x-0'}`}></div>
                                     </div>
@@ -191,15 +198,15 @@ export default function Settings() {
                                 </h2>
                             </div>
                             <div className="p-6">
-                                <div className="flex items-center justify-between p-4 border border-slate-200 dark:border-slate-700 rounded-xl">
-                                    <div>
+                                <div className="flex items-center justify-between gap-4 p-4 border border-slate-200 dark:border-slate-700 rounded-xl">
+                                    <div className="min-w-0">
                                         <p className="text-sm font-bold text-slate-900 dark:text-white mb-0.5">Tema Aplikasi</p>
                                         <p className="text-xs text-slate-500 dark:text-slate-400">Beralih antara mode Terang (Light) dan Gelap (Dark).</p>
                                     </div>
                                     <button 
                                         type="button"
                                         onClick={toggleTheme}
-                                        className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 text-sm font-bold rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+                                        className="flex shrink-0 items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 text-sm font-bold rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
                                     >
                                         <span className="material-symbols-outlined text-[18px]">
                                             {theme === 'dark' ? 'dark_mode' : 'light_mode'}

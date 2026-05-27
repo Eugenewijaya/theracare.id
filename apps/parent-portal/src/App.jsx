@@ -5,7 +5,10 @@ const ParentWebDashboard = lazy(() => import('../../parent-web-dashboard/src/App
 const ParentReportsArchive = lazy(() => import('../../parent-reports-archive/src/App.jsx'));
 const ParentReschedule = lazy(() => import('../../parent-reschedule/src/App.jsx'));
 const ChildProfile = lazy(() => import('../../parent-app/src/pages/ChildProfile.jsx'));
+const AttendanceLog = lazy(() => import('../../parent-app/src/pages/AttendanceLog.jsx'));
+const ProgressSummary = lazy(() => import('../../parent-app/src/pages/ProgressSummary.jsx'));
 const Announcements = lazy(() => import('../../parent-app/src/pages/Announcements.jsx'));
+const Meetings = lazy(() => import('../../parent-app/src/pages/Meetings.jsx'));
 const Settings = lazy(() => import('../../parent-app/src/pages/Settings.jsx'));
 
 function Loading() {
@@ -28,7 +31,10 @@ export default function App() {
                     <Route path="/reports" element={<ParentReportsArchive />} />
                     <Route path="/reschedule" element={<ParentReschedule />} />
                     <Route path="/profile" element={<ChildProfile />} />
+                    <Route path="/attendance" element={<AttendanceLog />} />
+                    <Route path="/progress" element={<ProgressSummary />} />
                     <Route path="/announcements" element={<Announcements />} />
+                    <Route path="/meetings" element={<Meetings />} />
                     <Route path="/settings" element={<Settings />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>

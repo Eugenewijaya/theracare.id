@@ -334,6 +334,7 @@ export default function ProgressSummary() {
             setChildren(list);
             setSelectedChildId(prev => (list.some(child => child.id === prev) ? prev : (list[0]?.id || '')));
 
+            const warningMessages = [];
             const dataEntries = await Promise.all(list.map(async (child) => {
                 const childId = child.id || child.nita;
                 if (!childId) return { childId: '', sessions: [], reports: [] };
@@ -342,6 +343,12 @@ export default function ProgressSummary() {
                         sessionsApi.getCompletedForChild(childId),
                         reportsApi.getForChild(childId),
                     ]);
+                    if (!sessionRes.ok) {
+                        warningMessages.push(sessionRes.data?.error || `Riwayat sesi ${child.name || childId} belum bisa dimuat.`);
+                    }
+                    if (!reportRes.ok) {
+                        warningMessages.push(reportRes.data?.error || `Laporan ${child.name || childId} belum bisa dimuat.`);
+                    }
                     return {
                         childId,
                         sessions: sessionRes.ok ? (sessionRes.data?.data || []) : [],
@@ -349,6 +356,7 @@ export default function ProgressSummary() {
                     };
                 } catch (err) {
                     console.error('Failed to load child progress data', err);
+                    warningMessages.push(`Sebagian data ${child.name || childId} belum bisa dimuat.`);
                     return { childId, sessions: [], reports: [] };
                 }
             }));
@@ -370,6 +378,9 @@ export default function ProgressSummary() {
                 }
             }));
             setRatingsBySession(Object.fromEntries(ratingEntries));
+            if (warningMessages.length) {
+                setError([...new Set(warningMessages)].slice(0, 2).join(' '));
+            }
         } catch (err) {
             console.error(err);
             setError('Gagal memuat ringkasan kemajuan anak.');

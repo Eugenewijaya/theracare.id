@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useCallback, useState, useEffect, useRef } from 'react';
 import { childrenApi, sessionsApi } from '../../../shared/api/client';
 import { uploadImageFile } from '../../../shared/uploadImage';
 import { readParentUser } from '../../../shared/sessionIdentity';
@@ -8,44 +8,84 @@ export default function ChildProfile() {
     const [completedSessions, setCompletedSessions] = useState([]);
     const [uploadingPhoto, setUploadingPhoto] = useState(false);
     const [photoError, setPhotoError] = useState('');
+    const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState('');
     const photoInputRef = useRef(null);
 
-    useEffect(() => {
-        const loadProfile = async () => {
+    const loadProfile = useCallback(async () => {
+        setLoading(true);
+        setLoadError('');
+        setPhotoError('');
+        try {
             const user = readParentUser();
-            if (!user) return;
+            if (!user) throw new Error('Sesi orang tua tidak ditemukan. Silakan login ulang.');
             const childId = user.childId;
             const parentId = user.parentId;
-            if (!childId && !parentId) return;
+            if (!childId && !parentId) throw new Error('Akun orang tua belum terhubung dengan profil anak.');
 
-            try {
-                let targetChildId = childId;
-                if (!targetChildId && parentId) {
-                    const cres = await childrenApi.getByParent(parentId);
-                    const children = cres.data?.data || [];
-                    if (children.length > 0) {
-                        targetChildId = children[0].id || children[0].nita;
-                    }
+            let targetChildId = childId;
+            if (!targetChildId && parentId) {
+                const cres = await childrenApi.getByParent(parentId);
+                if (!cres.ok) throw new Error(cres.data?.error || 'Profil anak belum bisa dimuat.');
+                const children = cres.data?.data || [];
+                if (children.length > 0) {
+                    targetChildId = children[0].id || children[0].nita;
                 }
-                
-                if (targetChildId) {
-                    const res = await childrenApi.getById(targetChildId);
-                    setChild(res.data?.data || null);
-                    
-                    const sessRes = await sessionsApi.getCompletedForChild(targetChildId);
-                    setCompletedSessions(sessRes.data?.data || []);
-                }
-            } catch(e) { console.error(e); }
-        };
+            }
 
-        loadProfile();
+            if (!targetChildId) throw new Error('Profil anak belum tersedia untuk akun ini.');
+
+            const res = await childrenApi.getById(targetChildId);
+            if (!res.ok) throw new Error(res.data?.error || 'Profil anak belum bisa dimuat.');
+            const nextChild = res.data?.data || null;
+            if (!nextChild) throw new Error('Profil anak belum ditemukan.');
+            setChild(nextChild);
+
+            const sessRes = await sessionsApi.getCompletedForChild(targetChildId);
+            if (!sessRes.ok) {
+                setCompletedSessions([]);
+                setLoadError(sessRes.data?.error || 'Riwayat sesi belum bisa dimuat.');
+                return;
+            }
+            setCompletedSessions(sessRes.data?.data || []);
+        } catch(e) {
+            console.error(e);
+            setChild(null);
+            setCompletedSessions([]);
+            setLoadError(e.message || 'Profil anak belum bisa dimuat.');
+        } finally {
+            setLoading(false);
+        }
     }, []);
 
-    if (!child) {
+    useEffect(() => {
+        loadProfile();
+    }, [loadProfile]);
+
+    if (loading) {
         return (
             <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-white dark:bg-slate-900">
                 <span className="material-symbols-outlined text-5xl text-slate-300 dark:text-slate-600 mb-4 animate-pulse">child_care</span>
                 <h2 className="text-xl font-bold text-slate-600 dark:text-slate-300">Memuat Profil Anak...</h2>
+            </div>
+        );
+    }
+
+    if (!child) {
+        return (
+            <div className="flex min-h-full items-center justify-center bg-slate-50 p-6 text-center dark:bg-slate-900">
+                <div className="max-w-md rounded-2xl border border-amber-200 bg-white p-6 shadow-sm dark:border-amber-900/50 dark:bg-slate-800">
+                    <span className="material-symbols-outlined text-4xl text-amber-500">error</span>
+                    <h2 className="mt-3 text-xl font-bold text-slate-900 dark:text-white">Profil anak belum bisa dimuat</h2>
+                    <p className="mt-2 text-sm font-semibold text-slate-500 dark:text-slate-400">{loadError || 'Data anak belum tersedia.'}</p>
+                    <button
+                        type="button"
+                        onClick={loadProfile}
+                        className="mt-5 rounded-xl bg-sky-500 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-sky-600"
+                    >
+                        Coba lagi
+                    </button>
+                </div>
             </div>
         );
     }
@@ -95,6 +135,11 @@ export default function ChildProfile() {
 
             <main className="flex-1 p-4 md:p-8">
                 <div className="max-w-5xl mx-auto flex flex-col gap-6">
+                    {loadError && (
+                        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+                            {loadError}
+                        </div>
+                    )}
 
                     {/* Top Identity Card */}
                     <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 md:p-10 shadow-sm border border-slate-200/60 dark:border-slate-700/60 flex flex-col md:flex-row gap-8 items-center md:items-start relative overflow-hidden">

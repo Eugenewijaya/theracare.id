@@ -24,6 +24,7 @@ const Header = ({ title = "Dashboard", onLogout }) => {
             if (parentId) {
                 try {
                     const res = await childrenApi.getByParent(parentId);
+                    if (!res.ok) return;
                     const list = res.data?.data || [];
                     setChildren(list);
                     setActiveChildId(user.childId || list[0]?.nita || '');
@@ -32,6 +33,7 @@ const Header = ({ title = "Dashboard", onLogout }) => {
 
             try {
                 const res = await notificationsApi.getAll();
+                if (!res.ok) return;
                 setNotifications((res.data?.data || []).slice(0, 8));
             } catch(e) {}
         };
@@ -56,14 +58,16 @@ const Header = ({ title = "Dashboard", onLogout }) => {
     }, []);
 
     const markRead = async (id) => {
+        const res = await notificationsApi.markRead(id);
+        if (!res.ok) return;
         setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
-        await notificationsApi.markRead(id);
         window.dispatchEvent(new Event('notificationsUpdated'));
     };
 
     const markAllRead = async () => {
+        const res = await notificationsApi.markAllRead();
+        if (!res.ok) return;
         setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
-        await notificationsApi.markAllRead();
         window.dispatchEvent(new Event('notificationsUpdated'));
     };
 
@@ -112,7 +116,7 @@ const Header = ({ title = "Dashboard", onLogout }) => {
             </button>
 
             {/* Right: controls */}
-            <div className="flex items-center gap-3 w-full sm:w-auto">
+            <div className="flex w-full flex-wrap items-center justify-end gap-3 sm:w-auto">
 
                 {/* Child Switcher */}
                 {children.length > 0 && (

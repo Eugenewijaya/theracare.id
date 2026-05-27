@@ -47,20 +47,27 @@ export default function Meetings() {
     const [toast, setToast] = useState('');
     const [loading, setLoading] = useState(true);
     const [statusFilter, setStatusFilter] = useState('all');
+    const [error, setError] = useState('');
 
     const showToast = (msg) => {
         setToast(msg);
         setTimeout(() => setToast(''), 3000);
     };
 
-    const load = async () => {
+    const load = async ({ silent = false } = {}) => {
+        if (!silent) setLoading(true);
+        setError('');
         try {
             const res = await meetingsApi.getForParent();
+            if (!res.ok) {
+                throw new Error(res.data?.error || 'Parent meeting belum bisa dimuat.');
+            }
             setMeetings(res.data?.data || []);
         } catch (e) {
             console.error(e);
+            setError(e.message || 'Parent meeting belum bisa dimuat.');
         } finally {
-            setLoading(false);
+            if (!silent) setLoading(false);
         }
     };
 
@@ -81,13 +88,16 @@ export default function Meetings() {
     }, [meetings, statusFilter]);
 
     const respond = async (meeting, status) => {
-        const res = await meetingsApi.parentResponse(meeting.id, { status });
-        if (!res.ok) {
-            showToast(res.data?.error || 'Gagal menyimpan respons.');
-            return;
+        try {
+            const res = await meetingsApi.parentResponse(meeting.id, { status });
+            if (!res.ok) {
+                throw new Error(res.data?.error || 'Gagal menyimpan respons.');
+            }
+            await load({ silent: true });
+            showToast(status === 'parent_confirmed' ? 'Meeting disetujui.' : 'Meeting ditolak.');
+        } catch (e) {
+            showToast(e.message || 'Gagal menyimpan respons.');
         }
-        await load();
-        showToast(status === 'parent_confirmed' ? 'Meeting disetujui.' : 'Meeting ditolak.');
     };
 
     return (
@@ -104,6 +114,18 @@ export default function Meetings() {
 
             <main className="flex-1 p-4 md:p-8">
                 <div className="max-w-4xl mx-auto flex flex-col gap-4">
+                    {error && (
+                        <div className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200 sm:flex-row sm:items-center sm:justify-between">
+                            <span>{error}</span>
+                            <button
+                                type="button"
+                                onClick={() => load()}
+                                className="rounded-xl bg-amber-600 px-4 py-2 text-xs font-black text-white hover:bg-amber-700"
+                            >
+                                Coba lagi
+                            </button>
+                        </div>
+                    )}
                     {!loading && meetings.length > 0 && (
                         <div className="grid grid-cols-2 md:grid-cols-5 gap-2 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-3 shadow-sm">
                             <button
@@ -161,8 +183,8 @@ export default function Meetings() {
                             {meeting.parentResponseNote && <p className="mt-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 p-3 text-xs text-slate-500 dark:text-slate-300 break-words">Catatan Anda: {meeting.parentResponseNote}</p>}
                             {meeting.status === 'approved_by_admin' && (
                                 <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:justify-end">
-                                    <button onClick={() => respond(meeting, 'parent_declined')} className="px-4 py-2 rounded-xl bg-red-50 text-red-700 font-bold hover:bg-red-100">Tolak</button>
-                                    <button onClick={() => respond(meeting, 'parent_confirmed')} className="px-4 py-2 rounded-xl bg-sky-500 text-white font-bold hover:bg-sky-600">Setujui</button>
+                                    <button type="button" onClick={() => respond(meeting, 'parent_declined')} className="px-4 py-2 rounded-xl bg-red-50 text-red-700 font-bold hover:bg-red-100">Tolak</button>
+                                    <button type="button" onClick={() => respond(meeting, 'parent_confirmed')} className="px-4 py-2 rounded-xl bg-sky-500 text-white font-bold hover:bg-sky-600">Setujui</button>
                                 </div>
                             )}
                         </div>

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { childrenApi, adminApi, sessionsApi } from '../../../shared/api/client';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { childrenApi, sessionsApi } from '../../../shared/api/client';
 import { readParentUser } from '../../../shared/sessionIdentity';
 
 // Calculate end time from startTime + duration string (e.g. "09:00" + "60 mins")
@@ -17,75 +17,88 @@ export default function AttendanceLog() {
     const [child, setChild] = useState(null);
     const [attendanceLog, setAttendanceLog] = useState([]);
     const [selectedProgram, setSelectedProgram] = useState('all');
-    const [programs, setPrograms] = useState([]);
     const [attendanceRate, setAttendanceRate] = useState(0);
+    const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState('');
 
-    useEffect(() => {
-        const loadData = async () => {
+    const loadData = useCallback(async () => {
+        setLoading(true);
+        setLoadError('');
+        try {
             const user = readParentUser();
-            if (!user) return;
+            if (!user) throw new Error('Sesi orang tua tidak ditemukan. Silakan login ulang.');
             const childId = user.childId;
             const parentId = user.parentId;
-            if (!childId && !parentId) return;
+            if (!childId && !parentId) throw new Error('Akun orang tua belum terhubung dengan profil anak.');
 
-            try {
-                let targetChildId = childId;
-                if (!targetChildId && parentId) {
-                    const cres = await childrenApi.getByParent(parentId);
-                    const childrenList = cres.data?.data || [];
-                    if (childrenList.length > 0) {
-                        targetChildId = childrenList[0].id || childrenList[0].nita;
-                    }
+            let targetChildId = childId;
+            if (!targetChildId && parentId) {
+                const cres = await childrenApi.getByParent(parentId);
+                if (!cres.ok) throw new Error(cres.data?.error || 'Data anak belum bisa dimuat.');
+                const childrenList = cres.data?.data || [];
+                if (childrenList.length > 0) {
+                    targetChildId = childrenList[0].id || childrenList[0].nita;
                 }
+            }
 
-                if (targetChildId) {
-                    const childRes = await childrenApi.getById(targetChildId);
-                    setChild(childRes.data?.data || null);
-                    
-                    const progsRes = await adminApi.getPrograms();
-                    setPrograms(progsRes.data?.data || []);
+            if (!targetChildId) throw new Error('Profil anak belum tersedia untuk akun ini.');
 
-                    const sessionsRes = await sessionsApi.getCompletedForChild(targetChildId);
-                    const childSessions = sessionsRes.data?.data || [];
+            const childRes = await childrenApi.getById(targetChildId);
+            if (!childRes.ok) throw new Error(childRes.data?.error || 'Profil anak belum bisa dimuat.');
+            const nextChild = childRes.data?.data || null;
+            if (!nextChild) throw new Error('Profil anak belum ditemukan.');
+            setChild(nextChild);
 
-                    const logs = childSessions.map(s => {
-                        let status = 'rescheduled';
-                        if (s.status === 'done') status = 'present';
-                        else if (s.status === 'cancelled') status = 'absent';
-                        const therapistName = s.therapist?.name
-                            || s.therapistName
-                            || s.therapist?.user?.name
-                            || 'Terapis';
+            const sessionsRes = await sessionsApi.getCompletedForChild(targetChildId);
+            if (!sessionsRes.ok) throw new Error(sessionsRes.data?.error || 'Riwayat kehadiran belum bisa dimuat.');
+            const childSessions = sessionsRes.data?.data || [];
 
-                        return {
-                            id: s.id,
-                            date: s.date,
-                            program: s.focus || 'Therapy',
-                            status: status,
-                            checkIn: s.status === 'done' ? s.startTime : null,
-                            checkOut: s.status === 'done' ? calculateEndTime(s.startTime, s.duration) : null,
-                            note: s.notes || (status === 'rescheduled' ? 'Sesi dipindahkan' : ''),
-                            therapist: therapistName
-                        };
-                    }).sort((a,b) => new Date(b.date) - new Date(a.date));
-                    setAttendanceLog(logs);
+            const logs = childSessions.map(s => {
+                let status = 'rescheduled';
+                if (s.status === 'done') status = 'present';
+                else if (s.status === 'cancelled') status = 'absent';
+                const therapistName = s.therapist?.name
+                    || s.therapistName
+                    || s.therapist?.user?.name
+                    || 'Terapis';
 
-                    const now = new Date();
-                    const thisMonth = now.getMonth();
-                    const thisYear = now.getFullYear();
-                    const monthSessions = logs.filter(l => {
-                        const d = new Date(l.date);
-                        return d.getMonth() === thisMonth && d.getFullYear() === thisYear;
-                    });
-                    const presentCount = monthSessions.filter(l => l.status === 'present').length;
-                    const rate = monthSessions.length > 0 ? Math.round((presentCount / monthSessions.length) * 100) : 0;
-                    setAttendanceRate(rate);
-                }
-            } catch(e) { console.error(e); }
-        };
+                return {
+                    id: s.id,
+                    date: s.date,
+                    program: s.focus || 'Therapy',
+                    status: status,
+                    checkIn: s.status === 'done' ? s.startTime : null,
+                    checkOut: s.status === 'done' ? calculateEndTime(s.startTime, s.duration) : null,
+                    note: s.notes || (status === 'rescheduled' ? 'Sesi dipindahkan' : ''),
+                    therapist: therapistName
+                };
+            }).sort((a,b) => new Date(b.date) - new Date(a.date));
+            setAttendanceLog(logs);
 
-        loadData();
+            const now = new Date();
+            const thisMonth = now.getMonth();
+            const thisYear = now.getFullYear();
+            const monthSessions = logs.filter(l => {
+                const d = new Date(l.date);
+                return d.getMonth() === thisMonth && d.getFullYear() === thisYear;
+            });
+            const presentCount = monthSessions.filter(l => l.status === 'present').length;
+            const rate = monthSessions.length > 0 ? Math.round((presentCount / monthSessions.length) * 100) : 0;
+            setAttendanceRate(rate);
+        } catch(e) {
+            console.error(e);
+            setChild(null);
+            setAttendanceLog([]);
+            setAttendanceRate(0);
+            setLoadError(e.message || 'Data kehadiran belum bisa dimuat.');
+        } finally {
+            setLoading(false);
+        }
     }, []);
+
+    useEffect(() => {
+        loadData();
+    }, [loadData]);
 
     const getStatusStyle = (status) => {
         switch (status) {
@@ -116,6 +129,16 @@ export default function AttendanceLog() {
             default: return 'event_note';
         }
     };
+
+    const programOptions = useMemo(() => (
+        [...new Set(attendanceLog.map(log => log.program).filter(Boolean))]
+    ), [attendanceLog]);
+
+    useEffect(() => {
+        if (selectedProgram !== 'all' && !programOptions.includes(selectedProgram)) {
+            setSelectedProgram('all');
+        }
+    }, [programOptions, selectedProgram]);
 
     const filteredLogs = attendanceLog.filter(log => {
         if (selectedProgram === 'all') return true;
@@ -148,11 +171,28 @@ export default function AttendanceLog() {
         URL.revokeObjectURL(url);
     };
 
-    if (!child) return (
+    if (loading) return (
         <div className="flex h-full items-center justify-center bg-slate-50 dark:bg-slate-900">
             <div className="flex flex-col items-center gap-4">
                 <span className="material-symbols-outlined text-4xl text-sky-400 animate-spin">autorenew</span>
                 <p className="text-sm font-semibold text-slate-500">Memuat data kehadiran...</p>
+            </div>
+        </div>
+    );
+
+    if (!child) return (
+        <div className="flex min-h-full items-center justify-center bg-slate-50 p-6 text-center dark:bg-slate-900">
+            <div className="max-w-md rounded-2xl border border-amber-200 bg-white p-6 shadow-sm dark:border-amber-900/50 dark:bg-slate-800">
+                <span className="material-symbols-outlined text-4xl text-amber-500">event_busy</span>
+                <h2 className="mt-3 text-xl font-bold text-slate-900 dark:text-white">Log kehadiran belum bisa dimuat</h2>
+                <p className="mt-2 text-sm font-semibold text-slate-500 dark:text-slate-400">{loadError || 'Data anak belum tersedia.'}</p>
+                <button
+                    type="button"
+                    onClick={loadData}
+                    className="mt-5 rounded-xl bg-sky-500 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-sky-600"
+                >
+                    Coba lagi
+                </button>
             </div>
         </div>
     );
@@ -170,6 +210,11 @@ export default function AttendanceLog() {
 
             <main className="flex-1 p-4 md:p-8">
                 <div className="max-w-5xl mx-auto flex flex-col gap-6">
+                    {loadError && (
+                        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+                            {loadError}
+                        </div>
+                    )}
 
                     {/* Stats Header */}
                     <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 shadow-sm border border-slate-200/60 dark:border-slate-700/60 flex flex-col sm:flex-row justify-between items-center gap-4">
@@ -191,8 +236,8 @@ export default function AttendanceLog() {
                                     className="w-full appearance-none bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-semibold rounded-lg pl-10 pr-10 py-2 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
                                 >
                                     <option value="all">Semua Program</option>
-                                    {programs.map(p => (
-                                        <option key={p.id} value={p.name}>{p.name}</option>
+                                    {programOptions.map(program => (
+                                        <option key={program} value={program}>{program}</option>
                                     ))}
                                 </select>
                                 <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-[18px] text-slate-400 pointer-events-none">expand_more</span>

@@ -111,37 +111,54 @@ function App({ onLogout }) {
     const [completedSessions, setCompletedSessions] = useState([]);
     const [clinicSettings, setClinicSettings] = useState({});
     const [nowTick, setNowTick] = useState(() => new Date());
+    const [loadError, setLoadError] = useState('');
 
     const fetchData = useCallback(async () => {
-            const user = readParentUser();
-            if (!user) return;
-            setParentUser(user);
+        const user = readParentUser();
+        if (!user) {
+            setLoadError('Sesi orang tua tidak ditemukan. Silakan login ulang.');
+            return;
+        }
 
-            const childId  = user.childId;
-            const parentId = user.parentId;
+        setParentUser(user);
+        setLoadError('');
 
-            if (childId) {
-                try {
-                    const upRes = await sessionsApi.getUpcomingForChild(childId);
-                    setUpcomingSessions(upRes.data?.data || []);
-                    const compRes = await sessionsApi.getCompletedForChild(childId);
-                    setCompletedSessions(compRes.data?.data || []);
-                } catch(e) { console.error(e); }
-            }
+        const childId  = user.childId;
+        const parentId = user.parentId;
+        let targetChildId = childId;
 
+        try {
             if (parentId) {
-                try {
-                    const childRes = await childrenApi.getByParent(parentId);
-                    const children = childRes.data?.data || [];
-                    const activeChild = children.find(c => c.nita === childId) || children[0] || null;
-                    setChild(activeChild);
-                } catch(e) { console.error(e); }
+                const childRes = await childrenApi.getByParent(parentId);
+                if (!childRes.ok) throw new Error(childRes.data?.error || 'Profil anak belum bisa dimuat.');
+                const children = childRes.data?.data || [];
+                const activeChild = children.find(c => c.nita === childId || c.id === childId) || children[0] || null;
+                setChild(activeChild);
+                targetChildId = targetChildId || activeChild?.id || activeChild?.nita;
             }
 
-            try {
-                const setRes = await adminApi.getPublicSettings();
+            if (targetChildId) {
+                const [upRes, compRes] = await Promise.all([
+                    sessionsApi.getUpcomingForChild(targetChildId),
+                    sessionsApi.getCompletedForChild(targetChildId),
+                ]);
+                if (!upRes.ok) throw new Error(upRes.data?.error || 'Jadwal berikutnya belum bisa dimuat.');
+                if (!compRes.ok) throw new Error(compRes.data?.error || 'Riwayat sesi belum bisa dimuat.');
+                setUpcomingSessions(upRes.data?.data || []);
+                setCompletedSessions(compRes.data?.data || []);
+            } else {
+                setUpcomingSessions([]);
+                setCompletedSessions([]);
+            }
+
+            const setRes = await adminApi.getPublicSettings();
+            if (setRes.ok) {
                 setClinicSettings(setRes.data?.data || {});
-            } catch(e) { console.error(e); }
+            }
+        } catch(e) {
+            console.error(e);
+            setLoadError(e.message || 'Data dasbor belum bisa dimuat.');
+        }
     }, []);
 
     useEffect(() => {
@@ -203,6 +220,18 @@ function App({ onLogout }) {
 
                 <div className="min-w-0 flex-1 p-4 sm:p-6 lg:p-8">
                     <div className="mx-auto max-w-7xl min-w-0 space-y-6">
+                        {loadError && (
+                            <div className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200 sm:flex-row sm:items-center sm:justify-between">
+                                <span>{loadError}</span>
+                                <button
+                                    type="button"
+                                    onClick={fetchData}
+                                    className="rounded-xl bg-amber-600 px-4 py-2 text-xs font-black text-white hover:bg-amber-700"
+                                >
+                                    Coba lagi
+                                </button>
+                            </div>
+                        )}
 
                         {/* ── Welcome Section ───────────────────────────────── */}
                         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 bg-surface-light dark:bg-surface-dark p-6 rounded-2xl shadow-sm border border-border-light dark:border-border-dark">

@@ -20,6 +20,7 @@ const Header = ({ title = "Reschedule", onLogout }) => {
         if (parentId) {
             try {
                 const res = await childrenApi.getByParent(parentId);
+                if (!res.ok) return;
                 const list = res.data?.data || [];
                 setChildren(list);
                 if (list.length > 0 && !user.childId) {
@@ -32,6 +33,7 @@ const Header = ({ title = "Reschedule", onLogout }) => {
 
         try {
             const res = await notificationsApi.getAll();
+            if (!res.ok) return;
             setNotifications((res.data?.data || []).slice(0, 8));
         } catch(e){}
     };
@@ -47,14 +49,16 @@ const Header = ({ title = "Reschedule", onLogout }) => {
     }, []);
 
     const markRead = async (id) => {
+        const res = await notificationsApi.markRead(id);
+        if (!res.ok) return;
         setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
-        await notificationsApi.markRead(id);
         window.dispatchEvent(new Event('notificationsUpdated'));
     };
 
     const markAllRead = async () => {
+        const res = await notificationsApi.markAllRead();
+        if (!res.ok) return;
         setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
-        await notificationsApi.markAllRead();
         window.dispatchEvent(new Event('notificationsUpdated'));
     };
 
@@ -101,7 +105,7 @@ const Header = ({ title = "Reschedule", onLogout }) => {
                 <h2 className="text-xl font-bold tracking-tight">{title}</h2>
             </button>
             
-            <div className="flex items-center gap-4 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0 hide-scrollbar">
+            <div className="flex w-full flex-wrap items-center justify-end gap-3 sm:w-auto">
                 {/* Dynamic Child Switcher */}
                 {children.length > 0 && (
                     <div className="relative min-w-[180px] shrink-0">
@@ -120,7 +124,7 @@ const Header = ({ title = "Reschedule", onLogout }) => {
                 )}
 
                 {/* Navigasi Atas (Profile, Settings, Notifications) */}
-                <div className="flex items-center gap-1.5 border-l border-border-light dark:border-border-dark pl-4 ml-2 shrink-0 relative">
+                <div className="relative ml-0 flex shrink-0 items-center gap-1.5 border-l border-border-light pl-4 dark:border-border-dark sm:ml-2">
                     <PortalProfileMenu
                         user={parentUser}
                         role="parent"

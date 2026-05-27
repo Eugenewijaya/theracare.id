@@ -559,11 +559,13 @@ function App({ onLogout }) {
     const [hoverRating, setHoverRating] = useState(0);
     const [ratingComment, setRatingComment] = useState('');
     const [selectedReportDetail, setSelectedReportDetail] = useState(null);
+    const [loadError, setLoadError] = useState('');
     const centerSettings = useClinicSettings();
 
     const typeColors = React.useMemo(() => buildTypeColors(programsList), [programsList]);
 
     const loadReports = async () => {
+        setLoadError('');
         const user = readParentUser();
         let childId = selectedChild;
         let availableChildren = childrenList;
@@ -573,17 +575,20 @@ function App({ onLogout }) {
                 let children = [];
                 if (user.parentId) {
                     const childRes = await childrenApi.getByParent(user.parentId);
+                    if (!childRes.ok) throw new Error(childRes.data?.error || 'Gagal memuat profil anak.');
                     children = childRes.data?.data || [];
                 } else if (Array.isArray(user.children) && user.children.length) {
                     children = user.children;
                 } else if (user.childId) {
                     const childRes = await childrenApi.getById(user.childId);
+                    if (!childRes.ok) throw new Error(childRes.data?.error || 'Gagal memuat profil anak.');
                     children = childRes.data?.data ? [childRes.data.data] : [];
                 }
                 availableChildren = children;
                 
                 setChildrenList(children);
                 const pRes = await adminApi.getPrograms();
+                if (!pRes.ok) throw new Error(pRes.data?.error || 'Gagal memuat filter program.');
                 const progList = pRes.data?.data || [];
                 setProgramsList(progList);
                 if (children.length > 0) {
@@ -593,14 +598,17 @@ function App({ onLogout }) {
                 }
             } catch (e) {
                 console.error('Failed to load parent report profile data', e);
-                setToast('Gagal memuat profil anak untuk arsip laporan.');
+                setLoadError(e.message || 'Gagal memuat profil anak untuk arsip laporan.');
+                setToast(e.message || 'Gagal memuat profil anak untuk arsip laporan.');
             }
         } else {
             try {
                 const pRes = await adminApi.getPrograms();
+                if (!pRes.ok) throw new Error(pRes.data?.error || 'Gagal memuat filter program.');
                 setProgramsList(pRes.data?.data || []);
             } catch(e){
                 console.error('Failed to load program filters', e);
+                setLoadError(e.message || 'Gagal memuat filter program.');
             }
         }
 
@@ -623,10 +631,12 @@ function App({ onLogout }) {
             const visibleReports = therapistReports.filter(isParentVisibleReport);
 
             const sRes = await sessionsApi.getCompletedForChild(childId);
+            if (!sRes.ok) throw new Error(sRes.data?.error || 'Gagal memuat sesi selesai anak.');
             const sessions = sRes.data?.data || [];
             const sessionMap = new Map(sessions.map(session => [session.id, session]));
             
             const pRes = await adminApi.getPrograms();
+            if (!pRes.ok) throw new Error(pRes.data?.error || 'Gagal memuat program laporan.');
             const allProg = pRes.data?.data || [];
             const childProfile =
                 availableChildren.find(c => c.id === childId || c.nita === childId) ||
@@ -658,7 +668,8 @@ function App({ onLogout }) {
             setObservationReports(mappedReports.filter(report => report.kind === 'observasi_awal'));
         } catch(e) {
             console.error(e);
-            setToast('Gagal memuat arsip laporan.');
+            setLoadError(e.message || 'Gagal memuat arsip laporan.');
+            setToast(e.message || 'Gagal memuat arsip laporan.');
         }
     };
 
@@ -746,6 +757,19 @@ function App({ onLogout }) {
                             </div>
                         )}
                     </div>
+
+                    {loadError && (
+                        <div className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200 sm:flex-row sm:items-center sm:justify-between">
+                            <span>{loadError}</span>
+                            <button
+                                type="button"
+                                onClick={loadReports}
+                                className="rounded-xl bg-amber-600 px-4 py-2 text-xs font-black text-white hover:bg-amber-700"
+                            >
+                                Coba lagi
+                            </button>
+                        </div>
+                    )}
 
                     {/* Tabs */}
                     <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
