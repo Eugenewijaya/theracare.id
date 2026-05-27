@@ -35,7 +35,19 @@ export default function DailyScheduleTable() {
         };
         load();
         const interval = setInterval(load, 120000);
-        return () => clearInterval(interval);
+        const events = [
+            'sessionUpdated',
+            'scheduleUpdated',
+            'therapistUpdated',
+            'rescheduleUpdated',
+            'substituteRequestsUpdated',
+            'theracareDataUpdated',
+        ];
+        events.forEach((eventName) => window.addEventListener(eventName, load));
+        return () => {
+            clearInterval(interval);
+            events.forEach((eventName) => window.removeEventListener(eventName, load));
+        };
     }, []);
 
     const rows = useMemo(() => {

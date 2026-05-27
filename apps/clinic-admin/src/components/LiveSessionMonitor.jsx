@@ -77,12 +77,20 @@ export default function LiveSessionMonitor() {
         const refresh = setInterval(load, 30000);
         const ticker = setInterval(() => setNow(new Date()), 1000);
         const onUpdate = () => load();
-        window.addEventListener('sessionUpdated', onUpdate);
+        const events = [
+            'sessionUpdated',
+            'scheduleUpdated',
+            'therapistUpdated',
+            'rescheduleUpdated',
+            'substituteRequestsUpdated',
+            'theracareDataUpdated',
+        ];
+        events.forEach((eventName) => window.addEventListener(eventName, onUpdate));
         return () => {
             mounted = false;
             clearInterval(refresh);
             clearInterval(ticker);
-            window.removeEventListener('sessionUpdated', onUpdate);
+            events.forEach((eventName) => window.removeEventListener(eventName, onUpdate));
         };
     }, []);
 

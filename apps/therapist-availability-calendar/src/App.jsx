@@ -133,8 +133,16 @@ function App() {
         };
 
         loadEvents();
-        window.addEventListener('sessionUpdated', loadEvents);
-        return () => window.removeEventListener('sessionUpdated', loadEvents);
+        const events = [
+            'sessionUpdated',
+            'scheduleUpdated',
+            'therapistUpdated',
+            'rescheduleUpdated',
+            'substituteRequestsUpdated',
+            'theracareDataUpdated',
+        ];
+        events.forEach((eventName) => window.addEventListener(eventName, loadEvents));
+        return () => events.forEach((eventName) => window.removeEventListener(eventName, loadEvents));
     }, [currentUser]);
 
     const weekDates = useMemo(() => {

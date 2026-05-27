@@ -79,8 +79,16 @@ const WelcomeFocus = () => {
 
     useEffect(() => {
         loadSummary();
-        window.addEventListener('sessionUpdated', loadSummary);
-        return () => window.removeEventListener('sessionUpdated', loadSummary);
+        const events = [
+            'sessionUpdated',
+            'scheduleUpdated',
+            'therapistUpdated',
+            'rescheduleUpdated',
+            'substituteRequestsUpdated',
+            'theracareDataUpdated',
+        ];
+        events.forEach((eventName) => window.addEventListener(eventName, loadSummary));
+        return () => events.forEach((eventName) => window.removeEventListener(eventName, loadSummary));
     }, [loadSummary]);
 
     useEffect(() => {

@@ -45,7 +45,17 @@ function App() {
 
     useEffect(() => {
         loadScheduleSummary();
-        const events = ['sessionUpdated', 'therapistUpdated', 'leaveRequestsUpdated', 'centerClosuresUpdated'];
+        const events = [
+            'sessionUpdated',
+            'scheduleUpdated',
+            'therapistUpdated',
+            'rescheduleUpdated',
+            'substituteRequestsUpdated',
+            'leaveRequestsUpdated',
+            'centerClosuresUpdated',
+            'childUpdated',
+            'theracareDataUpdated',
+        ];
         events.forEach((eventName) => window.addEventListener(eventName, loadScheduleSummary));
         return () => events.forEach((eventName) => window.removeEventListener(eventName, loadScheduleSummary));
     }, [loadScheduleSummary]);

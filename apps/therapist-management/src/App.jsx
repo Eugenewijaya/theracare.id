@@ -572,6 +572,8 @@ function App() {
             await loadData();
             window.dispatchEvent(new Event('therapistUpdated'));
             window.dispatchEvent(new Event('sessionUpdated'));
+            window.dispatchEvent(new Event('scheduleUpdated'));
+            window.dispatchEvent(new Event('theracareDataUpdated'));
         } catch (error) {
             console.error(error);
             showToast('Gagal menyimpan jadwal terapis.', 'error');

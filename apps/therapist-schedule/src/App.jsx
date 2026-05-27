@@ -139,7 +139,16 @@ function App({ onLogout }) {
     useEffect(() => {
         setLoading(true);
         loadSessions();
-        const events = ['sessionUpdated', 'therapistUpdated', 'leaveRequestsUpdated', 'centerClosuresUpdated'];
+        const events = [
+            'sessionUpdated',
+            'scheduleUpdated',
+            'therapistUpdated',
+            'rescheduleUpdated',
+            'substituteRequestsUpdated',
+            'leaveRequestsUpdated',
+            'centerClosuresUpdated',
+            'theracareDataUpdated',
+        ];
         events.forEach((eventName) => window.addEventListener(eventName, loadSessions));
         return () => events.forEach((eventName) => window.removeEventListener(eventName, loadSessions));
     }, [currentUser?.id, currentDate]);

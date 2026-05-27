@@ -31,6 +31,8 @@ export function getRefreshEventsForPath(path = '') {
   }
   if (source.includes('/therapists')) {
     events.add('therapistUpdated');
+    events.add('sessionUpdated');
+    events.add('scheduleUpdated');
   }
   if (
     source.includes('/sessions')

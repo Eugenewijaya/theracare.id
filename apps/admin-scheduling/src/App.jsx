@@ -456,7 +456,17 @@ function App() {
 
     useEffect(() => {
         loadDb();
-        const events = ['sessionUpdated', 'therapistUpdated', 'leaveRequestsUpdated', 'centerClosuresUpdated'];
+        const events = [
+            'sessionUpdated',
+            'scheduleUpdated',
+            'therapistUpdated',
+            'rescheduleUpdated',
+            'substituteRequestsUpdated',
+            'leaveRequestsUpdated',
+            'centerClosuresUpdated',
+            'childUpdated',
+            'theracareDataUpdated',
+        ];
         events.forEach((eventName) => window.addEventListener(eventName, loadDb));
         return () => events.forEach((eventName) => window.removeEventListener(eventName, loadDb));
     }, [loadDb]);
