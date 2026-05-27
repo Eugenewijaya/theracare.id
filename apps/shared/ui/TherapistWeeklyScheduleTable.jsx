@@ -1,5 +1,6 @@
 import React from 'react';
-import { getTherapistSlotAvailability } from '../therapistSchedule';
+import { getTherapistSlotAvailability, getTherapistWorkWindowForDate } from '../therapistSchedule';
+import { useClinicSettings } from '../clinicSettings';
 
 const DAY_COLUMNS = [
   { key: 'Senin', english: 'Monday', short: 'SEN', offset: 0, aliases: ['senin', 'sen', 'monday', 'mon'] },
@@ -10,12 +11,8 @@ const DAY_COLUMNS = [
   { key: 'Sabtu', english: 'Saturday', short: 'SAB', offset: 5, aliases: ['sabtu', 'sab', 'saturday', 'sat'] },
 ];
 
-const DEFAULT_SLOTS = [
-  { start: '10:00', duration: 90 },
-  { start: '12:30', duration: 90 },
-  { start: '14:30', duration: 90 },
-  { start: '16:30', duration: 90 },
-];
+const SLOT_DURATION = 30;
+const FALLBACK_CENTER_HOURS = '08:00 - 17:00';
 
 const THERAPIST_PALETTES = [
   { row: 'bg-amber-50 text-amber-950', cell: 'bg-amber-50/80', chip: 'bg-amber-100 text-amber-900 border-amber-200' },
@@ -160,6 +157,39 @@ function parseWorkWindow(value) {
   return null;
 }
 
+function addSlot(slots, start, duration = SLOT_DURATION) {
+  const normalizedStart = normalizeClockValue(start);
+  if (!normalizedStart || !Number.isFinite(duration) || duration <= 0) return;
+  slots.set(getSlotKey(normalizedStart, duration), { start: normalizedStart, duration });
+}
+
+function addWindowSlots(slots, window) {
+  const start = parseMinutes(window?.start);
+  const end = parseMinutes(window?.end);
+  if (start === null || end === null || end <= start) return;
+  for (let cursor = start; cursor < end; cursor += SLOT_DURATION) {
+    addSlot(slots, formatClock(cursor).replace('.', ':'), SLOT_DURATION);
+  }
+}
+
+function getCenterWindowForDay(settings, date) {
+  const day = date instanceof Date ? date.getDay() : new Date(`${date}T00:00:00`).getDay();
+  const isWeekend = day === 0 || day === 6;
+  const raw = isWeekend ? settings?.operatingHoursWeekend : settings?.operatingHoursWeekday;
+  return parseWorkWindow(raw || FALLBACK_CENTER_HOURS);
+}
+
+function isSlotInsideWindow(window, slot) {
+  const slotStart = parseMinutes(slot.start);
+  const slotEnd = slotStart === null ? null : slotStart + parseDurationMinutes(slot.duration);
+  const windowStart = parseMinutes(window?.start);
+  const windowEnd = parseMinutes(window?.end);
+  if (slotStart === null || slotEnd === null || windowStart === null || windowEnd === null || windowEnd <= windowStart) {
+    return false;
+  }
+  return slotStart >= windowStart && slotEnd <= windowEnd;
+}
+
 function getRecognizedScheduleEntries(schedule) {
   if (!schedule || typeof schedule !== 'object' || Array.isArray(schedule)) return [];
   const recognizedKeys = new Set(DAY_COLUMNS.flatMap((day) => [
@@ -182,19 +212,26 @@ function getWeekDates(monday) {
   }));
 }
 
-function getSlotsForWeek(sessions, weekDates) {
+function getSlotsForWeek(sessions, weekDates, therapists = [], clinicSettings = {}) {
   const weekDateSet = new Set(weekDates.map((day) => day.dateKey));
   const slots = new Map();
-  DEFAULT_SLOTS.forEach((slot) => slots.set(getSlotKey(slot.start, slot.duration), slot));
+  weekDates.forEach((day) => addWindowSlots(slots, getCenterWindowForDay(clinicSettings, day.date)));
+
+  (therapists || []).forEach((therapist) => {
+    weekDates.forEach((day) => {
+      const { known, window } = getTherapistWorkWindowForDate(therapist, day.date);
+      if (known && window?.start && window?.end) addWindowSlots(slots, window);
+    });
+  });
 
   (sessions || []).forEach((session) => {
     const dateKey = getSessionDateKey(session);
     const start = session?.startTime || session?.time;
     if (!weekDateSet.has(dateKey) || !start) return;
-    const duration = parseDurationMinutes(session?.duration);
-    const normalizedStart = normalizeClockValue(start) || start;
-    slots.set(getSlotKey(normalizedStart, duration), { start: normalizedStart, duration });
+    addSlot(slots, start, SLOT_DURATION);
   });
+
+  if (slots.size === 0) addWindowSlots(slots, parseWorkWindow(FALLBACK_CENTER_HOURS));
 
   return Array.from(slots.values())
     .filter((slot) => parseMinutes(slot.start) !== null)
@@ -289,6 +326,7 @@ function TherapistWeeklyScheduleTable({
   onSelectSession,
   compact = false,
 }) {
+  const clinicSettings = useClinicSettings();
   const [weekStart, setWeekStart] = React.useState(() => getMonday(initialDate));
 
   React.useEffect(() => {
@@ -297,7 +335,10 @@ function TherapistWeeklyScheduleTable({
 
   const weekDates = React.useMemo(() => getWeekDates(weekStart), [weekStart]);
   const visibleTherapists = React.useMemo(() => getVisibleTherapists(therapists, sessions), [therapists, sessions]);
-  const slots = React.useMemo(() => getSlotsForWeek(sessions, weekDates), [sessions, weekDates]);
+  const slots = React.useMemo(
+    () => getSlotsForWeek(sessions, weekDates, visibleTherapists, clinicSettings.settings),
+    [sessions, weekDates, visibleTherapists, clinicSettings.settings],
+  );
   const weekTitle = formatWeekLabel(weekStart);
 
   const shiftWeek = (count) => setWeekStart((prev) => addDays(prev, count * 7));
@@ -405,14 +446,17 @@ function TherapistWeeklyScheduleTable({
                     ));
                     const closure = getClosureForDate(centerClosures, day.dateKey);
                     const leave = getLeaveForDate(leaveRequests, therapistId, day.dateKey);
+                    const centerOpen = isSlotInsideWindow(getCenterWindowForDay(clinicSettings.settings, day.date), slot);
                     const workWindow = isInsideWorkWindow(therapist, day, slot);
                     const offLabel = closure
                       ? 'CENTER OFF'
-                      : leave
-                        ? getLeaveLabel(leave.type)
-                        : workWindow.severity === 'day_off' || workWindow.severity === 'outside_hours'
-                          ? 'OFF'
-                          : '';
+                      : !centerOpen
+                        ? 'CENTER OFF'
+                        : leave
+                          ? getLeaveLabel(leave.type)
+                          : workWindow.severity === 'day_off' || workWindow.severity === 'outside_hours'
+                            ? 'OFF'
+                            : '';
                     const isOff = Boolean(offLabel);
                     const cellClass = isOff ? OFF_CELL_CLASS : palette.cell;
 
