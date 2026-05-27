@@ -83,8 +83,8 @@ function GuideModal({ guide, selectedId, onSelect, onClose }) {
   if (!selected) return null;
 
   return (
-    <div className="fixed inset-0 z-[210] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
-      <div className="flex max-h-[90dvh] w-[min(980px,100%)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-2xl dark:border-slate-700 dark:bg-slate-950 dark:text-white">
+    <div className="fixed inset-0 z-[210] flex min-w-0 items-center justify-center overflow-x-hidden bg-slate-950/60 p-4 backdrop-blur-sm">
+      <div className="flex max-h-[90dvh] w-full min-w-0 max-w-[980px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-2xl dark:border-slate-700 dark:bg-slate-950 dark:text-white">
         <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 dark:border-slate-800">
           <div className="min-w-0">
             <p className="text-xs font-black uppercase tracking-wider text-blue-600 dark:text-blue-300">Panduan fitur</p>
@@ -101,7 +101,7 @@ function GuideModal({ guide, selectedId, onSelect, onClose }) {
           </button>
         </div>
 
-        <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden md:grid-cols-[280px_1fr]">
+        <div className="grid min-h-0 min-w-0 flex-1 grid-cols-1 overflow-hidden md:grid-cols-[minmax(0,280px)_minmax(0,1fr)]">
           <div className="max-h-[36dvh] overflow-y-auto border-b border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/60 md:max-h-none md:border-b-0 md:border-r">
             <div className="flex flex-col gap-1">
               {guide.features.map((feature) => (
@@ -109,7 +109,7 @@ function GuideModal({ guide, selectedId, onSelect, onClose }) {
                   key={feature.id}
                   type="button"
                   onClick={() => onSelect(feature.id)}
-                  className={`rounded-xl px-3 py-2 text-left text-sm font-bold transition ${
+                  className={`min-w-0 truncate rounded-xl px-3 py-2 text-left text-sm font-bold transition ${
                     selected.id === feature.id
                       ? 'bg-blue-600 text-white shadow-sm'
                       : 'text-slate-600 hover:bg-white hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white'
@@ -269,23 +269,21 @@ export default function GuideHost({ role, user, currentPath = '/' }) {
 
   return (
     <>
-      <div className="flex min-h-[52px] shrink-0 items-center justify-end border-b border-slate-200/80 bg-background-light px-4 py-2 dark:border-slate-800/80 dark:bg-background-dark sm:px-6">
+      <div className="flex min-h-[52px] min-w-0 max-w-full shrink-0 items-center justify-end overflow-hidden border-b border-slate-200/80 bg-background-light px-4 py-2 dark:border-slate-800/80 dark:bg-background-dark sm:px-6">
         <button
           type="button"
           onClick={() => {
             setSelectedId(currentFeature?.id || guide.features[0]?.id || '');
             setOpen(true);
           }}
-          className="relative inline-flex max-w-full items-center gap-2 rounded-full border border-blue-200 bg-white px-3.5 py-2 text-xs font-black text-blue-700 shadow-sm shadow-blue-900/5 transition hover:-translate-y-0.5 hover:bg-blue-50 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-300 dark:border-blue-800 dark:bg-slate-900 dark:text-blue-200 dark:hover:bg-slate-800"
+          className="relative inline-flex min-w-0 max-w-full items-center gap-2 overflow-hidden rounded-full border border-blue-200 bg-white px-3.5 py-2 text-xs font-black text-blue-700 shadow-sm shadow-blue-900/5 transition hover:-translate-y-0.5 hover:bg-blue-50 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-300 dark:border-blue-800 dark:bg-slate-900 dark:text-blue-200 dark:hover:bg-slate-800"
           title={`Panduan fitur: ${currentFeature?.label || guide.title}`}
         >
-          <span className="pointer-events-none absolute -inset-1 rounded-full bg-blue-400/15 opacity-70 motion-safe:animate-ping" />
           <span className="relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white">
             <span className="material-symbols-outlined text-[17px]">info</span>
           </span>
-          <span className="relative min-w-0 truncate">
-            <span>Panduan</span>
-            {currentFeature?.label && <span className="hidden sm:inline">: {currentFeature.label}</span>}
+          <span className="relative block min-w-0 truncate">
+            Panduan
           </span>
         </button>
       </div>
