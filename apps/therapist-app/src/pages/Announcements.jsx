@@ -124,7 +124,8 @@ export default function Announcements() {
     const markNotificationRead = async (notificationId) => {
         if (!notificationId) return;
         try {
-            await notificationsApi.markRead(notificationId);
+            const res = await notificationsApi.markRead(notificationId);
+            if (!res.ok) throw new Error(res.data?.error || res.data?.message || 'Notifikasi belum bisa ditandai dibaca.');
             setNotificationMap(prev => {
                 const next = {};
                 Object.entries(prev).forEach(([key, value]) => {
@@ -137,6 +138,7 @@ export default function Announcements() {
             window.dispatchEvent(new Event('notificationsUpdated'));
         } catch (e) {
             console.error('Failed to mark notification read', e);
+            setLoadFeedback(e?.message || 'Notifikasi belum bisa ditandai dibaca.');
         }
     };
 
@@ -150,13 +152,15 @@ export default function Announcements() {
 
     const markAllRead = async () => {
         try {
-            await notificationsApi.markAllRead();
+            const res = await notificationsApi.markAllRead();
+            if (!res.ok) throw new Error(res.data?.error || res.data?.message || 'Notifikasi belum bisa ditandai dibaca.');
             setNotificationMap(prev => Object.fromEntries(Object.entries(prev).map(([key, value]) => [key, { ...value, isRead: true }])));
             setSystemNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
             setUnreadTotal(0);
             window.dispatchEvent(new Event('notificationsUpdated'));
         } catch (e) {
             console.error('Failed to mark all notifications read', e);
+            setLoadFeedback(e?.message || 'Notifikasi belum bisa ditandai dibaca.');
         }
     };
 

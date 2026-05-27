@@ -8,11 +8,13 @@ const Header = () => {
     const navigate = useNavigate();
     const [notifOpen, setNotifOpen] = useState(false);
     const [notifications, setNotifications] = useState([]);
+    const [notificationError, setNotificationError] = useState('');
     const dropdownRef = useRef(null);
     
     const refreshNotifications = async () => {
         try {
             const res = await notificationsApi.getAll();
+            if (!res.ok) throw new Error(res.data?.error || res.data?.message || 'Notifikasi belum bisa dimuat.');
             const raw = res.data?.data || [];
             const mapped = raw.map(n => {
                 return {
@@ -25,8 +27,10 @@ const Header = () => {
                 };
             });
             setNotifications(mapped);
+            setNotificationError('');
         } catch (e) {
             console.error("Failed to fetch notifications", e);
+            setNotificationError(e?.message || 'Notifikasi belum bisa dimuat.');
         }
     };
 
@@ -43,15 +47,29 @@ const Header = () => {
     const unreadCount = notifications.filter(n => !n.read).length;
 
     const markAllRead = async () => {
-        await notificationsApi.markAllRead();
-        setNotifications(notifications.map(n => ({ ...n, read: true })));
-        window.dispatchEvent(new Event('notificationsUpdated'));
+        setNotificationError('');
+        try {
+            const res = await notificationsApi.markAllRead();
+            if (!res.ok) throw new Error(res.data?.error || res.data?.message || 'Notifikasi belum bisa ditandai dibaca.');
+            setNotifications(notifications.map(n => ({ ...n, read: true })));
+            window.dispatchEvent(new Event('notificationsUpdated'));
+        } catch (e) {
+            console.error("Failed to mark notifications read", e);
+            setNotificationError(e?.message || 'Notifikasi belum bisa ditandai dibaca.');
+        }
     };
 
     const markRead = async (id) => {
-        await notificationsApi.markRead(id);
-        setNotifications(notifications.map(n => n.id === id ? { ...n, read: true } : n));
-        window.dispatchEvent(new Event('notificationsUpdated'));
+        setNotificationError('');
+        try {
+            const res = await notificationsApi.markRead(id);
+            if (!res.ok) throw new Error(res.data?.error || res.data?.message || 'Notifikasi belum bisa ditandai dibaca.');
+            setNotifications(notifications.map(n => n.id === id ? { ...n, read: true } : n));
+            window.dispatchEvent(new Event('notificationsUpdated'));
+        } catch (e) {
+            console.error("Failed to mark notification read", e);
+            setNotificationError(e?.message || 'Notifikasi belum bisa ditandai dibaca.');
+        }
     };
 
     useEffect(() => {
@@ -100,6 +118,11 @@ const Header = () => {
                                     )}
                                 </div>
                                 <div className="flex flex-col max-h-72 overflow-y-auto">
+                                    {notificationError && (
+                                        <div className="mx-4 mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+                                            {notificationError}
+                                        </div>
+                                    )}
                                     {notifications.length === 0 ? (
                                         <div className="px-4 py-6 text-center text-slate-500 text-sm">Tidak ada notifikasi</div>
                                     ) : notifications.map(n => (

@@ -11,6 +11,12 @@ const getReviewerLabel = (request) => {
     return 'Belum ada reviewer';
 };
 
+const assertApiOk = (response, fallbackMessage) => {
+    if (response?.ok === false) {
+        throw new Error(response.data?.error || response.data?.message || fallbackMessage);
+    }
+};
+
 // ── Notification Popup Component ──────────────────────────────────
 function NotificationPopup({ isOpen, message, type, onClose, onConfirm, showConfirmButtons }) {
     if (!isOpen) return null;
@@ -190,6 +196,10 @@ function App() {
             ]);
             const rescheduleRes = rescheduleResult.status === 'fulfilled' ? rescheduleResult.value : { data: { data: [] } };
             const meetingsRes = meetingsResult.status === 'fulfilled' ? meetingsResult.value : { data: { data: [] } };
+            if (rescheduleResult.status === 'rejected') throw rescheduleResult.reason;
+            if (meetingsResult.status === 'rejected') throw meetingsResult.reason;
+            assertApiOk(rescheduleRes, 'Request reschedule belum bisa dimuat.');
+            assertApiOk(meetingsRes, 'Request meeting belum bisa dimuat.');
             const raw = rescheduleRes.data?.data || [];
             const meetingRaw = meetingsRes.data?.data || [];
 
@@ -261,6 +271,7 @@ function App() {
             setAllRequests([...mapped, ...mappedMeetings].sort((a, b) => new Date(b.createdAt || b.submittedAgo) - new Date(a.createdAt || a.submittedAgo)));
         } catch (e) {
             console.error('Failed to load incoming requests', e);
+            if (!silent) showPopup(e?.message || 'Permintaan masuk belum bisa dimuat.', 'warning');
         } finally {
             if (!silent) setLoading(false);
             setRefreshing(false);
@@ -312,73 +323,79 @@ function App() {
     const confirmAction = async () => {
         if (!pendingAction) return;
         const { type, req, selectedSlot } = pendingAction;
-        
-        if (type === 'reject') {
-            if (req.kind === 'meeting') {
-                await meetingsApi.adminReview(req.id, {
-                    status: 'cancelled',
-                    reviewNote: 'Dibatalkan dari Permintaan Masuk.',
-                });
-            } else {
-                await rescheduleApi.updateStatus(req.id, 'rejected');
-            }
-            patchRequestStatus(req.id, 'rejected');
-            await refreshData({ silent: true });
-            window.dispatchEvent(new Event('incomingRequestsUpdated'));
-            window.dispatchEvent(new Event('rescheduleUpdated'));
-            window.dispatchEvent(new Event('meetingsUpdated'));
-            setTimeout(() => showPopup(`Request from ${req.name} has been rejected.`, 'success'), 300);
-        }
-        else if (type === 'process') {
-            if (req.kind === 'meeting') {
-                showPopup('Parent meeting sudah berada dalam proses review admin. Gunakan Approve jika orang tua sudah dikonfirmasi.', 'info');
-                setPendingAction(null);
-                return;
-            }
-            await rescheduleApi.updateStatus(req.id, 'review', { reviewNote: 'Under internal review.' });
-            patchRequestStatus(req.id, 'review');
-            await refreshData({ silent: true });
-            window.dispatchEvent(new Event('incomingRequestsUpdated'));
-            window.dispatchEvent(new Event('rescheduleUpdated'));
-            setTimeout(() => {
-                showPopup(`Request from ${req.name} moved to Under Review.`);
-                setActiveTab('review');
-            }, 300);
-        }
-        else if (type === 'approve') {
-            const chosenSlot = selectedSlot || (req.slots ? req.slots.find(s => s.status === 'available') : null);
-            if (req.kind !== 'meeting' && (!chosenSlot || chosenSlot.status !== 'available')) {
-                setPendingAction(null);
-                setPopup(prev => ({ ...prev, showConfirm: false, isOpen: false }));
-                setTimeout(() => showPopup('Tidak ada slot available yang bisa disetujui. Pilih slot lain atau minta orang tua mengirim preferensi baru.', 'warning'), 300);
-                return;
-            }
-            if (req.kind === 'meeting') {
-                await meetingsApi.adminReview(req.id, {
-                    status: 'approved_by_admin',
-                    parentContactConfirmed: true,
-                    communicationMethod: 'Admin confirmation',
-                    reviewNote: 'Admin sudah menghubungi orang tua dan mendapatkan persetujuan.',
-                });
-            } else {
-                await rescheduleApi.updateStatus(req.id, 'approved', {
-                    newDate: chosenSlot?.date,
-                    newStartTime: chosenSlot?.time,
-                });
-            }
-            patchRequestStatus(req.id, 'approved');
-            await refreshData({ silent: true });
-            window.dispatchEvent(new Event('incomingRequestsUpdated'));
-            window.dispatchEvent(new Event('rescheduleUpdated'));
-            window.dispatchEvent(new Event('meetingsUpdated'));
-            window.dispatchEvent(new Event('sessionUpdated'));
-            window.dispatchEvent(new Event('notificationsUpdated'));
-            setActiveTab('resolved');
-            setTimeout(() => showPopup(`Request from ${req.name} has been approved.`, 'success'), 300);
-        }
-        
-        setPendingAction(null);
         setPopup(prev => ({ ...prev, showConfirm: false, isOpen: false }));
+        try {
+            if (type === 'reject') {
+                if (req.kind === 'meeting') {
+                    const res = await meetingsApi.adminReview(req.id, {
+                        status: 'cancelled',
+                        reviewNote: 'Dibatalkan dari Permintaan Masuk.',
+                    });
+                    assertApiOk(res, 'Request meeting belum bisa ditolak.');
+                } else {
+                    const res = await rescheduleApi.updateStatus(req.id, 'rejected');
+                    assertApiOk(res, 'Request reschedule belum bisa ditolak.');
+                }
+                patchRequestStatus(req.id, 'rejected');
+                await refreshData({ silent: true });
+                window.dispatchEvent(new Event('incomingRequestsUpdated'));
+                window.dispatchEvent(new Event('rescheduleUpdated'));
+                window.dispatchEvent(new Event('meetingsUpdated'));
+                setTimeout(() => showPopup(`Request from ${req.name} has been rejected.`, 'success'), 300);
+            }
+            else if (type === 'process') {
+                if (req.kind === 'meeting') {
+                    showPopup('Parent meeting sudah berada dalam proses review admin. Gunakan Approve jika orang tua sudah dikonfirmasi.', 'info');
+                    return;
+                }
+                const res = await rescheduleApi.updateStatus(req.id, 'review', { reviewNote: 'Under internal review.' });
+                assertApiOk(res, 'Request reschedule belum bisa dipindahkan ke review.');
+                patchRequestStatus(req.id, 'review');
+                await refreshData({ silent: true });
+                window.dispatchEvent(new Event('incomingRequestsUpdated'));
+                window.dispatchEvent(new Event('rescheduleUpdated'));
+                setTimeout(() => {
+                    showPopup(`Request from ${req.name} moved to Under Review.`);
+                    setActiveTab('review');
+                }, 300);
+            }
+            else if (type === 'approve') {
+                const chosenSlot = selectedSlot || (req.slots ? req.slots.find(s => s.status === 'available') : null);
+                if (req.kind !== 'meeting' && (!chosenSlot || chosenSlot.status !== 'available')) {
+                    setTimeout(() => showPopup('Tidak ada slot available yang bisa disetujui. Pilih slot lain atau minta orang tua mengirim preferensi baru.', 'warning'), 300);
+                    return;
+                }
+                if (req.kind === 'meeting') {
+                    const res = await meetingsApi.adminReview(req.id, {
+                        status: 'approved_by_admin',
+                        parentContactConfirmed: true,
+                        communicationMethod: 'Admin confirmation',
+                        reviewNote: 'Admin sudah menghubungi orang tua dan mendapatkan persetujuan.',
+                    });
+                    assertApiOk(res, 'Request meeting belum bisa disetujui.');
+                } else {
+                    const res = await rescheduleApi.updateStatus(req.id, 'approved', {
+                        newDate: chosenSlot?.date,
+                        newStartTime: chosenSlot?.time,
+                    });
+                    assertApiOk(res, 'Request reschedule belum bisa disetujui.');
+                }
+                patchRequestStatus(req.id, 'approved');
+                await refreshData({ silent: true });
+                window.dispatchEvent(new Event('incomingRequestsUpdated'));
+                window.dispatchEvent(new Event('rescheduleUpdated'));
+                window.dispatchEvent(new Event('meetingsUpdated'));
+                window.dispatchEvent(new Event('sessionUpdated'));
+                window.dispatchEvent(new Event('notificationsUpdated'));
+                setActiveTab('resolved');
+                setTimeout(() => showPopup(`Request from ${req.name} has been approved.`, 'success'), 300);
+            }
+        } catch (error) {
+            console.error('Request action failed', error);
+            showPopup(error?.message || 'Aksi request belum bisa disimpan.', 'warning');
+        } finally {
+            setPendingAction(null);
+        }
     };
 
     const handleReject = (req) => {
@@ -410,13 +427,18 @@ function App() {
             cancelText: 'Batal',
         });
         if (!confirmed) return;
-        if (req.kind === 'meeting') await meetingsApi.delete(req.id);
-        else await rescheduleApi.delete(req.id);
-        await refreshData({ silent: true });
-        window.dispatchEvent(new Event('incomingRequestsUpdated'));
-        window.dispatchEvent(new Event('rescheduleUpdated'));
-        window.dispatchEvent(new Event('meetingsUpdated'));
-        showPopup('Riwayat request berhasil dihapus.', 'success');
+        try {
+            const res = req.kind === 'meeting' ? await meetingsApi.delete(req.id) : await rescheduleApi.delete(req.id);
+            assertApiOk(res, 'Riwayat request belum bisa dihapus.');
+            await refreshData({ silent: true });
+            window.dispatchEvent(new Event('incomingRequestsUpdated'));
+            window.dispatchEvent(new Event('rescheduleUpdated'));
+            window.dispatchEvent(new Event('meetingsUpdated'));
+            showPopup('Riwayat request berhasil dihapus.', 'success');
+        } catch (error) {
+            console.error('Failed to delete request', error);
+            showPopup(error?.message || 'Riwayat request belum bisa dihapus.', 'warning');
+        }
     };
 
     return (

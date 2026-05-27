@@ -326,9 +326,16 @@ export default function ProgressSummary() {
             if (parentId) {
                 const childRes = await childrenApi.getByParent(parentId);
                 if (!childRes.ok) throw new Error(childRes.data?.error || 'Gagal memuat anak');
-                list = childRes.data?.data || [];
+                const rawChildren = childRes.data?.data;
+                list = Array.isArray(rawChildren)
+                    ? rawChildren
+                    : Array.isArray(rawChildren?.children)
+                        ? rawChildren.children
+                        : rawChildren
+                            ? [rawChildren]
+                            : [];
             } else {
-                list = user.children || [];
+                list = Array.isArray(user.children) ? user.children : [];
             }
 
             setChildren(list);

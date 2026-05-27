@@ -41,6 +41,14 @@ const MOBILE_SECTIONS = [
     { id: 'language', label: 'Bahasa', icon: 'translate' },
 ];
 
+const NOTIFICATION_ROWS = [
+    { id: 'registration_new', label: 'Pendaftaran Baru', desc: 'Beri tahu admin ketika pendaftaran anak baru masuk.' },
+    { id: 'session_reminder', label: 'Pengingat Sesi (24 jam)', desc: 'Ingatkan orang tua dan terapis 24 jam sebelum sesi.' },
+    { id: 'reschedule_request', label: 'Permintaan Reschedule', desc: 'Beri tahu admin ketika orang tua mengajukan penjadwalan ulang.' },
+    { id: 'report_uploaded', label: 'Laporan Diunggah', desc: 'Beri tahu orang tua ketika terapis mengunggah laporan perkembangan.' },
+    { id: 'center_closure', label: 'Jadwal Off Center', desc: 'Beri tahu keluarga dan tim ketika center libur atau tutup sementara.' },
+];
+
 function inferContentType(file) {
     if (file.type) return file.type;
     if (file.name.toLowerCase().endsWith('.ico')) return 'image/x-icon';
@@ -115,6 +123,7 @@ function App() {
     const [logoUrl, setLogoUrl] = useState(settings.logoUrl);
     const [faviconUrl, setFaviconUrl] = useState(settings.faviconUrl);
     const [centerPhotoUrl, setCenterPhotoUrl] = useState(settings.centerPhotoUrl);
+    const [notificationPreferences, setNotificationPreferences] = useState(settings.notificationPreferences || DEFAULT_CLINIC_SETTINGS.notificationPreferences);
     const [adminWhatsApp, setAdminWhatsApp] = useState(settings.adminWhatsApp || settings.centerPhone || '');
     const [uploadingAsset, setUploadingAsset] = useState('');
     const [toast, setToast] = useState(null);
@@ -176,6 +185,7 @@ function App() {
         setLogoUrl(settings.logoUrl);
         setFaviconUrl(settings.faviconUrl);
         setCenterPhotoUrl(settings.centerPhotoUrl);
+        setNotificationPreferences(settings.notificationPreferences || DEFAULT_CLINIC_SETTINGS.notificationPreferences);
     }, [
         settings.clinicName,
         settings.centerSubtitle,
@@ -190,12 +200,23 @@ function App() {
         settings.secondaryColor,
         settings.logoUrl,
         settings.faviconUrl,
-        settings.centerPhotoUrl
+        settings.centerPhotoUrl,
+        settings.notificationPreferences
     ]);
 
     const showToast = (msg, type = 'success') => {
         setToast({ msg, type });
         setTimeout(() => setToast(null), 3500);
+    };
+
+    const toggleNotificationChannel = (key, channel) => {
+        setNotificationPreferences((prev) => ({
+            ...prev,
+            [key]: {
+                ...(prev?.[key] || DEFAULT_CLINIC_SETTINGS.notificationPreferences[key]),
+                [channel]: !(prev?.[key]?.[channel] ?? DEFAULT_CLINIC_SETTINGS.notificationPreferences[key]?.[channel]),
+            },
+        }));
     };
 
     const handleAssetUpload = async (kind, file) => {
@@ -257,7 +278,8 @@ function App() {
                 secondaryColor,
                 logoUrl,
                 faviconUrl,
-                centerPhotoUrl
+                centerPhotoUrl,
+                notificationPreferences,
             });
             showToast(`Pengaturan berhasil disimpan!`);
         } catch (e) {
@@ -281,6 +303,7 @@ function App() {
         setLogoUrl(latest.logoUrl);
         setFaviconUrl(latest.faviconUrl);
         setCenterPhotoUrl(latest.centerPhotoUrl);
+        setNotificationPreferences(latest.notificationPreferences || DEFAULT_CLINIC_SETTINGS.notificationPreferences);
         showToast('Pengaturan dikembalikan ke nilai terakhir yang disimpan.', 'info');
     };
 
@@ -309,6 +332,7 @@ function App() {
             setLogoUrl(next.logoUrl);
             setFaviconUrl(next.faviconUrl);
             setCenterPhotoUrl(next.centerPhotoUrl);
+            setNotificationPreferences(next.notificationPreferences || DEFAULT_CLINIC_SETTINGS.notificationPreferences);
             showToast('Branding sudah diatur semula ke bawaan.');
         } catch (e) {
             showToast(e.message || 'Gagal mengatur semula branding', 'error');
@@ -930,21 +954,27 @@ function App() {
                         <div className="flex flex-col gap-6">
                             <div className="rounded-xl bg-white dark:bg-slate-900 p-6 shadow-sm border border-slate-100 dark:border-slate-800 flex flex-col gap-5">
                                 <h3 className="text-base font-bold text-slate-900 dark:text-white">Kanal Notifikasi</h3>
-                                {[
-                                    { label: 'Pendaftaran Baru', desc: 'Beri tahu admin ketika pendaftaran anak baru masuk.' },
-                                    { label: 'Pengingat Sesi (24 jam)', desc: 'Ingatkan orang tua dan terapis 24 jam sebelum sesi.' },
-                                    { label: 'Permintaan Reschedule', desc: 'Beri tahu admin ketika orang tua mengajukan penjadwalan ulang.' },
-                                    { label: 'Laporan Diunggah', desc: 'Beri tahu orang tua ketika terapis mengunggah laporan perkembangan.' },
-                                ].map((item, i) => (
-                                    <div key={i} className="flex items-center justify-between py-3 border-b border-slate-100 dark:border-slate-800 last:border-0">
+                                {NOTIFICATION_ROWS.map((item) => (
+                                    <div key={item.id} className="flex flex-col gap-3 py-3 border-b border-slate-100 dark:border-slate-800 last:border-0 sm:flex-row sm:items-center sm:justify-between">
                                         <div>
                                             <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{item.label}</p>
                                             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{item.desc}</p>
                                         </div>
                                         <div className="flex items-center gap-4 text-xs font-medium text-slate-600 dark:text-slate-300">
-                                            <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" defaultChecked className="rounded text-primary focus:ring-primary" /> Email</label>
-                                            <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" defaultChecked className="rounded text-primary focus:ring-primary" /> In-App</label>
-                                            <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" className="rounded text-primary focus:ring-primary" /> SMS</label>
+                                            {[
+                                                { key: 'email', label: 'Email' },
+                                                { key: 'inApp', label: 'In-App' },
+                                            ].map((channel) => (
+                                                <label key={`${item.id}-${channel.key}`} className="flex cursor-pointer items-center gap-1.5">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={notificationPreferences?.[item.id]?.[channel.key] !== false}
+                                                        onChange={() => toggleNotificationChannel(item.id, channel.key)}
+                                                        className="rounded text-primary focus:ring-primary"
+                                                    />
+                                                    {channel.label}
+                                                </label>
+                                            ))}
                                         </div>
                                     </div>
                                 ))}

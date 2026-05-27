@@ -576,7 +576,14 @@ function App({ onLogout }) {
                 if (user.parentId) {
                     const childRes = await childrenApi.getByParent(user.parentId);
                     if (!childRes.ok) throw new Error(childRes.data?.error || 'Gagal memuat profil anak.');
-                    children = childRes.data?.data || [];
+                    const rawChildren = childRes.data?.data;
+                    children = Array.isArray(rawChildren)
+                        ? rawChildren
+                        : Array.isArray(rawChildren?.children)
+                            ? rawChildren.children
+                            : rawChildren
+                                ? [rawChildren]
+                                : [];
                 } else if (Array.isArray(user.children) && user.children.length) {
                     children = user.children;
                 } else if (user.childId) {
@@ -612,6 +619,7 @@ function App({ onLogout }) {
             }
         }
 
+        availableChildren = Array.isArray(availableChildren) ? availableChildren : [];
         const selectedProfile = availableChildren.find(c => c.id === childId || c.nita === childId);
         if (selectedProfile?.id) childId = selectedProfile.id;
         if (!childId) {

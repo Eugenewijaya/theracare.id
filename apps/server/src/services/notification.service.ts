@@ -6,6 +6,16 @@ import { emailService } from "./email.service.js";
 
 type DbClient = typeof db | any;
 const CENTER_CLOSURES_KEY = "centerClosures";
+const NOTIFICATION_PREFERENCES_KEY = "notificationPreferences";
+const DEFAULT_NOTIFICATION_CHANNELS = { email: true, inApp: true };
+
+const NOTIFICATION_CATEGORY_MATCHERS: Array<{ key: string; match: (type: string) => boolean }> = [
+  { key: "registration_new", match: (type) => type.includes("registration") || type.includes("child_registered") || type.includes("new_child") },
+  { key: "session_reminder", match: (type) => type.includes("session_reminder") || type.includes("schedule_reminder") },
+  { key: "reschedule_request", match: (type) => type.includes("reschedule") || type.includes("substitute") || type.includes("schedule_change") },
+  { key: "report_uploaded", match: (type) => type.includes("report") },
+  { key: "center_closure", match: (type) => type.includes("center_closure") },
+];
 
 function getAuditMatchScore(notification: typeof notifications.$inferSelect, log: typeof auditLogs.$inferSelect) {
   const type = String(notification.type || "").toLowerCase();
@@ -30,6 +40,34 @@ function parseCenterClosures(value?: string | null): Array<{ id?: string; endDat
   } catch {
     return [];
   }
+}
+
+function parseNotificationPreferences(value?: string | null): Record<string, { email?: boolean; inApp?: boolean }> {
+  try {
+    const parsed = JSON.parse(value || "{}");
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function getNotificationCategory(type?: string | null) {
+  const normalized = String(type || "").toLowerCase();
+  return NOTIFICATION_CATEGORY_MATCHERS.find((item) => item.match(normalized))?.key || "";
+}
+
+async function getNotificationChannels(type?: string | null) {
+  const category = getNotificationCategory(type);
+  if (!category) return DEFAULT_NOTIFICATION_CHANNELS;
+  const row = await db.query.clinicSettings.findFirst({
+    where: eq(clinicSettings.key, NOTIFICATION_PREFERENCES_KEY),
+  });
+  const preferences = parseNotificationPreferences(row?.value);
+  const categoryPreferences = preferences[category] || {};
+  return {
+    email: typeof categoryPreferences.email === "boolean" ? categoryPreferences.email : DEFAULT_NOTIFICATION_CHANNELS.email,
+    inApp: typeof categoryPreferences.inApp === "boolean" ? categoryPreferences.inApp : DEFAULT_NOTIFICATION_CHANNELS.inApp,
+  };
 }
 
 async function getActiveFutureClosureIds() {
@@ -152,11 +190,16 @@ export const notificationService = {
     data: { type: string; icon: string; title: string; message: string; targetRole: string; targetUserId?: string; relatedId?: string },
     client: DbClient = db,
   ) {
+    const channels = await getNotificationChannels(data.type);
     const id = generateId("NOTIF");
-    const [notif] = await client.insert(notifications).values({ id, ...data }).returning();
-    emailService.sendNotification(data).catch((error) => {
-      console.error("[email] notification delivery failed", error);
-    });
+    const [notif] = channels.inApp
+      ? await client.insert(notifications).values({ id, ...data }).returning()
+      : [{ id, ...data, skippedInApp: true }];
+    if (channels.email) {
+      emailService.sendNotification(data).catch((error) => {
+        console.error("[email] notification delivery failed", error);
+      });
+    }
     return notif;
   },
 

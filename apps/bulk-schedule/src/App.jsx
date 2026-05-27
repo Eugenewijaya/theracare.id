@@ -41,7 +41,7 @@ function generateSessionDates(formData) {
 }
 
 // ── Confirmation Modal ─────────────────────────────────────────────────────
-function ConfirmModal({ formData, sessionCount, onConfirm, onCancel }) {
+function ConfirmModal({ formData, sessionCount, onConfirm, onCancel, isGenerating }) {
     return (
         <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={onCancel}>
             <div
@@ -116,10 +116,11 @@ function ConfirmModal({ formData, sessionCount, onConfirm, onCancel }) {
                     </button>
                     <button
                         onClick={onConfirm}
-                        className="flex-1 px-5 py-3 rounded-xl font-bold bg-gradient-to-r from-emerald-500 to-teal-600 text-white hover:from-emerald-600 hover:to-teal-700 transition-all shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2"
+                        disabled={isGenerating}
+                        className="flex-1 px-5 py-3 rounded-xl font-bold bg-gradient-to-r from-emerald-500 to-teal-600 text-white hover:from-emerald-600 hover:to-teal-700 transition-all shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2 disabled:cursor-wait disabled:opacity-70"
                     >
-                        <span className="material-symbols-outlined text-[18px]">rocket_launch</span>
-                        Ya, Generate Sekarang!
+                        <span className="material-symbols-outlined text-[18px]">{isGenerating ? 'sync' : 'rocket_launch'}</span>
+                        {isGenerating ? 'Menyimpan...' : 'Ya, Generate Sekarang!'}
                     </button>
                 </div>
             </div>
@@ -170,6 +171,8 @@ function App() {
     const [showConfirm, setShowConfirm] = useState(false);
     const [showSuccess, setShowSuccess] = useState(false);
     const [generatedCount, setGeneratedCount] = useState(0);
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [actionError, setActionError] = useState('');
 
     const update = (key, value) => setFormData(prev => ({ ...prev, [key]: value }));
     const handleNext = () => setCurrentStep(s => Math.min(s + 1, TOTAL_STEPS));
@@ -185,14 +188,21 @@ function App() {
     const sessionDates = generateSessionDates(formData);
 
     const handleGenerateClick = () => {
+        setActionError('');
+        if (sessionDates.length === 0) {
+            setActionError('Tidak ada tanggal sesi yang valid. Periksa hari, tanggal mulai, tanggal selesai, dan jumlah sesi.');
+            return;
+        }
         setShowConfirm(true);
     };
 
     const handleConfirmGenerate = async () => {
-        setShowConfirm(false);
-
         const dates = generateSessionDates(formData);
-        if (dates.length === 0) return;
+        if (dates.length === 0) {
+            setShowConfirm(false);
+            setActionError('Tidak ada tanggal sesi yang valid. Periksa ulang konfigurasi jadwal.');
+            return;
+        }
 
         const newSessionsData = dates.map((date) => {
             return {
@@ -206,15 +216,24 @@ function App() {
             };
         });
 
+        setIsGenerating(true);
+        setActionError('');
         try {
-            await sessionsApi.createBulk(newSessionsData);
-            setGeneratedCount(dates.length);
+            const res = await sessionsApi.createBulk(newSessionsData);
+            if (!res.ok) {
+                throw new Error(res.data?.error || res.data?.message || 'Jadwal massal belum bisa disimpan.');
+            }
+            setShowConfirm(false);
+            setGeneratedCount(res.data?.data?.length || dates.length);
             setShowSuccess(true);
-            // reset form
             setFormData(INITIAL_DATA);
             setCurrentStep(1);
         } catch(e) {
             console.error(e);
+            setShowConfirm(false);
+            setActionError(e?.message || 'Jadwal massal belum bisa disimpan. Coba ulang beberapa saat lagi.');
+        } finally {
+            setIsGenerating(false);
         }
     };
 
@@ -234,6 +253,12 @@ function App() {
                             <h1 className="text-2xl font-bold leading-tight tracking-[-0.015em] mb-6">Bulk Schedule Generator</h1>
                             <Stepper currentStep={currentStep} />
                         </div>
+
+                        {actionError && (
+                            <div className="mx-4 mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-300 sm:mx-8">
+                                {actionError}
+                            </div>
+                        )}
 
                         {/* Form Content */}
                         <StepForm currentStep={currentStep} data={formData} update={update} />
@@ -261,10 +286,11 @@ function App() {
                             ) : (
                                 <button
                                     onClick={handleGenerateClick}
-                                    className="flex items-center justify-center rounded-lg h-10 px-6 bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-sm font-bold leading-normal tracking-[0.015em] hover:from-emerald-600 hover:to-teal-700 transition-all shadow-md shadow-emerald-500/20 gap-2"
+                                    disabled={isGenerating}
+                                    className="flex items-center justify-center rounded-lg h-10 px-6 bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-sm font-bold leading-normal tracking-[0.015em] hover:from-emerald-600 hover:to-teal-700 transition-all shadow-md shadow-emerald-500/20 gap-2 disabled:cursor-wait disabled:opacity-70"
                                 >
-                                    <span className="material-symbols-outlined text-lg">event_available</span>
-                                    Generate Schedule
+                                    <span className="material-symbols-outlined text-lg">{isGenerating ? 'sync' : 'event_available'}</span>
+                                    {isGenerating ? 'Generating...' : 'Generate Schedule'}
                                     {sessionDates.length > 0 && (
                                         <span className="bg-white/20 text-white text-xs font-bold px-2 py-0.5 rounded-full ml-1">
                                             {sessionDates.length} sesi
@@ -285,6 +311,7 @@ function App() {
                     sessionCount={sessionDates.length}
                     onConfirm={handleConfirmGenerate}
                     onCancel={() => setShowConfirm(false)}
+                    isGenerating={isGenerating}
                 />
             )}
 

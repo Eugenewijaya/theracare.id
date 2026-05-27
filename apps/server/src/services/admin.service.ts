@@ -123,14 +123,16 @@ export const adminService = {
       "faviconUrl",
       "centerPhotoUrl",
       "centerClosures",
+      "notificationPreferences",
     ];
     const settings = await this.getSettings();
     return Object.fromEntries(safeKeys.map((key) => [key, settings[key] ?? ""]));
   },
-  async updateSettings(updates: Record<string, string>) {
+  async updateSettings(updates: Record<string, unknown>) {
     for (const [key, value] of Object.entries(updates)) {
-      await db.insert(clinicSettings).values({ key, value, updatedAt: new Date() })
-        .onConflictDoUpdate({ target: clinicSettings.key, set: { value, updatedAt: new Date() } });
+      const storedValue = typeof value === "string" ? value : JSON.stringify(value ?? "");
+      await db.insert(clinicSettings).values({ key, value: storedValue, updatedAt: new Date() })
+        .onConflictDoUpdate({ target: clinicSettings.key, set: { value: storedValue, updatedAt: new Date() } });
     }
   },
 

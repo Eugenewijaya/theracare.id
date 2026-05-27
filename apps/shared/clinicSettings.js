@@ -22,6 +22,13 @@ export const DEFAULT_CLINIC_SETTINGS = {
   logoUrl: '',
   faviconUrl: '',
   centerPhotoUrl: '',
+  notificationPreferences: {
+    registration_new: { email: true, inApp: true },
+    session_reminder: { email: true, inApp: true },
+    reschedule_request: { email: true, inApp: true },
+    report_uploaded: { email: true, inApp: true },
+    center_closure: { email: true, inApp: true },
+  },
 };
 
 const PUBLIC_KEYS = Object.keys(DEFAULT_CLINIC_SETTINGS);
@@ -39,9 +46,38 @@ function readJson(key) {
   }
 }
 
+function parseMaybeJson(value) {
+  if (!value) return {};
+  if (typeof value === 'object') return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return {};
+  }
+}
+
+function normalizeNotificationPreferences(value) {
+  const input = parseMaybeJson(value);
+  const defaults = DEFAULT_CLINIC_SETTINGS.notificationPreferences;
+  return Object.fromEntries(Object.entries(defaults).map(([key, channels]) => {
+    const row = input?.[key] || {};
+    return [
+      key,
+      {
+        email: typeof row.email === 'boolean' ? row.email : channels.email,
+        inApp: typeof row.inApp === 'boolean' ? row.inApp : channels.inApp,
+      },
+    ];
+  }));
+}
+
 export function normalizeClinicSettings(raw = {}) {
   const settings = { ...DEFAULT_CLINIC_SETTINGS };
   for (const key of PUBLIC_KEYS) {
+    if (key === 'notificationPreferences') {
+      settings.notificationPreferences = normalizeNotificationPreferences(raw[key]);
+      continue;
+    }
     if (typeof raw[key] === 'string' && raw[key].trim()) {
       settings[key] = raw[key].trim();
     }
@@ -115,7 +151,11 @@ export async function fetchClinicSettings() {
 
 export async function saveClinicSettings(updates) {
   const next = normalizeClinicSettings({ ...getCachedClinicSettings(), ...updates });
-  const res = await adminApi.updateSettings(next);
+  const apiPayload = Object.fromEntries(Object.entries(next).map(([key, value]) => [
+    key,
+    value && typeof value === 'object' ? JSON.stringify(value) : value,
+  ]));
+  const res = await adminApi.updateSettings(apiPayload);
   if (!res.ok) {
     throw new Error(res.data?.error || res.data?.message || 'Gagal menyimpan pengaturan pusat terapi');
   }

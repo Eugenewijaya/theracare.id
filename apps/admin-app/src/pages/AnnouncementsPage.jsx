@@ -13,6 +13,12 @@ const formatDate = (dateStr) => {
     return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 };
 
+const assertApiOk = (response, fallbackMessage) => {
+    if (response?.ok === false) {
+        throw new Error(response.data?.error || response.data?.message || fallbackMessage);
+    }
+};
+
 function AnnouncementModal({ ann, onSave, onClose }) {
     const [title, setTitle] = useState(ann?.title || '');
     const [content, setContent] = useState(ann?.content || '');
@@ -125,14 +131,18 @@ export default function AnnouncementsPage() {
     const [modal, setModal] = useState(null); // null | 'create' | {ann object}
     const [deleteConfirm, setDeleteConfirm] = useState(null);
     const [toast, setToast] = useState('');
+    const [error, setError] = useState('');
     const [loading, setLoading] = useState(true);
 
     const load = async () => {
         try {
+            setError('');
             const res = await adminApi.getAnnouncements();
+            assertApiOk(res, 'Pengumuman belum bisa dimuat.');
             setAnnouncements(res.data?.data || []);
         } catch (e) {
             console.error(e);
+            setError(e?.message || 'Pengumuman belum bisa dimuat.');
         }
         setLoading(false);
     };
@@ -147,24 +157,39 @@ export default function AnnouncementsPage() {
     };
 
     const handleSave = async (data) => {
-        if (modal === 'create') {
-            await adminApi.createAnnouncement(data);
-            showToast('Pengumuman berhasil dibuat dan dikirim!');
-        } else {
-            await adminApi.updateAnnouncement(modal.id, data);
-            showToast('Pengumuman berhasil diperbarui.');
+        try {
+            setError('');
+            if (modal === 'create') {
+                const res = await adminApi.createAnnouncement(data);
+                assertApiOk(res, 'Pengumuman belum bisa dibuat.');
+                showToast('Pengumuman berhasil dibuat dan dikirim!');
+            } else {
+                const res = await adminApi.updateAnnouncement(modal.id, data);
+                assertApiOk(res, 'Pengumuman belum bisa diperbarui.');
+                showToast('Pengumuman berhasil diperbarui.');
+            }
+            setModal(null);
+            load();
+            window.dispatchEvent(new Event('notificationsUpdated'));
+        } catch (e) {
+            console.error(e);
+            setError(e?.message || 'Pengumuman belum bisa disimpan.');
         }
-        setModal(null);
-        load();
-        window.dispatchEvent(new Event('notificationsUpdated'));
     };
 
     const handleDelete = async (id) => {
-        await adminApi.deleteAnnouncement(id);
-        setDeleteConfirm(null);
-        showToast('Pengumuman berhasil dihapus.');
-        load();
-        window.dispatchEvent(new Event('notificationsUpdated'));
+        try {
+            setError('');
+            const res = await adminApi.deleteAnnouncement(id);
+            assertApiOk(res, 'Pengumuman belum bisa dihapus.');
+            setDeleteConfirm(null);
+            showToast('Pengumuman berhasil dihapus.');
+            load();
+            window.dispatchEvent(new Event('notificationsUpdated'));
+        } catch (e) {
+            console.error(e);
+            setError(e?.message || 'Pengumuman belum bisa dihapus.');
+        }
     };
 
     const activeCount = announcements.filter(a => a.isActive).length;
@@ -197,6 +222,11 @@ export default function AnnouncementsPage() {
 
             {/* Table */}
             <div className="flex-1 p-4 sm:p-6">
+                {error && (
+                    <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-300">
+                        {error}
+                    </div>
+                )}
                 {loading ? (
                     <div className="flex flex-col gap-3">
                         {[1, 2, 3].map(i => <div key={i} className="h-24 bg-slate-100 rounded-2xl animate-pulse" />)}
