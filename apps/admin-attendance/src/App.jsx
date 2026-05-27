@@ -27,15 +27,22 @@ function App() {
     const [historyFilter, setHistoryFilter] = useState('all');
     const [statusFilter, setStatusFilter] = useState('');
     const [loading, setLoading] = useState(true);
+    const [notice, setNotice] = useState(null);
 
-    const load = async () => {
+    const load = async ({ preserveNotice = false } = {}) => {
+        setLoading(true);
+        if (!preserveNotice) setNotice(null);
         try {
             const res = await sessionsApi.getAll();
+            if (!res.ok) throw new Error(res.data?.error || 'Data kehadiran gagal dimuat.');
             setAttendanceData(res.data?.data || []);
         } catch (e) {
             console.error('Failed to load sessions', e);
+            setAttendanceData([]);
+            setNotice({ type: 'error', text: e.message || 'Data kehadiran gagal dimuat.' });
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
     };
 
     useEffect(() => {
@@ -43,13 +50,33 @@ function App() {
     }, []);
 
     const handleApprove = async (id) => {
-        const res = await sessionsApi.updateStatus(id, 'confirmed');
-        if (res.ok) load();
+        try {
+            const res = await sessionsApi.updateStatus(id, 'confirmed');
+            if (!res.ok) {
+                setNotice({ type: 'error', text: res.data?.error || 'Kehadiran belum bisa disetujui.' });
+                return;
+            }
+            setNotice({ type: 'success', text: 'Kehadiran berhasil disetujui.' });
+            await load({ preserveNotice: true });
+        } catch (error) {
+            console.error('Failed to approve attendance', error);
+            setNotice({ type: 'error', text: error.message || 'Kehadiran belum bisa disetujui.' });
+        }
     };
 
     const handleReject = async (id) => {
-        const res = await sessionsApi.updateStatus(id, 'cancelled');
-        if (res.ok) load();
+        try {
+            const res = await sessionsApi.updateStatus(id, 'cancelled');
+            if (!res.ok) {
+                setNotice({ type: 'error', text: res.data?.error || 'Sesi belum bisa dibatalkan.' });
+                return;
+            }
+            setNotice({ type: 'success', text: 'Sesi berhasil dibatalkan.' });
+            await load({ preserveNotice: true });
+        } catch (error) {
+            console.error('Failed to reject attendance', error);
+            setNotice({ type: 'error', text: error.message || 'Sesi belum bisa dibatalkan.' });
+        }
     };
 
     const today = new Date().toISOString().split('T')[0];
@@ -125,6 +152,15 @@ function App() {
         <>
             <Header />
             <main className="mx-auto flex w-full max-w-[1400px] min-w-0 flex-1 flex-col gap-8 px-4 py-8 sm:px-6">
+                {notice && (
+                    <div className={`rounded-xl border px-4 py-3 text-sm font-semibold ${
+                        notice.type === 'success'
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                            : 'border-red-200 bg-red-50 text-red-700'
+                    }`}>
+                        {notice.text}
+                    </div>
+                )}
 
                 {/* Tabs & Search */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-2">

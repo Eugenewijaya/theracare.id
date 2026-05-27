@@ -9,8 +9,12 @@ const PendingAttendance = () => {
     const [loading, setLoading] = useState(true);
 
     const loadSessions = async () => {
+        setLoading(true);
         try {
             const res = await sessionsApi.getAll();
+            if (!res.ok) {
+                throw new Error(res.data?.error || 'Data sesi belum bisa dimuat.');
+            }
             const allSessions = res.data?.data || [];
             const today = new Date().toISOString().split('T')[0];
             const pending = allSessions
@@ -24,8 +28,13 @@ const PendingAttendance = () => {
                 time: s.startTime,
                 initial: (s.child?.name || 'A').charAt(0).toUpperCase(),
             })));
-        } catch {}
-        setLoading(false);
+        } catch (error) {
+            console.error('Failed to load pending attendance', error);
+            setItems([]);
+            showToast(error.message || 'Data kehadiran belum bisa dimuat.', 'error');
+        } finally {
+            setLoading(false);
+        }
     };
 
     useEffect(() => {
@@ -40,15 +49,27 @@ const PendingAttendance = () => {
     };
 
     const handleApprove = async (item) => {
-        await sessionsApi.updateStatus(item.id, 'done');
-        showToast(`Kehadiran ${item.name} berhasil disetujui.`, 'success');
-        loadSessions();
+        try {
+            const res = await sessionsApi.updateStatus(item.id, 'done');
+            if (!res.ok) throw new Error(res.data?.error || 'Kehadiran belum bisa disetujui.');
+            showToast(`Kehadiran ${item.name} berhasil disetujui.`, 'success');
+            loadSessions();
+        } catch (error) {
+            console.error('Failed to approve attendance', error);
+            showToast(error.message || 'Kehadiran belum bisa disetujui.', 'error');
+        }
     };
 
     const handleReject = async (item) => {
-        await sessionsApi.updateStatus(item.id, 'cancelled');
-        showToast(`Sesi ${item.name} telah dibatalkan.`, 'error');
-        loadSessions();
+        try {
+            const res = await sessionsApi.updateStatus(item.id, 'cancelled');
+            if (!res.ok) throw new Error(res.data?.error || 'Sesi belum bisa dibatalkan.');
+            showToast(`Sesi ${item.name} telah dibatalkan.`, 'success');
+            loadSessions();
+        } catch (error) {
+            console.error('Failed to reject attendance', error);
+            showToast(error.message || 'Sesi belum bisa dibatalkan.', 'error');
+        }
     };
 
     return (

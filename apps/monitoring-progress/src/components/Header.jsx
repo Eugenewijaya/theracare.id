@@ -2,7 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAdmin } from '../../../admin-app/src/context/AdminContext';
 
-const Header = () => {
+const Header = ({ searchValue = '', onSearchChange = () => {} }) => {
     const navigate = useNavigate();
     const { clinicName, brandColor } = useAdmin();
     return (
@@ -17,7 +17,13 @@ const Header = () => {
                         <div className="text-text-light-secondary dark:text-text-dark-secondary flex bg-background-light dark:bg-background-dark items-center justify-center pl-4 rounded-l-lg border-r-0">
                             <span className="material-symbols-outlined">search</span>
                         </div>
-                        <input className="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-r-lg text-text-light-primary dark:text-text-dark-primary focus:outline-0 focus:ring-0 border-none bg-background-light dark:bg-background-dark h-full placeholder:text-text-light-secondary dark:placeholder:text-text-dark-secondary px-4 pl-2 text-base font-normal leading-normal" placeholder="Search..." />
+                        <input
+                            value={searchValue}
+                            onChange={(event) => onSearchChange(event.target.value)}
+                            className="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-r-lg text-text-light-primary dark:text-text-dark-primary focus:outline-0 focus:ring-0 border-none bg-background-light dark:bg-background-dark h-full placeholder:text-text-light-secondary dark:placeholder:text-text-dark-secondary px-4 pl-2 text-base font-normal leading-normal"
+                            placeholder="Cari anak, terapis, atau program"
+                            aria-label="Cari data monitoring"
+                        />
                     </div>
                 </label>
             </div>

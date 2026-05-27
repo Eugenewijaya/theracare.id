@@ -676,10 +676,10 @@ function App() {
                                             <div className="p-5 flex flex-col gap-4">
                                                 <p className="text-sm">Selamat datang kembali di center. Janji temu berikutnya sudah siap.</p>
                                                 <div className="flex gap-2">
-                                                    <button className="text-white text-xs font-medium px-4 py-2 rounded-lg transition-colors border-0" style={{ backgroundColor: primaryColor }}>Buat Jadwal</button>
-                                                    <button className="text-xs font-medium px-4 py-2 rounded-lg border transition-colors bg-transparent" style={{ borderColor: primaryColor, color: primaryColor }}>Detail</button>
+                                                    <span className="text-white text-xs font-medium px-4 py-2 rounded-lg transition-colors border-0" style={{ backgroundColor: primaryColor }}>Buat Jadwal</span>
+                                                    <span className="text-xs font-medium px-4 py-2 rounded-lg border transition-colors bg-transparent" style={{ borderColor: primaryColor, color: primaryColor }}>Detail</span>
                                                 </div>
-                                                <a href="#" className="text-xs underline mt-2 transition-colors" style={{ color: primaryColor }}>Lihat jadwal lengkap</a>
+                                                <span className="text-xs underline mt-2 transition-colors" style={{ color: primaryColor }}>Lihat jadwal lengkap</span>
                                             </div>
                                         </div>
                                     </div>

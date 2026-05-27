@@ -264,14 +264,14 @@ const ChildTable = ({ children, onDelete }) => {
                     <p className="text-sm text-slate-700 dark:text-slate-400">
                         Showing <span className="font-medium text-slate-900 dark:text-slate-100">{children.length > 0 ? 1 : 0}</span> to <span className="font-medium text-slate-900 dark:text-slate-100">{children.length}</span> of <span className="font-medium text-slate-900 dark:text-slate-100">{children.length}</span> results
                     </p>
-                    <nav className="isolate inline-flex -space-x-px rounded-md shadow-sm">
-                        <a href="#" className="relative inline-flex items-center rounded-l-md px-2 py-2 text-slate-400 ring-1 ring-inset ring-slate-300 hover:bg-slate-50 dark:ring-slate-700 dark:hover:bg-slate-800">
+                    <nav className="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
+                        <button type="button" disabled aria-label="Halaman sebelumnya" className="relative inline-flex cursor-not-allowed items-center rounded-l-md px-2 py-2 text-slate-300 ring-1 ring-inset ring-slate-300 dark:ring-slate-700">
                             <span className="material-symbols-outlined text-sm">chevron_left</span>
-                        </a>
-                        <a href="#" className="relative z-10 inline-flex items-center bg-primary px-4 py-2 text-sm font-semibold text-white">1</a>
-                        <a href="#" className="relative inline-flex items-center rounded-r-md px-2 py-2 text-slate-400 ring-1 ring-inset ring-slate-300 dark:ring-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800">
+                        </button>
+                        <span aria-current="page" className="relative z-10 inline-flex items-center bg-primary px-4 py-2 text-sm font-semibold text-white">1</span>
+                        <button type="button" disabled aria-label="Halaman berikutnya" className="relative inline-flex cursor-not-allowed items-center rounded-r-md px-2 py-2 text-slate-300 ring-1 ring-inset ring-slate-300 dark:ring-slate-700">
                             <span className="material-symbols-outlined text-sm">chevron_right</span>
-                        </a>
+                        </button>
                     </nav>
                 </div>
             </div>

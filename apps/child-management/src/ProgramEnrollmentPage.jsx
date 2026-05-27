@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { childrenApi, therapyPeriodsApi } from '../../shared/api/client';
+import { confirmAction } from '../../shared/ui/confirmDialog';
 import ProgramForm from '../../child-registration/src/components/ProgramForm';
 
 const todayString = () => new Date().toISOString().split('T')[0];
@@ -277,7 +278,15 @@ export default function ProgramEnrollmentPage() {
       return;
     }
 
-    const confirmed = window.confirm(`Ajukan penghapusan periode ${period.name}? Sesi yang belum selesai akan dihapus setelah orang tua dan terapis menyetujui.`);
+    const confirmed = await confirmAction({
+      tone: 'danger',
+      icon: 'delete_forever',
+      title: `Ajukan penghapusan periode ${period.name}?`,
+      message: 'Sesi yang belum selesai baru akan dihapus setelah orang tua dan terapis menyetujui.',
+      details: reason,
+      confirmText: 'Ajukan penghapusan',
+      cancelText: 'Batal',
+    });
     if (!confirmed) return;
 
     setRequestingDeletionId(period.id);

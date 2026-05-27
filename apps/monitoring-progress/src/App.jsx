@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useEffect } from 'react';
+import React, { useCallback, useMemo, useState, useEffect } from 'react';
 import Header from './components/Header';
 import ChildProgress from './components/ChildProgress';
 import ActionAlerts from './components/ActionAlerts';
@@ -126,6 +126,11 @@ function App() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [reportHtml, setReportHtml] = useState('');
+    const [searchTerm, setSearchTerm] = useState('');
+    const [filtersOpen, setFiltersOpen] = useState(false);
+    const [childStatusFilter, setChildStatusFilter] = useState('');
+    const [sessionStatusFilter, setSessionStatusFilter] = useState('');
+    const [periodFilter, setPeriodFilter] = useState('all');
 
     const loadMonitoringData = useCallback(async () => {
         setLoading(true);
@@ -181,8 +186,49 @@ function App() {
         };
     }, [loadMonitoringData]);
 
+    const filteredStore = useMemo(() => {
+        const query = searchTerm.trim().toLowerCase();
+        const children = (store.children || []).filter(child => {
+            const name = child.name || `${child.firstName || ''} ${child.lastName || ''}`.trim();
+            const programText = Array.isArray(child.programs) ? child.programs.map(program => program.name || program).join(' ') : child.program || '';
+            const searchable = [name, child.id, child.nita, child.status, programText].filter(Boolean).join(' ').toLowerCase();
+            const matchesSearch = query ? searchable.includes(query) : true;
+            const matchesStatus = childStatusFilter ? String(child.status || 'active') === childStatusFilter : true;
+            return matchesSearch && matchesStatus;
+        });
+
+        const childLookup = new Map((store.children || []).flatMap(child => {
+            const name = child.name || `${child.firstName || ''} ${child.lastName || ''}`.trim();
+            return [[child.id, name], [child.nita, name]].filter(([id]) => id);
+        }));
+        const visibleChildIds = new Set(children.flatMap(child => [child.id, child.nita]).filter(Boolean));
+        const now = new Date();
+        const sessions = (store.sessions || []).filter(session => {
+            const childName = childLookup.get(session.childId) || session.childName || session.child?.name || '';
+            const therapistName = session.therapist?.name || session.therapistName || session.therapistId || '';
+            const searchable = [childName, session.childId, therapistName, session.focus, session.status].filter(Boolean).join(' ').toLowerCase();
+            const matchesSearch = query ? searchable.includes(query) || visibleChildIds.has(session.childId) : true;
+            const matchesChildScope = childStatusFilter ? visibleChildIds.has(session.childId) : true;
+            const matchesStatus = sessionStatusFilter ? String(session.status || '') === sessionStatusFilter : true;
+            const sessionDate = session.date ? new Date(session.date) : null;
+            const matchesPeriod = periodFilter === 'all'
+                || (periodFilter === 'week' && sessionDate && sessionDate <= now && now.getTime() - sessionDate.getTime() <= 7 * 24 * 60 * 60 * 1000)
+                || (periodFilter === 'month' && sessionDate && sessionDate.getFullYear() === now.getFullYear() && sessionDate.getMonth() === now.getMonth());
+            return matchesSearch && matchesChildScope && matchesStatus && matchesPeriod;
+        });
+
+        return { ...store, children, sessions };
+    }, [store, searchTerm, childStatusFilter, sessionStatusFilter, periodFilter]);
+
+    const handleResetFilters = () => {
+        setSearchTerm('');
+        setChildStatusFilter('');
+        setSessionStatusFilter('');
+        setPeriodFilter('all');
+    };
+
     const handleExportReport = () => {
-        setReportHtml(buildMonitoringReportHtml(store));
+        setReportHtml(buildMonitoringReportHtml(filteredStore));
     };
 
     const handlePrintReport = () => {
@@ -193,7 +239,7 @@ function App() {
 
     return (
         <div className="layout-container flex h-full min-w-0 grow flex-col overflow-x-hidden">
-            <Header />
+            <Header searchValue={searchTerm} onSearchChange={setSearchTerm} />
             <main className="mx-auto flex w-full max-w-[1200px] min-w-0 flex-1 flex-col gap-6 p-4 sm:gap-8 sm:p-8">
 
                 {/* Page Header */}
@@ -207,12 +253,48 @@ function App() {
                             <span className="material-symbols-outlined text-sm">download</span>
                             Export Report
                         </button>
-                        <button className="min-h-10 px-4 py-2 bg-primary text-black rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors flex items-center justify-center gap-2">
+                        <button type="button" onClick={() => setFiltersOpen(prev => !prev)} className="min-h-10 px-4 py-2 bg-primary text-black rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors flex items-center justify-center gap-2">
                             <span className="material-symbols-outlined text-sm">filter_list</span>
-                            Filter
+                            {filtersOpen ? 'Tutup Filter' : 'Filter'}
                         </button>
                     </div>
                 </div>
+
+                {filtersOpen && (
+                    <section className="grid grid-cols-1 gap-3 rounded-xl border border-border-light bg-surface-light p-4 dark:border-border-dark dark:bg-surface-dark sm:grid-cols-2 lg:grid-cols-4">
+                        <label className="flex flex-col gap-1 text-xs font-black uppercase tracking-wide text-text-light-secondary dark:text-text-dark-secondary">
+                            Status Anak
+                            <select value={childStatusFilter} onChange={event => setChildStatusFilter(event.target.value)} className="h-10 rounded-lg border border-border-light bg-background-light px-3 text-sm font-semibold normal-case tracking-normal text-text-light-primary dark:border-border-dark dark:bg-background-dark dark:text-text-dark-primary">
+                                <option value="">Semua status</option>
+                                <option value="active">Active</option>
+                                <option value="inactive">Inactive</option>
+                                <option value="pending">Pending</option>
+                            </select>
+                        </label>
+                        <label className="flex flex-col gap-1 text-xs font-black uppercase tracking-wide text-text-light-secondary dark:text-text-dark-secondary">
+                            Status Sesi
+                            <select value={sessionStatusFilter} onChange={event => setSessionStatusFilter(event.target.value)} className="h-10 rounded-lg border border-border-light bg-background-light px-3 text-sm font-semibold normal-case tracking-normal text-text-light-primary dark:border-border-dark dark:bg-background-dark dark:text-text-dark-primary">
+                                <option value="">Semua sesi</option>
+                                <option value="upcoming">Upcoming</option>
+                                <option value="confirmed">Confirmed</option>
+                                <option value="active">Active</option>
+                                <option value="done">Done</option>
+                                <option value="cancelled">Cancelled</option>
+                            </select>
+                        </label>
+                        <label className="flex flex-col gap-1 text-xs font-black uppercase tracking-wide text-text-light-secondary dark:text-text-dark-secondary">
+                            Periode Sesi
+                            <select value={periodFilter} onChange={event => setPeriodFilter(event.target.value)} className="h-10 rounded-lg border border-border-light bg-background-light px-3 text-sm font-semibold normal-case tracking-normal text-text-light-primary dark:border-border-dark dark:bg-background-dark dark:text-text-dark-primary">
+                                <option value="all">Semua waktu</option>
+                                <option value="week">7 hari terakhir</option>
+                                <option value="month">Bulan ini</option>
+                            </select>
+                        </label>
+                        <button type="button" onClick={handleResetFilters} className="min-h-10 self-end rounded-lg border border-border-light bg-background-light px-4 py-2 text-sm font-bold text-text-light-primary transition-colors hover:border-primary dark:border-border-dark dark:bg-background-dark dark:text-text-dark-primary">
+                            Reset
+                        </button>
+                    </section>
+                )}
 
                 {error && (
                     <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
@@ -230,19 +312,19 @@ function App() {
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     {/* Left Column */}
                     <div className="lg:col-span-2 flex flex-col gap-6">
-                        <ChildProgress store={store} />
-                        <ActionAlerts store={store} />
+                        <ChildProgress store={filteredStore} />
+                        <ActionAlerts store={filteredStore} />
                     </div>
 
                     {/* Right Column (Sidebar) */}
                     <div className="flex flex-col gap-6">
-                        <SessionVolume store={store} />
-                        <ProgramDistribution store={store} />
+                        <SessionVolume store={filteredStore} />
+                        <ProgramDistribution store={filteredStore} />
                     </div>
                 </div>
 
                 {/* Full Width - Children Per Month Chart */}
-                <ChildrenPerMonth store={store} />
+                <ChildrenPerMonth store={filteredStore} />
 
             </main>
             {reportHtml && (

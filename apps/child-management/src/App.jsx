@@ -88,7 +88,7 @@ function App() {
         <div className="layout-container flex h-full min-w-0 grow flex-col overflow-x-hidden bg-background-light dark:bg-background-dark">
             <div className="flex min-w-0 flex-1 justify-center px-4 py-5 md:px-8 xl:px-10">
                 <div className="layout-content-container flex w-full max-w-[1500px] min-w-0 flex-1 flex-col">
-                    <Header />
+                    <Header searchValue={searchTerm} onSearchChange={setSearchTerm} />
                     <main className="flex flex-col gap-6 px-4 md:px-0">
                         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                             <h1 className="text-slate-900 dark:text-slate-100 text-2xl md:text-[28px] font-bold leading-tight tracking-[-0.015em]">Child Management</h1>
