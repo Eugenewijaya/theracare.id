@@ -23,6 +23,12 @@ function getStoredTherapist() {
     return readTherapistUser();
 }
 
+function assertApiOk(response, fallbackMessage) {
+    if (response?.ok === false) {
+        throw new Error(response.data?.error || response.data?.message || fallbackMessage);
+    }
+}
+
 const TimelineList = () => {
     const navigate = useNavigate();
     const [sessions, setSessions] = useState([]);
@@ -46,17 +52,22 @@ const TimelineList = () => {
         }
         
         try {
+            setActionError('');
             const [res, allRes, reportRes] = await Promise.all([
                 sessionsApi.getForTherapist(user.id, todayKey()),
                 sessionsApi.getForTherapist(user.id),
                 reportsApi.getForTherapist(user.id, 'harian'),
             ]);
+            assertApiOk(res, 'Timeline hari ini belum bisa dimuat.');
+            assertApiOk(allRes, 'Riwayat sesi belum bisa dimuat.');
+            assertApiOk(reportRes, 'Riwayat laporan belum bisa dimuat.');
             const todaySessions = res.data?.data || [];
             setSessions(todaySessions);
             setAllSessions(allRes.data?.data || todaySessions);
-            setReports(reportRes.ok ? reportRes.data?.data || [] : []);
+            setReports(reportRes.data?.data || []);
         } catch (e) {
             console.error(e);
+            setActionError(e?.message || 'Timeline belum bisa dimuat.');
         }
     };
 
@@ -75,36 +86,46 @@ const TimelineList = () => {
     const confirmComplete = async () => {
         if (!completeModal) return;
         try {
-            await sessionsApi.updateStatus(completeModal.id, 'done');
+            setActionError('');
+            assertApiOk(await sessionsApi.updateStatus(completeModal.id, 'done'), 'Sesi belum bisa diakhiri.');
             await fetchSessions();
             window.dispatchEvent(new Event('sessionUpdated'));
-        } catch(e) { console.error(e); }
+        } catch(e) {
+            console.error(e);
+            setActionError(e?.message || 'Sesi belum bisa diakhiri.');
+        }
         closeCompleteModal();
     };
 
     const handleSaveNote = async () => {
         try {
-            await sessionsApi.saveNotes(noteOpenId, noteText);
+            setActionError('');
+            assertApiOk(await sessionsApi.saveNotes(noteOpenId, noteText), 'Catatan belum bisa disimpan.');
             await fetchSessions();
             window.dispatchEvent(new Event('sessionUpdated'));
             setNoteOpenId(null);
             setNoteText('');
             setNoteSaved(true);
             setTimeout(() => setNoteSaved(false), 3000);
-        } catch (e) { console.error(e); }
+        } catch (e) {
+            console.error(e);
+            setActionError(e?.message || 'Catatan belum bisa disimpan.');
+        }
     };
 
     const startSession = async (sessionId, options = {}) => {
         try {
             setActionError('');
-            await sessionsApi.updateStatus(sessionId, 'active');
+            assertApiOk(await sessionsApi.updateStatus(sessionId, 'active'), 'Sesi belum bisa dimulai.');
             await fetchSessions();
             window.dispatchEvent(new Event('sessionUpdated'));
-            setTimeLeft(45 * 60);
         } catch (e) {
             console.error(e);
+            if (options.auto) {
+                autoStartedIds.current.delete(sessionId);
+            }
             if (!options.auto) {
-                setActionError(e?.data?.error || e?.message || 'Sesi belum bisa dimulai.');
+                setActionError(e?.message || 'Sesi belum bisa dimulai.');
             }
         }
     };
@@ -127,12 +148,14 @@ const TimelineList = () => {
         ));
         if (!candidate) return;
         autoFinishedIds.current.add(candidate.id);
-        sessionsApi.updateStatus(candidate.id, 'done').then(() => {
+        sessionsApi.updateStatus(candidate.id, 'done').then((response) => {
+            assertApiOk(response, 'Sesi otomatis belum bisa diakhiri.');
             fetchSessions();
             window.dispatchEvent(new Event('sessionUpdated'));
         }).catch((e) => {
             console.error('Failed to auto-finish session', e);
             autoFinishedIds.current.delete(candidate.id);
+            setActionError(e?.message || 'Sesi otomatis belum bisa diakhiri.');
         });
     }, [sessions, nowTick]);
 

@@ -17,19 +17,19 @@ const Sidebar = () => {
                 </div>
 
                 <nav className="flex flex-col gap-2">
-                    <a href="#" className="flex items-center gap-3 px-3 py-2 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-primary/10 transition-colors">
+                    <a href="/" className="flex items-center gap-3 px-3 py-2 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-primary/10 transition-colors">
                         <span className="material-symbols-outlined text-[24px]">home</span>
                         <span className="text-sm font-medium">Dashboard</span>
                     </a>
-                    <a href="#" className="flex items-center gap-3 px-3 py-2 rounded-lg bg-primary/20 text-primary dark:text-primary">
+                    <a href="/availability" className="flex items-center gap-3 px-3 py-2 rounded-lg bg-primary/20 text-primary dark:text-primary" aria-current="page">
                         <span className="material-symbols-outlined text-[24px]" style={{ fontVariationSettings: "'FILL' 1" }}>calendar_month</span>
                         <span className="text-sm font-medium">Calendar</span>
                     </a>
-                    <a href="#" className="flex items-center gap-3 px-3 py-2 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-primary/10 transition-colors">
+                    <a href="/child-progress" className="flex items-center gap-3 px-3 py-2 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-primary/10 transition-colors">
                         <span className="material-symbols-outlined text-[24px]">group</span>
                         <span className="text-sm font-medium">Patients</span>
                     </a>
-                    <a href="#" className="flex items-center gap-3 px-3 py-2 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-primary/10 transition-colors">
+                    <a href="/settings" className="flex items-center gap-3 px-3 py-2 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-primary/10 transition-colors">
                         <span className="material-symbols-outlined text-[24px]">settings</span>
                         <span className="text-sm font-medium">Settings</span>
                     </a>
@@ -37,7 +37,7 @@ const Sidebar = () => {
             </div>
 
             <div className="p-4 border-t border-primary/20">
-                <a href="#" className="flex items-center gap-3 px-3 py-2 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-primary/10 transition-colors">
+                <a href="/login" className="flex items-center gap-3 px-3 py-2 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-primary/10 transition-colors">
                     <span className="material-symbols-outlined text-[24px]">logout</span>
                     <span className="text-sm font-medium">Log Out</span>
                 </a>

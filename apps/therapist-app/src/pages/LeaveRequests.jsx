@@ -108,10 +108,13 @@ export default function LeaveRequests() {
     if (!silent) setLoading(true);
     try {
       const res = await leaveRequestsApi.getMine();
+      if (res?.ok === false) {
+        throw new Error(res.data?.error || res.data?.message || 'Gagal memuat pengajuan.');
+      }
       setRequests(res.data?.data || []);
     } catch (e) {
       console.error(e);
-      setToast({ type: 'error', message: 'Gagal memuat pengajuan.' });
+      setToast({ type: 'error', message: e?.message || 'Gagal memuat pengajuan.' });
     } finally {
       if (!silent) setLoading(false);
     }

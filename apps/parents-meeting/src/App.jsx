@@ -71,6 +71,12 @@ function readStoredTherapist() {
     return readTherapistUser();
 }
 
+function assertApiOk(response, message) {
+    if (response?.ok === false) {
+        throw new Error(response.data?.error || response.data?.message || message);
+    }
+}
+
 export default function App({ mode = 'therapist' }) {
     const isAdmin = mode === 'admin';
     const [meetings, setMeetings] = useState([]);
@@ -107,6 +113,9 @@ export default function App({ mode = 'therapist' }) {
                     childrenApi.getAll(),
                     therapistsApi.getAll(),
                 ]);
+                assertApiOk(meetRes, 'Gagal memuat parent meeting.');
+                assertApiOk(childRes, 'Gagal memuat data anak.');
+                assertApiOk(therRes, 'Gagal memuat data terapis.');
                 setMeetings(meetRes.data?.data || []);
                 setChildren(childRes.data?.data || []);
                 setTherapists(therRes.data?.data || []);
@@ -116,6 +125,8 @@ export default function App({ mode = 'therapist' }) {
                     meetingsApi.getForTherapist(),
                     therapist?.id ? sessionsApi.getForTherapist(therapist.id) : Promise.resolve({ data: { data: [] } }),
                 ]);
+                assertApiOk(meetRes, 'Gagal memuat parent meeting.');
+                assertApiOk(sessionRes, 'Gagal memuat daftar anak dari sesi terapis.');
                 const sessionChildren = [];
                 (sessionRes.data?.data || []).forEach((session) => {
                     if (session.child && !sessionChildren.some((child) => child.id === session.child.id)) {
@@ -128,7 +139,7 @@ export default function App({ mode = 'therapist' }) {
             }
         } catch (e) {
             console.error(e);
-            showToast('Gagal memuat data parent meeting.');
+            showToast(e?.message || 'Gagal memuat data parent meeting.');
         } finally {
             setLoading(false);
         }

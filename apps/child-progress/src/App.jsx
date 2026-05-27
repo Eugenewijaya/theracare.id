@@ -130,6 +130,7 @@ function App() {
                 const therapist = readStoredTherapist();
                 if (therapist?.id) {
                     const res = await sessionsApi.getForTherapist(therapist.id);
+                    if (res?.ok === false) throw new Error(res.data?.error || res.data?.message || 'Gagal memuat sesi terapis.');
                     const therapistSessions = res.data?.data || [];
                     const childMap = new Map();
                     therapistSessions.forEach(session => {
@@ -145,6 +146,7 @@ function App() {
                     setStoreChildren(Array.from(childMap.values()));
                 } else {
                     const res = await childrenApi.getAll();
+                    if (res?.ok === false) throw new Error(res.data?.error || res.data?.message || 'Gagal memuat data anak.');
                     setStoreChildren(res.data?.data || []);
                     setRawSessions([]);
                 }
@@ -203,6 +205,7 @@ function App() {
         const loadSessions = async () => {
             try {
                 const rawRes = await sessionsApi.getCompletedForChild(selectedId);
+                if (rawRes?.ok === false) throw new Error(rawRes.data?.error || rawRes.data?.message || 'Gagal memuat riwayat sesi anak.');
                 const fallbackRaw = rawSessions.filter(s => (s.childId === selectedId || s.child?.id === selectedId) && isDone(s));
                 const raw = rawRes.data?.data || fallbackRaw;
                 const mapped = await Promise.all(raw.map(async s => {

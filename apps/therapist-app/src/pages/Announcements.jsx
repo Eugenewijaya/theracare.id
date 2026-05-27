@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { adminApi, notificationsApi, rescheduleApi, therapyPeriodsApi } from '../../../shared/api/client';
 import { readTherapistUser } from '../../../shared/sessionIdentity';
+import { confirmAction } from '../../../shared/ui/confirmDialog';
 import {
     formatNotificationTime,
     getNotificationActor,
@@ -56,14 +57,19 @@ export default function Announcements() {
     const [deletionRequests, setDeletionRequests] = useState([]);
     const [deletionProcessingId, setDeletionProcessingId] = useState('');
     const [deletionFeedback, setDeletionFeedback] = useState('');
+    const [loadFeedback, setLoadFeedback] = useState('');
 
     const load = async () => {
         try {
+            setLoadFeedback('');
             const [annRes, notifRes, deletionRes] = await Promise.all([
                 adminApi.getAnnouncementsForRole('therapist'),
                 notificationsApi.getAll(),
                 therapyPeriodsApi.getDeletionRequests(),
             ]);
+            if (annRes?.ok === false) throw new Error(annRes.data?.error || annRes.data?.message || 'Pengumuman belum bisa dimuat.');
+            if (notifRes?.ok === false) throw new Error(notifRes.data?.error || notifRes.data?.message || 'Notifikasi belum bisa dimuat.');
+            if (deletionRes?.ok === false) throw new Error(deletionRes.data?.error || deletionRes.data?.message || 'Request penghapusan periode belum bisa dimuat.');
             const announcementRows = annRes.data?.data || [];
             setAnnouncements(announcementRows);
             const notifs = notifRes.data?.data || [];
@@ -80,10 +86,12 @@ export default function Announcements() {
             const user = readTherapistUser();
             if (user) {
                 const resRes = await rescheduleApi.getForTherapist(user.id);
+                if (resRes?.ok === false) throw new Error(resRes.data?.error || resRes.data?.message || 'Request reschedule belum bisa dimuat.');
                 setReschedules(resRes.data?.data || []);
             }
         } catch (e) {
             console.error(e);
+            setLoadFeedback(e?.message || 'Data notifikasi belum bisa dimuat.');
         }
     };
 
@@ -154,7 +162,15 @@ export default function Announcements() {
 
     const respondDeletionRequest = async (request, decision) => {
         const approved = decision === 'approved';
-        const confirmed = window.confirm(`${approved ? 'Setujui' : 'Tolak'} penghapusan periode ${request.periodName} untuk ${request.childName}?`);
+        const confirmed = await confirmAction({
+            tone: approved ? 'danger' : 'warning',
+            icon: approved ? 'delete_forever' : 'block',
+            title: approved ? 'Setujui penghapusan periode?' : 'Tolak penghapusan periode?',
+            message: `${request.periodName || 'Periode terapi'} untuk ${request.childName || 'anak'} akan ${approved ? 'dihapus setelah seluruh persetujuan selesai' : 'tetap aktif karena Anda menolak request ini'}.`,
+            details: request.reason ? `Alasan admin: ${request.reason}` : 'Keputusan ini akan tersimpan dan mengirim pembaruan notifikasi.',
+            confirmText: approved ? 'Setujui penghapusan' : 'Tolak penghapusan',
+            cancelText: 'Batal',
+        });
         if (!confirmed) return;
         setDeletionProcessingId(request.id);
         setDeletionFeedback('');
@@ -243,6 +259,11 @@ export default function Announcements() {
 
             <main className="flex-1 p-4 md:p-8">
                 <div className="max-w-3xl mx-auto flex flex-col gap-4">
+                    {loadFeedback && (
+                        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+                            {loadFeedback}
+                        </div>
+                    )}
                     {/* Pengumuman Tab */}
                     {activeTab === 'announcements' && (
                         announcements.length === 0 ? (

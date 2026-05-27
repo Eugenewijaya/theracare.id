@@ -17,6 +17,12 @@ function getStoredTherapist() {
     return readTherapistUser();
 }
 
+function assertApiOk(response, fallbackMessage) {
+    if (response?.ok === false) {
+        throw new Error(response.data?.error || response.data?.message || fallbackMessage);
+    }
+}
+
 const WelcomeFocus = () => {
     const navigate = useNavigate();
     const [showEndModal, setShowEndModal] = useState(false);
@@ -26,6 +32,7 @@ const WelcomeFocus = () => {
     const [pendingReportSession, setPendingReportSession] = useState(null);
     const [activeSession, setActiveSession] = useState(null);
     const [nowTick, setNowTick] = useState(() => new Date());
+    const [actionError, setActionError] = useState('');
 
     const loadSummary = useCallback(async () => {
         const user = getStoredTherapist();
@@ -42,8 +49,10 @@ const WelcomeFocus = () => {
                 sessionsApi.getForTherapist(user.id),
                 reportsApi.getForTherapist(user.id, 'harian'),
             ]);
+            assertApiOk(res, 'Ringkasan sesi belum bisa dimuat.');
+            assertApiOk(reportRes, 'Ringkasan laporan belum bisa dimuat.');
             const sessions = res.data?.data || [];
-            const reports = reportRes.ok ? reportRes.data?.data || [] : [];
+            const reports = reportRes.data?.data || [];
             const today = todayKey();
             const todaySessions = sessions.filter(s => s.date === today);
             const liveCandidates = todaySessions.filter(s => {
@@ -87,15 +96,17 @@ const WelcomeFocus = () => {
         if (!activeSession) return;
         setEnding(true);
         try {
+            setActionError('');
             if (activeSession.status !== 'active') {
-                await sessionsApi.updateStatus(activeSession.id, 'active');
+                assertApiOk(await sessionsApi.updateStatus(activeSession.id, 'active'), 'Sesi belum bisa dimulai sebelum diakhiri.');
             }
-            await sessionsApi.updateStatus(activeSession.id, 'done');
+            assertApiOk(await sessionsApi.updateStatus(activeSession.id, 'done'), 'Sesi belum bisa diakhiri.');
             setShowEndModal(false);
             window.dispatchEvent(new Event('sessionUpdated'));
             await loadSummary();
         } catch (e) {
             console.error('Failed to end active session', e);
+            setActionError(e?.message || 'Sesi belum bisa diakhiri.');
         } finally {
             setEnding(false);
         }
@@ -160,6 +171,12 @@ const WelcomeFocus = () => {
                             <span className="material-symbols-outlined text-[15px]">warning</span>
                             <span className="text-xs font-bold">{pendingReports} laporan sesi selesai belum dibuat</span>
                         </button>
+                    )}
+
+                    {actionError && (
+                        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+                            {actionError}
+                        </div>
                     )}
                 </div>
 

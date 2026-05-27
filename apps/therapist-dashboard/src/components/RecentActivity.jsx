@@ -24,11 +24,14 @@ const formatActivityTime = (timeStr) => {
 
 const RecentActivity = () => {
     const [activities, setActivities] = useState([]);
+    const [loadError, setLoadError] = useState('');
 
     useEffect(() => {
         const fetchActivities = async () => {
             try {
+                setLoadError('');
                 const res = await notificationsApi.getAll();
+                if (res?.ok === false) throw new Error(res.data?.error || res.data?.message || 'Aktivitas belum bisa dimuat.');
                 const notifs = res.data?.data || [];
                 const mapped = notifs.slice(0, 5).map(n => ({
                     iconBg: 'bg-teal-50 dark:bg-teal-900/30',
@@ -42,6 +45,7 @@ const RecentActivity = () => {
                 setActivities(mapped);
             } catch (e) {
                 console.error(e);
+                setLoadError(e?.message || 'Aktivitas belum bisa dimuat.');
             }
         };
 
@@ -58,8 +62,8 @@ const RecentActivity = () => {
             {activities.length === 0 ? (
                 <div className="flex flex-col items-center gap-2 py-4 text-slate-400 dark:text-slate-600 text-center">
                     <span className="material-symbols-outlined text-3xl opacity-50">event_note</span>
-                    <p className="text-xs font-semibold">No recent activity yet.</p>
-                    <p className="text-xs">Activities will appear once sessions are scheduled.</p>
+                    <p className="text-xs font-semibold">{loadError || 'No recent activity yet.'}</p>
+                    <p className="text-xs">{loadError ? 'Refresh halaman setelah koneksi backend pulih.' : 'Activities will appear once sessions are scheduled.'}</p>
                 </div>
             ) : (
                 <div className="flex flex-col gap-5">

@@ -103,6 +103,12 @@ const getReviewerLabel = (request) => {
     return 'Admin';
 };
 
+function assertApiOk(response, fallbackMessage) {
+    if (response?.ok === false) {
+        throw new Error(response.data?.error || response.data?.message || fallbackMessage);
+    }
+}
+
 function DeclineSubstituteModal({ request, suggestedSubstituteId, onSubmit, onClose }) {
     const [reason, setReason] = useState('');
     const canSubmit = reason.trim().length >= 8;
@@ -247,6 +253,10 @@ export default function ScheduleUpdates() {
                     sessionsApi.getForTherapist(user.id),
                     substituteRequestsApi.getMine(),
                 ]);
+                assertApiOk(reqRes, 'Request reschedule belum bisa dimuat.');
+                assertApiOk(notifRes, 'Notifikasi jadwal belum bisa dimuat.');
+                assertApiOk(sessRes, 'Jadwal terapis belum bisa dimuat.');
+                assertApiOk(substituteRes, 'Konfirmasi pengganti belum bisa dimuat.');
 
                 const requests = reqRes.data?.data || [];
                 const notifs = notifRes.data?.data || [];

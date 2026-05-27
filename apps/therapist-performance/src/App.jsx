@@ -3,7 +3,7 @@ import Header from './components/Header';
 import TherapistProfile from './components/TherapistProfile';
 import { sessionsApi, reportsApi, therapistsApi } from '../../shared/api/client';
 import { uploadImageFile } from '../../shared/uploadImage';
-import { readTherapistUser, storeTherapistUser } from '../../shared/sessionIdentity';
+import { isPortalUserRemembered, readTherapistUser, storeTherapistUser } from '../../shared/sessionIdentity';
 
 const MONTH_FORMATTER = new Intl.DateTimeFormat('en-US', { month: 'short' });
 
@@ -29,7 +29,7 @@ function normalizeCertifications(certifications = []) {
 }
 
 function storeTherapist(user) {
-    storeTherapistUser(user, !!localStorage.getItem('therapist_user'));
+    storeTherapistUser(user, isPortalUserRemembered('therapist'));
 }
 
 function formatRelativeDate(dateStr) {
@@ -94,6 +94,7 @@ function App({ onLogout }) {
     const [monthlySeries, setMonthlySeries] = useState([]);
     const [volumeSummary, setVolumeSummary] = useState({ scheduled: 0, completed: 0, delta: '0%', completionRate: '0%' });
     const [feedbackFeed, setFeedbackFeed] = useState([]);
+    const [statsError, setStatsError] = useState('');
 
     useEffect(() => {
         setGrowth(normalizeCertifications(currentUser?.certifications || []));
@@ -104,10 +105,13 @@ function App({ onLogout }) {
         
         const updateStats = async () => {
             try {
+                setStatsError('');
                 const [sessionsRes, reportsRes] = await Promise.all([
                     sessionsApi.getForTherapist(currentUser.id),
                     reportsApi.getForTherapist(currentUser.id, 'harian')
                 ]);
+                if (sessionsRes?.ok === false) throw new Error(sessionsRes.data?.error || sessionsRes.data?.message || 'Data sesi belum bisa dimuat.');
+                if (reportsRes?.ok === false) throw new Error(reportsRes.data?.error || reportsRes.data?.message || 'Data laporan belum bisa dimuat.');
                 
                 const sessions = sessionsRes.data?.data || [];
                 const dailyReports = reportsRes.data?.data || [];
@@ -121,10 +125,11 @@ function App({ onLogout }) {
                 let ratingCount = 0;
                 const comments = [];
 
-                const ratingsPromises = doneSessions.map(s => sessionsApi.getRating(s.id).then(r => ({ session: s, res: r })));
+                const ratingsPromises = doneSessions.map(s => sessionsApi.getRating(s.id).then(r => ({ session: s, res: r })).catch(() => ({ session: s, res: null })));
                 const ratingsResults = await Promise.all(ratingsPromises);
 
                 ratingsResults.forEach(({ session, res }) => {
+                    if (res?.ok === false) return;
                     const r = res.data?.data;
                     if (r && r.rating) {
                         totalRating += r.rating;
@@ -166,6 +171,7 @@ function App({ onLogout }) {
                 setFeedbackFeed(comments.sort((a, b) => (b.date || '').localeCompare(a.date || '')));
             } catch (e) {
                 console.error('Failed to update performance stats', e);
+                setStatsError(e?.message || 'Data kinerja belum bisa dimuat.');
             }
         };
 
@@ -292,6 +298,12 @@ function App({ onLogout }) {
             <div className="flex min-w-0 flex-1 justify-center overflow-x-hidden px-4 py-5 md:px-10">
                 <div className="layout-content-container flex w-full max-w-[1200px] min-w-0 flex-col">
                     <Header searchValue={searchQuery} onSearchChange={setSearchQuery} user={currentUser} onSettingsClick={openProfileModal} onLogout={onLogout} />
+
+                    {statsError && (
+                        <div className="mx-4 mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+                            {statsError}
+                        </div>
+                    )}
 
                     {/* Profile Header with Edit button */}
                     <div className="relative">

@@ -1432,20 +1432,26 @@ function App() {
     const [sessions, setSessions] = useState([]);
     const [reports, setReports] = useState([]);
     const [loadingData, setLoadingData] = useState(true);
+    const [dataError, setDataError] = useState('');
 
     const loadData = async () => {
         if (!currentUser?.id) { setLoadingData(false); return; }
         try {
+            setDataError('');
             const [sessRes, repRes] = await Promise.all([
                 sessionsApi.getForTherapist(currentUser.id),
                 reportsApi.getForTherapist(currentUser.id)
             ]);
+            if (sessRes?.ok === false) throw new Error(sessRes.data?.error || sessRes.data?.message || 'Sesi terapi belum bisa dimuat.');
+            if (repRes?.ok === false) throw new Error(repRes.data?.error || repRes.data?.message || 'Riwayat laporan belum bisa dimuat.');
             setSessions(sessRes.data?.data || []);
             setReports(repRes.data?.data || []);
         } catch (e) {
             console.error(e);
+            setDataError(e?.message || 'Data laporan belum bisa dimuat.');
+        } finally {
+            setLoadingData(false);
         }
-        setLoadingData(false);
     };
 
     useEffect(() => {
@@ -1510,6 +1516,11 @@ function App() {
             <main className="flex min-h-full min-w-0 flex-1 flex-col overflow-x-hidden">
                 <Header />
                 <div className="flex-1">
+                    {dataError && (
+                        <div className="mx-4 mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200 sm:mx-8">
+                            {dataError}
+                        </div>
+                    )}
                     {loadingData ? (
                         <div className="flex justify-center p-10"><span className="text-slate-500">Loading data...</span></div>
                     ) : (

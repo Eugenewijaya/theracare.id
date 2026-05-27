@@ -101,6 +101,7 @@ function App() {
     const [anchorDate, setAnchorDate] = useState(() => new Date());
     const [events, setEvents] = useState([]);
     const [profile, setProfile] = useState(() => currentUser || {});
+    const [loadError, setLoadError] = useState('');
 
     useEffect(() => {
         const loadEvents = async () => {
@@ -110,10 +111,14 @@ function App() {
             }
 
             try {
+                setLoadError('');
                 const [res, profileRes] = await Promise.all([
                     sessionsApi.getForTherapist(currentUser.id),
                     therapistsApi.getMe().catch(() => ({ data: { data: currentUser } })),
                 ]);
+                if (res?.ok === false) {
+                    throw new Error(res.data?.error || res.data?.message || 'Kalender belum bisa dimuat.');
+                }
                 const rawSessions = res.data?.data || [];
                 const mapped = rawSessions
                     .map(toCalendarEvent)
@@ -123,6 +128,7 @@ function App() {
                 if (profileRes.data?.data) setProfile(profileRes.data.data);
             } catch (e) {
                 console.error('Failed to load sessions', e);
+                setLoadError(e?.message || 'Kalender belum bisa dimuat.');
             }
         };
 
@@ -218,6 +224,12 @@ function App() {
 
                 <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
                     <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
+                        {loadError && (
+                            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+                                {loadError}
+                            </div>
+                        )}
+
                         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800">
                             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                                 <div className="flex items-center gap-3">

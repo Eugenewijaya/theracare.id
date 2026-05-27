@@ -21,16 +21,19 @@ function App({ onLogout }) {
         leaveRequests: [],
         centerClosures: [],
     });
+    const [scheduleError, setScheduleError] = useState('');
 
     const loadScheduleSummary = useCallback(async () => {
         if (!currentUser?.id) return;
         try {
+            setScheduleError('');
             const [sessionsRes, profileRes, leaveRes, closureRes] = await Promise.all([
                 sessionsApi.getForTherapist(currentUser.id),
                 therapistsApi.getMe().catch(() => ({ data: { data: null } })),
                 leaveRequestsApi.getMine().catch(() => ({ data: { data: [] } })),
                 adminApi.getCenterClosures().catch(() => ({ data: { data: { closures: [] } } })),
             ]);
+            if (sessionsRes?.ok === false) throw new Error(sessionsRes.data?.error || sessionsRes.data?.message || 'Jadwal dashboard belum bisa dimuat.');
             const profile = profileRes.data?.data;
             if (profile?.id) setCurrentUser(prev => prev ? { ...prev, ...profile } : profile);
             setScheduleData({
@@ -40,6 +43,7 @@ function App({ onLogout }) {
             });
         } catch (error) {
             console.error('Failed to load therapist dashboard schedule summary', error);
+            setScheduleError(error?.message || 'Jadwal dashboard belum bisa dimuat.');
         }
     }, [currentUser?.id]);
 
@@ -94,6 +98,11 @@ function App({ onLogout }) {
             </div>
 
             <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                {scheduleError && (
+                    <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+                        {scheduleError}
+                    </div>
+                )}
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                         <h2 className="text-base font-black text-slate-900 dark:text-white">Jadwal Terapi Mingguan Saya</h2>

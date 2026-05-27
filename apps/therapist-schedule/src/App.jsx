@@ -52,6 +52,18 @@ function getProgramStyle(programType = '') {
     return { tag: 'TH', color: 'bg-slate-100 text-slate-700 dark:bg-slate-900/30 dark:text-slate-400' };
 }
 
+function ensureApiOk(response, fallbackMessage) {
+    if (response?.ok === false) {
+        throw new Error(response.data?.error || response.data?.message || fallbackMessage);
+    }
+}
+
+async function updateSessionStatus(sessionId, status, fallbackMessage) {
+    const response = await sessionsApi.updateStatus(sessionId, status);
+    ensureApiOk(response, fallbackMessage);
+    return response;
+}
+
 function App({ onLogout }) {
     const navigate = useNavigate();
     
@@ -88,6 +100,8 @@ function App({ onLogout }) {
                 leaveRequestsApi.getMine().catch(() => ({ data: { data: [] } })),
                 adminApi.getCenterClosures().catch(() => ({ data: { data: { closures: [] } } })),
             ]);
+            ensureApiOk(res, 'Jadwal harian belum bisa dimuat.');
+            ensureApiOk(allRes, 'Ringkasan jadwal belum bisa dimuat.');
             const rawSessions = res.data?.data || [];
             const profile = profileRes.data?.data;
             if (profile?.id) setCurrentUser(prev => prev ? { ...prev, ...profile } : profile);
@@ -144,11 +158,13 @@ function App({ onLogout }) {
         ));
         if (!candidate) return;
         autoStartedIds.current.add(candidate.id);
-        sessionsApi.updateStatus(candidate.id, 'active').then(() => {
+        updateSessionStatus(candidate.id, 'active', 'Sesi otomatis belum bisa dimulai.').then(() => {
             loadSessions();
             window.dispatchEvent(new Event('sessionUpdated'));
         }).catch((e) => {
             console.error('Failed to auto-start session', e);
+            autoStartedIds.current.delete(candidate.id);
+            setActionError(e?.message || 'Sesi otomatis belum bisa dimulai.');
         });
     }, [sessions, nowTick]);
 
@@ -159,12 +175,13 @@ function App({ onLogout }) {
         ));
         if (!candidate) return;
         autoFinishedIds.current.add(candidate.id);
-        sessionsApi.updateStatus(candidate.id, 'done').then(() => {
+        updateSessionStatus(candidate.id, 'done', 'Sesi otomatis belum bisa diselesaikan.').then(() => {
             loadSessions();
             window.dispatchEvent(new Event('sessionUpdated'));
         }).catch((e) => {
             console.error('Failed to auto-finish session', e);
             autoFinishedIds.current.delete(candidate.id);
+            setActionError(e?.message || 'Sesi otomatis belum bisa diselesaikan.');
         });
     }, [sessions, nowTick]);
 
@@ -195,11 +212,13 @@ function App({ onLogout }) {
     const confirmFinish = async () => {
         if (!finishModal) return;
         try {
-            await sessionsApi.updateStatus(finishModal.id, 'done');
+            setActionError('');
+            await updateSessionStatus(finishModal.id, 'done', 'Sesi belum bisa diselesaikan.');
             loadSessions();
             window.dispatchEvent(new Event('sessionUpdated'));
         } catch (e) {
             console.error('Failed to finish session', e);
+            setActionError(e?.message || 'Sesi belum bisa diselesaikan.');
         }
         setFinishModal(null);
     };
@@ -209,12 +228,12 @@ function App({ onLogout }) {
         if (!startModal) return;
         try {
             setActionError('');
-            await sessionsApi.updateStatus(startModal.id, 'active');
+            await updateSessionStatus(startModal.id, 'active', 'Sesi belum bisa dimulai.');
             loadSessions();
             window.dispatchEvent(new Event('sessionUpdated'));
         } catch (e) {
             console.error('Failed to start session', e);
-            setActionError(e?.data?.error || e?.message || 'Sesi belum bisa dimulai. Pastikan admin sudah mengonfirmasi kehadiran anak.');
+            setActionError(e?.message || 'Sesi belum bisa dimulai. Pastikan admin sudah mengonfirmasi kehadiran anak.');
         }
         setStartModal(null);
     };
