@@ -1,7 +1,7 @@
 import React, { useCallback, useState, useEffect, useRef } from 'react';
 import { childrenApi, sessionsApi } from '../../../shared/api/client';
 import { uploadImageFile } from '../../../shared/uploadImage';
-import { readParentUser } from '../../../shared/sessionIdentity';
+import { normalizeChildrenList, readParentUser } from '../../../shared/sessionIdentity';
 
 export default function ChildProfile() {
     const [child, setChild] = useState(null);
@@ -27,7 +27,7 @@ export default function ChildProfile() {
             if (!targetChildId && parentId) {
                 const cres = await childrenApi.getByParent(parentId);
                 if (!cres.ok) throw new Error(cres.data?.error || 'Profil anak belum bisa dimuat.');
-                const children = cres.data?.data || [];
+                const children = normalizeChildrenList(cres.data?.data);
                 if (children.length > 0) {
                     targetChildId = children[0].id || children[0].nita;
                 }

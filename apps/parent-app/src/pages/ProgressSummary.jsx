@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { childrenApi, reportsApi, sessionsApi } from '../../../shared/api/client';
-import { readParentUser } from '../../../shared/sessionIdentity';
+import { normalizeChildrenList, readParentUser } from '../../../shared/sessionIdentity';
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
 const PARENT_VISIBLE_REPORT_STATUSES = new Set(['approved', 'published', 'ready_for_parent']);
@@ -326,20 +326,17 @@ export default function ProgressSummary() {
             if (parentId) {
                 const childRes = await childrenApi.getByParent(parentId);
                 if (!childRes.ok) throw new Error(childRes.data?.error || 'Gagal memuat anak');
-                const rawChildren = childRes.data?.data;
-                list = Array.isArray(rawChildren)
-                    ? rawChildren
-                    : Array.isArray(rawChildren?.children)
-                        ? rawChildren.children
-                        : rawChildren
-                            ? [rawChildren]
-                            : [];
+                list = normalizeChildrenList(childRes.data?.data);
             } else {
                 list = Array.isArray(user.children) ? user.children : [];
             }
 
             setChildren(list);
-            setSelectedChildId(prev => (list.some(child => child.id === prev) ? prev : (list[0]?.id || '')));
+            setSelectedChildId(prev => (
+                list.some(child => child.id === prev || child.nita === prev)
+                    ? prev
+                    : (list[0]?.id || list[0]?.nita || '')
+            ));
 
             const warningMessages = [];
             const dataEntries = await Promise.all(list.map(async (child) => {
@@ -404,7 +401,7 @@ export default function ProgressSummary() {
         return () => events.forEach(eventName => window.removeEventListener(eventName, refresh));
     }, [load]);
 
-    const selectedChild = children.find(child => child.id === selectedChildId) || children[0] || null;
+    const selectedChild = children.find(child => child.id === selectedChildId || child.nita === selectedChildId) || children[0] || null;
     const selectedSessions = selectedChild ? sessionsByChild[selectedChild.id] || [] : [];
     const selectedReports = selectedChild ? reportsByChild[selectedChild.id] || [] : [];
     const visiblePrograms = selectedChild

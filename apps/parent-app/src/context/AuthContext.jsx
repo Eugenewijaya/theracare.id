@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { authApi, parentsApi } from '../../../shared/api/client';
-import { clearParentUser, isParentUserRemembered, readParentUser, storeParentUser } from '../../../shared/sessionIdentity';
+import { clearParentUser, isParentUserRemembered, normalizeChildrenList, readParentUser, storeParentUser } from '../../../shared/sessionIdentity';
 
 const AuthContext = createContext(null);
 
@@ -32,7 +32,7 @@ export function AuthProvider({ children }) {
       avatar: parent.avatar || parent.user?.image || '',
       phone: parent.phone,
       email: parent.email,
-      children: parent.children || [],
+      children: normalizeChildrenList(parent.children),
     };
     setUser(userData);
     storeUser(userData, remember);

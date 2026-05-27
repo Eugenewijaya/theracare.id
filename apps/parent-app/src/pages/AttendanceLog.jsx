@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { childrenApi, sessionsApi } from '../../../shared/api/client';
-import { readParentUser } from '../../../shared/sessionIdentity';
+import { normalizeChildrenList, readParentUser } from '../../../shared/sessionIdentity';
 
 // Calculate end time from startTime + duration string (e.g. "09:00" + "60 mins")
 const calculateEndTime = (startTime, duration) => {
@@ -35,7 +35,7 @@ export default function AttendanceLog() {
             if (!targetChildId && parentId) {
                 const cres = await childrenApi.getByParent(parentId);
                 if (!cres.ok) throw new Error(cres.data?.error || 'Data anak belum bisa dimuat.');
-                const childrenList = cres.data?.data || [];
+                const childrenList = normalizeChildrenList(cres.data?.data);
                 if (childrenList.length > 0) {
                     targetChildId = childrenList[0].id || childrenList[0].nita;
                 }

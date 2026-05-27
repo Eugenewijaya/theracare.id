@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authApi, childrenApi, notificationsApi } from '../../../shared/api/client';
-import { clearParentUser, isParentUserRemembered, readParentUser, storeParentUser } from '../../../shared/sessionIdentity';
+import { clearParentUser, isParentUserRemembered, normalizeChildrenList, readParentUser, storeParentUser } from '../../../shared/sessionIdentity';
 import PortalProfileMenu from '../../../shared/ui/PortalProfileMenu';
 
 const Header = ({ title = "Dashboard", onLogout }) => {
@@ -25,9 +25,9 @@ const Header = ({ title = "Dashboard", onLogout }) => {
                 try {
                     const res = await childrenApi.getByParent(parentId);
                     if (!res.ok) return;
-                    const list = res.data?.data || [];
+                    const list = normalizeChildrenList(res.data?.data);
                     setChildren(list);
-                    setActiveChildId(user.childId || list[0]?.nita || '');
+                    setActiveChildId(user.childId || list[0]?.nita || list[0]?.id || '');
                 } catch(e) {}
             }
 
@@ -76,9 +76,9 @@ const Header = ({ title = "Dashboard", onLogout }) => {
         setActiveChildId(childId);
         const user = readParentUser();
         if (user) {
-            const selected = children.find(c => c.nita === childId);
+            const selected = children.find(c => c.nita === childId || c.id === childId);
             if (selected) {
-                user.childId   = selected.nita;
+                user.childId   = selected.id || selected.nita;
                 user.childName = selected.name;
                 storeParentUser(user, isParentUserRemembered());
                 window.dispatchEvent(new CustomEvent('parentChildSelectionChanged'));
@@ -127,7 +127,7 @@ const Header = ({ title = "Dashboard", onLogout }) => {
                             className="appearance-none w-full bg-background-light dark:bg-background-dark border border-border-light dark:border-border-dark text-sm font-bold text-slate-700 dark:text-slate-200 rounded-xl pl-9 pr-8 py-2.5 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all shadow-sm cursor-pointer"
                         >
                             {children.map(c => (
-                                <option key={c.id} value={c.nita}>{c.name}</option>
+                                <option key={c.id || c.nita} value={c.nita || c.id}>{c.name}</option>
                             ))}
                         </select>
                         <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-primary text-[18px] pointer-events-none">child_care</span>

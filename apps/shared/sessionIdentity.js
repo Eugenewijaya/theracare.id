@@ -69,6 +69,15 @@ export function isPortalUserRemembered(role) {
   }
 }
 
+export function normalizeChildrenList(raw) {
+  if (Array.isArray(raw)) return raw;
+  if (Array.isArray(raw?.children)) return raw.children;
+  if (Array.isArray(raw?.data)) return raw.data;
+  if (Array.isArray(raw?.data?.children)) return raw.data.children;
+  if (raw && typeof raw === 'object') return [raw];
+  return [];
+}
+
 export const readParentUser = () => readPortalUser('parent');
 export const readTherapistUser = () => readPortalUser('therapist');
 export const storeParentUser = (user, remember) => storePortalUser('parent', user, remember);

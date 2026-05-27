@@ -24,20 +24,20 @@ const Stepper = ({ currentStep }) => {
 
                             {/* Step bubble */}
                             {isCompleted ? (
-                                <a href="#" className="relative flex h-8 w-8 items-center justify-center rounded-full bg-primary hover:bg-primary/90 transition-colors">
+                                <span className="relative flex h-8 w-8 items-center justify-center rounded-full bg-primary">
                                     <span className="material-symbols-outlined text-slate-900 text-sm">check</span>
                                     <span className="sr-only">{label} - Completed</span>
-                                </a>
+                                </span>
                             ) : isCurrent ? (
-                                <a href="#" className="relative flex h-8 w-8 items-center justify-center rounded-full border-2 border-primary bg-white dark:bg-slate-900 shadow-sm">
+                                <span aria-current="step" className="relative flex h-8 w-8 items-center justify-center rounded-full border-2 border-primary bg-white dark:bg-slate-900 shadow-sm">
                                     <span className="text-primary text-sm font-bold">{stepNum}</span>
                                     <span className="sr-only">{label} - Current</span>
-                                </a>
+                                </span>
                             ) : (
-                                <a href="#" className="group relative flex h-8 w-8 items-center justify-center rounded-full border-2 border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 hover:border-slate-400 transition-colors">
-                                    <span className="text-slate-500 dark:text-slate-400 text-sm font-medium group-hover:text-slate-700 dark:group-hover:text-slate-200">{stepNum}</span>
+                                <span className="relative flex h-8 w-8 items-center justify-center rounded-full border-2 border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900">
+                                    <span className="text-slate-500 dark:text-slate-400 text-sm font-medium">{stepNum}</span>
                                     <span className="sr-only">{label} - Upcoming</span>
-                                </a>
+                                </span>
                             )}
 
                             {/* Step label */}

@@ -243,6 +243,35 @@ Perbaikan:
 
 - File dihapus setelah dicek tidak menjadi import aktif.
 
+### 11. Re-audit tambahan setelah sinkronisasi production
+
+File:
+
+- `apps/bulk-schedule/src/components/Stepper.jsx`
+- `apps/shared/sessionIdentity.js`
+- `apps/parent-app/src/context/AuthContext.jsx`
+- `apps/parent-app/src/pages/AttendanceLog.jsx`
+- `apps/parent-app/src/pages/ChildProfile.jsx`
+- `apps/parent-app/src/pages/ProgressSummary.jsx`
+- `apps/parent-web-dashboard/src/App.jsx`
+- `apps/parent-web-dashboard/src/components/Header.jsx`
+- `apps/parent-reports-archive/src/App.jsx`
+- `apps/parent-reports-archive/src/components/Header.jsx`
+- `apps/parent-reschedule/src/components/Header.jsx`
+
+Masalah:
+
+- Stepper bulk schedule masih memakai `href="#"` untuk indikator progress sehingga terlihat seperti action navigasi padahal tidak aktif.
+- Beberapa parent micro-app sudah memperbaiki response child list, tetapi belum memakai satu helper shared sehingga shape `{ children: [] }`, array langsung, single object, atau session lama masih bisa berbeda antar dashboard.
+- Selector anak di header parent micro-app masih mengasumsikan `nita` selalu ada sebagai value, padahal kontrak backend memakai `id` sebagai identifier utama.
+
+Perbaikan:
+
+- Indikator step bulk schedule diganti dari link kosong menjadi elemen status non-navigasi dengan `aria-current="step"` untuk step aktif.
+- Ditambahkan `normalizeChildrenList()` di `apps/shared/sessionIdentity.js`.
+- Parent auth/session, parent dashboard, profile, attendance, progress, report archive, reschedule, dan header parent micro-app sekarang memakai helper yang sama.
+- Child selector parent sekarang memakai fallback `nita || id`, mencari berdasarkan `nita` atau `id`, dan menyimpan `id || nita` supaya endpoint backend tetap menerima identifier yang valid.
+
 ## QA dan hasil command
 
 ### Static scan
@@ -269,12 +298,17 @@ npm.cmd --workspace apps/bulk-schedule run build
 npm.cmd --workspace apps/parent-app run build
 npm.cmd --workspace apps/parent-portal run build
 npm.cmd --workspace apps/parent-reports-archive run build
+npm.cmd --workspace apps/parent-web-dashboard run build
+npm.cmd --workspace apps/parent-reschedule run build
+npm.cmd --workspace apps/admin-reports run build
+npm.cmd --workspace apps/therapist-web-report run build
 ```
 
 Catatan:
 
 - `npm.cmd --workspaces --if-present run build` juga dijalankan untuk full workspace. Output build Vite dan `tsc` tampil berhasil, tetapi npm workspace runner pernah berakhir dengan native exit `3221225501` pada workspace server. Server kemudian dibuild ulang secara individual dan berhasil dengan `tsc`.
 - Ini dicatat sebagai flake/native workspace-runner di Windows, bukan error TypeScript yang tersisa.
+- Re-audit tambahan setelah sinkronisasi production menjalankan build targeted pada workspace yang tersentuh dan report surface utama; semua command targeted di atas berhasil.
 
 ### Lint
 
@@ -323,6 +357,7 @@ Hasil:
 - Therapist: 24 checks, route shell terbuka, tidak ada horizontal overflow.
 - Parent: 18 checks, dua runtime error ditemukan lalu diperbaiki dan dicek ulang.
 - Therapist-report standalone: 2 checks, form terbuka setelah BrowserRouter dan report contract patch.
+- Re-audit tambahan membuka `parent-portal` lokal pada `/`, `/reports`, `/progress`, dan `/reschedule`; semua route render, `overflowX=false`, dan tidak ada console error dari app.
 
 ## Flow status akhir
 

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from './components/Header';
 import { sessionsApi, childrenApi, adminApi } from '../../shared/api/client';
-import { readParentUser } from '../../shared/sessionIdentity';
+import { normalizeChildrenList, readParentUser } from '../../shared/sessionIdentity';
 import { formatSessionClock, getLiveSessionState } from '../../shared/sessionLiveState';
 
 // ── Helpers ────────────────────────────────────────────────────────
@@ -131,7 +131,7 @@ function App({ onLogout }) {
             if (parentId) {
                 const childRes = await childrenApi.getByParent(parentId);
                 if (!childRes.ok) throw new Error(childRes.data?.error || 'Profil anak belum bisa dimuat.');
-                const children = childRes.data?.data || [];
+                const children = normalizeChildrenList(childRes.data?.data);
                 const activeChild = children.find(c => c.nita === childId || c.id === childId) || children[0] || null;
                 setChild(activeChild);
                 targetChildId = targetChildId || activeChild?.id || activeChild?.nita;

@@ -3,7 +3,7 @@ import Header from './components/Header';
 import { sessionsApi, reportsApi, adminApi, childrenApi } from '../../shared/api/client';
 import { useClinicSettings } from '../../shared/clinicSettings';
 import { openReportPdf } from '../../shared/reportPdf';
-import { readParentUser } from '../../shared/sessionIdentity';
+import { normalizeChildrenList, readParentUser } from '../../shared/sessionIdentity';
 
 // ── Constants ─────────────────────────────────────────────────────────
 const SCALE_MAP = { 1: 'Sangat Kurang', 2: 'Kurang', 3: 'Cukup', 4: 'Baik', 5: 'Sangat Baik' };
@@ -576,14 +576,7 @@ function App({ onLogout }) {
                 if (user.parentId) {
                     const childRes = await childrenApi.getByParent(user.parentId);
                     if (!childRes.ok) throw new Error(childRes.data?.error || 'Gagal memuat profil anak.');
-                    const rawChildren = childRes.data?.data;
-                    children = Array.isArray(rawChildren)
-                        ? rawChildren
-                        : Array.isArray(rawChildren?.children)
-                            ? rawChildren.children
-                            : rawChildren
-                                ? [rawChildren]
-                                : [];
+                    children = normalizeChildrenList(childRes.data?.data);
                 } else if (Array.isArray(user.children) && user.children.length) {
                     children = user.children;
                 } else if (user.childId) {
@@ -648,7 +641,7 @@ function App({ onLogout }) {
             const allProg = pRes.data?.data || [];
             const childProfile =
                 availableChildren.find(c => c.id === childId || c.nita === childId) ||
-                (user?.children || []).find(c => c.id === childId || c.nita === childId);
+                (Array.isArray(user?.children) ? user.children : []).find(c => c.id === childId || c.nita === childId);
 
             const mappedReports = await Promise.all(visibleReports.map(async savedReport => {
                 const s = savedReport.sessionId ? sessionMap.get(savedReport.sessionId) : null;
