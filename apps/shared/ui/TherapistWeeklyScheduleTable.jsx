@@ -1,5 +1,5 @@
 import React from 'react';
-import { getTherapistSlotAvailability, getTherapistWorkWindowForDate } from '../therapistSchedule';
+import { getTherapistSlotAvailability } from '../therapistSchedule';
 
 const DAY_COLUMNS = [
   { key: 'Senin', english: 'Monday', short: 'SEN', offset: 0, aliases: ['senin', 'sen', 'monday', 'mon'] },
@@ -182,34 +182,18 @@ function getWeekDates(monday) {
   }));
 }
 
-function addSlot(slots, start, duration, source = 'session') {
-  const normalizedStart = normalizeClockValue(start);
-  if (!normalizedStart || !Number.isFinite(duration) || duration <= 0) return;
-  slots.set(getSlotKey(normalizedStart, duration), { start: normalizedStart, duration, source });
-}
-
-function getSlotsForWeek(sessions, weekDates, therapists = []) {
+function getSlotsForWeek(sessions, weekDates) {
   const weekDateSet = new Set(weekDates.map((day) => day.dateKey));
   const slots = new Map();
-  DEFAULT_SLOTS.forEach((slot) => addSlot(slots, slot.start, slot.duration, 'default'));
-
-  (therapists || []).forEach((therapist) => {
-    weekDates.forEach((day) => {
-      const { known, window } = getTherapistWorkWindowForDate(therapist, day.date);
-      if (!known || !window?.start || !window?.end) return;
-      const workStart = parseMinutes(window.start);
-      const workEnd = parseMinutes(window.end);
-      if (workStart === null || workEnd === null || workEnd <= workStart) return;
-      addSlot(slots, window.start, workEnd - workStart, 'workWindow');
-    });
-  });
+  DEFAULT_SLOTS.forEach((slot) => slots.set(getSlotKey(slot.start, slot.duration), slot));
 
   (sessions || []).forEach((session) => {
     const dateKey = getSessionDateKey(session);
     const start = session?.startTime || session?.time;
     if (!weekDateSet.has(dateKey) || !start) return;
     const duration = parseDurationMinutes(session?.duration);
-    addSlot(slots, start, duration, 'session');
+    const normalizedStart = normalizeClockValue(start) || start;
+    slots.set(getSlotKey(normalizedStart, duration), { start: normalizedStart, duration });
   });
 
   return Array.from(slots.values())
@@ -218,7 +202,6 @@ function getSlotsForWeek(sessions, weekDates, therapists = []) {
 }
 
 function sessionOverlapsSlot(session, slot) {
-  if (slot?.source === 'workWindow') return false;
   const sessionStart = parseMinutes(session?.startTime || session?.time);
   const slotStart = parseMinutes(slot.start);
   if (sessionStart === null || slotStart === null) return false;
@@ -314,7 +297,7 @@ function TherapistWeeklyScheduleTable({
 
   const weekDates = React.useMemo(() => getWeekDates(weekStart), [weekStart]);
   const visibleTherapists = React.useMemo(() => getVisibleTherapists(therapists, sessions), [therapists, sessions]);
-  const slots = React.useMemo(() => getSlotsForWeek(sessions, weekDates, visibleTherapists), [sessions, weekDates, visibleTherapists]);
+  const slots = React.useMemo(() => getSlotsForWeek(sessions, weekDates), [sessions, weekDates]);
   const weekTitle = formatWeekLabel(weekStart);
 
   const shiftWeek = (count) => setWeekStart((prev) => addDays(prev, count * 7));
@@ -414,10 +397,7 @@ function TherapistWeeklyScheduleTable({
                     </>
                   )}
                   <td className="border border-slate-300 bg-white px-1 py-1.5 text-center font-black text-slate-950 dark:border-slate-700 dark:bg-slate-950 dark:text-white">
-                    <div>{formatRange(slot.start, slot.duration)}</div>
-                    {slot.source === 'workWindow' && (
-                      <div className="mt-0.5 text-[9px] font-bold normal-case text-primary">Jam kerja</div>
-                    )}
+                    {formatRange(slot.start, slot.duration)}
                   </td>
                   {weekDates.map((day) => {
                     const dateSessions = therapistSessions.filter((session) => (
@@ -430,12 +410,9 @@ function TherapistWeeklyScheduleTable({
                       ? 'CENTER OFF'
                       : leave
                         ? getLeaveLabel(leave.type)
-                        : workWindow.severity === 'day_off'
+                        : workWindow.severity === 'day_off' || workWindow.severity === 'outside_hours'
                           ? 'OFF'
                           : '';
-                    const outsideHoursLabel = !offLabel && workWindow.severity === 'outside_hours'
-                      ? workWindow.label
-                      : '';
                     const isOff = Boolean(offLabel);
                     const cellClass = isOff ? OFF_CELL_CLASS : palette.cell;
 
@@ -448,11 +425,6 @@ function TherapistWeeklyScheduleTable({
                           {offLabel && (
                             <span className={`rounded px-1.5 py-0.5 text-[9px] font-black ${dateSessions.length > 0 ? OFF_CHIP_CLASS : 'text-white'}`}>
                               {offLabel}
-                            </span>
-                          )}
-                          {outsideHoursLabel && dateSessions.length > 0 && (
-                            <span className="rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9px] font-black text-amber-700">
-                              {outsideHoursLabel}
                             </span>
                           )}
                           {dateSessions.length === 0 && !offLabel && (
