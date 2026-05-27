@@ -166,14 +166,30 @@ export default function PortalProfileMenu({
   }, []);
 
   const profile = useMemo(() => {
+    const isAdmin = role === 'admin';
     const isTherapist = role === 'therapist';
-    const name = user?.name || user?.parentName || (isTherapist ? 'Therapist' : 'Parent');
+    const name = user?.name || user?.parentName || (isAdmin ? 'Admin' : isTherapist ? 'Therapist' : 'Parent');
     const email = user?.email || '';
-    const id = isTherapist ? (user?.nit || user?.id || '') : (user?.parentId || user?.phone || user?.id || '');
+    const id = isAdmin
+      ? (user?.id || user?.userId || user?.role || '')
+      : isTherapist
+        ? (user?.nit || user?.id || '')
+        : (user?.parentId || user?.phone || user?.id || '');
     const avatar = user?.avatar || user?.photoUrl || user?.image || user?.user?.image || '';
     const initials = getInitials(name);
-    const title = isTherapist ? (user?.specialty || user?.specialization || 'Clinical Team') : (user?.phone || 'Parent / Guardian');
-    const stats = isTherapist
+    const title = isAdmin
+      ? (user?.role || 'Administrator')
+      : isTherapist
+        ? (user?.specialty || user?.specialization || 'Clinical Team')
+        : (user?.phone || 'Parent / Guardian');
+    const stats = isAdmin
+      ? [
+          ['Role', user?.role || 'admin'],
+          ['Status', user?.status || 'Aktif'],
+          ['Email', email || '-'],
+          ['ID', id || '-'],
+        ]
+      : isTherapist
       ? [
           ['Spesialisasi', user?.specialty || user?.specialization || '-'],
           ['Status', user?.status || 'Aktif'],
@@ -186,7 +202,7 @@ export default function PortalProfileMenu({
           ['Anak', childrenCount ? `${childrenCount} anak` : (user?.childName || '-')],
           ['Email', email || '-'],
         ];
-    return { avatar, email, id, initials, isTherapist, name, stats, title };
+    return { avatar, email, id, initials, isAdmin, isTherapist, name, stats, title };
   }, [childrenCount, role, user]);
 
   const handleLogout = async () => {
@@ -283,7 +299,7 @@ export default function PortalProfileMenu({
 
           <div className="my-4 border-t border-dashed border-slate-200 dark:border-slate-700" />
           <div className="space-y-1">
-            {onNavigateProfile && action('person', profile.isTherapist ? 'Kelola Profil' : 'Profil Anak', onNavigateProfile)}
+            {onNavigateProfile && action('person', profile.isAdmin ? 'Manajemen Akun' : profile.isTherapist ? 'Kelola Profil' : 'Profil Anak', onNavigateProfile)}
             {onNavigateAnnouncements && action('campaign', 'Pengumuman', onNavigateAnnouncements)}
             {onNavigateSettings && action('settings', 'Pengaturan', onNavigateSettings)}
           </div>

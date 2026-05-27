@@ -107,6 +107,42 @@ function formatRange(item) {
     return `${formatDate(item.startDate)} - ${formatDate(item.endDate)}`;
 }
 
+function OperatingHoursFields({
+    operatingHoursWeekday,
+    operatingHoursWeekend,
+    setOperatingHoursWeekday,
+    setOperatingHoursWeekend,
+}) {
+    return (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="flex flex-col gap-1.5">
+                <label htmlFor="operating-hours-weekday" className="text-sm font-semibold text-slate-700 dark:text-slate-300">Jam buka hari kerja</label>
+                <input
+                    id="operating-hours-weekday"
+                    type="text"
+                    value={operatingHoursWeekday}
+                    onChange={(e) => setOperatingHoursWeekday(e.target.value)}
+                    placeholder="08:00 - 17:00"
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+                <p className="text-xs text-slate-500">Dipakai sebagai batas tabel jadwal Senin-Jumat.</p>
+            </div>
+            <div className="flex flex-col gap-1.5">
+                <label htmlFor="operating-hours-weekend" className="text-sm font-semibold text-slate-700 dark:text-slate-300">Jam buka akhir pekan</label>
+                <input
+                    id="operating-hours-weekend"
+                    type="text"
+                    value={operatingHoursWeekend}
+                    onChange={(e) => setOperatingHoursWeekend(e.target.value)}
+                    placeholder="Tutup atau 08:00 - 14:00"
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+                <p className="text-xs text-slate-500">Isi `Tutup` jika Sabtu/Minggu center tidak beroperasi.</p>
+            </div>
+        </div>
+    );
+}
+
 function App() {
     const [activeSection, setActiveSection] = useState('branding');
     const { settings, save, refresh } = useClinicSettings();
@@ -755,6 +791,32 @@ function App() {
                     {/* SCHEDULE OFF SECTION */}
                     {activeSection === 'schedule' && (
                         <div className="flex flex-col gap-6">
+                            <section className="rounded-xl border border-blue-100 bg-white p-5 shadow-sm dark:border-blue-900/50 dark:bg-slate-900">
+                                <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                                    <div>
+                                        <p className="text-xs font-black uppercase tracking-wider text-blue-600 dark:text-blue-300">Jam operasional center</p>
+                                        <h3 className="mt-1 text-lg font-black text-slate-900 dark:text-white">Atur Buka / Tutup Harian</h3>
+                                        <p className="mt-1 max-w-2xl text-sm text-slate-500 dark:text-slate-400">
+                                            Nilai ini menjadi batas utama tabel jadwal mingguan dan validasi slot. Ubah di sini lalu klik Simpan.
+                                        </p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={handleSave}
+                                        className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-black text-white transition hover:bg-primary/90"
+                                    >
+                                        <span className="material-symbols-outlined text-[19px]">save</span>
+                                        Simpan Jam Operasional
+                                    </button>
+                                </div>
+                                <OperatingHoursFields
+                                    operatingHoursWeekday={operatingHoursWeekday}
+                                    operatingHoursWeekend={operatingHoursWeekend}
+                                    setOperatingHoursWeekday={setOperatingHoursWeekday}
+                                    setOperatingHoursWeekend={setOperatingHoursWeekend}
+                                />
+                            </section>
+
                             <section className="rounded-xl border border-slate-100 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
                                 <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                                     <div className="flex items-start gap-4">
