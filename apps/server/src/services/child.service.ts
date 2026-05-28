@@ -144,7 +144,8 @@ function normalizeTherapyPeriod(period: any) {
 
 function formatChildRecord(child: any, therapistLookup = new Map<string, any>()) {
   if (!child) return child;
-  const name = child.name || `${child.firstName || ""} ${child.lastName || ""}`.trim() || "Anak";
+  const composedName = `${child.firstName || ""} ${child.lastName || ""}`.trim();
+  const name = composedName || child.name || "Anak";
   const childPrograms = Array.isArray(child.therapyPrograms)
     ? child.therapyPrograms.map(normalizeTherapyProgram)
     : Array.isArray(child.programs)
@@ -220,17 +221,26 @@ function formatChildRecord(child: any, therapistLookup = new Map<string, any>())
 }
 
 function pickChildValues(data: any) {
+  const hasFirstName = Object.prototype.hasOwnProperty.call(data, "firstName") && typeof data.firstName === "string";
+  const hasLastName = Object.prototype.hasOwnProperty.call(data, "lastName") && typeof data.lastName === "string";
+  const nextFirstName = hasFirstName ? data.firstName.trim() : String(data.currentFirstName || "").trim();
+  const nextLastName = hasLastName ? data.lastName.trim() : String(data.currentLastName || "").trim();
+
+  if (hasFirstName && !nextFirstName) {
+    throw httpError(400, "Nama depan wajib diisi.");
+  }
+
   const values: Partial<typeof children.$inferInsert> = {
-    ...(typeof data.firstName === "string" ? { firstName: data.firstName.trim() } : {}),
-    ...(typeof data.lastName === "string" ? { lastName: data.lastName.trim() } : {}),
+    ...(hasFirstName ? { firstName: nextFirstName } : {}),
+    ...(hasLastName ? { lastName: nextLastName } : {}),
     ...(typeof data.dob === "string" ? { dob: data.dob || null } : {}),
     ...(typeof data.gender === "string" ? { gender: data.gender } : {}),
     ...(typeof data.school === "string" ? { school: data.school.trim() } : {}),
     ...(typeof data.diagnosis === "string" ? { diagnosis: data.diagnosis.trim() } : {}),
     ...(typeof data.status === "string" ? { status: data.status } : {}),
   };
-  if (values.firstName || values.lastName) {
-    values.name = `${values.firstName || data.currentFirstName || ""} ${values.lastName || data.currentLastName || ""}`.trim();
+  if (hasFirstName || hasLastName) {
+    values.name = `${nextFirstName} ${nextLastName}`.trim();
   }
   return values;
 }

@@ -92,12 +92,14 @@ export default function AutoRefreshHost({
 
     if (version !== lastVersionRef.current) {
       lastVersionRef.current = version;
+      const reason = data.reason || '';
+      if (String(reason).includes('/location/signal')) return;
       emitTheraCareUpdate({
         source: 'sync-poll',
-        path: data.reason || '/sync/version',
+        path: reason || '/sync/version',
         version,
       });
-      const payload = { version, reason: data.reason || '' };
+      const payload = { version, reason };
       if (typeof onRefreshRef.current === 'function') {
         if (hasActiveDraft()) {
           scheduleSilentRefresh(payload);

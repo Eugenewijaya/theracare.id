@@ -15,9 +15,11 @@ function App() {
     const [loading, setLoading]             = useState(true);
     const [error, setError]                 = useState('');
 
-    const loadData = async () => {
-        setLoading(true);
-        setError('');
+    const loadData = async ({ silent = false } = {}) => {
+        if (!silent) {
+            setLoading(true);
+            setError('');
+        }
         try {
             const [cRes, pRes] = await Promise.all([
                 childrenApi.getAll(),
@@ -26,22 +28,26 @@ function App() {
             if (!cRes.ok) throw new Error(cRes.data?.error || 'Data anak gagal dimuat dari backend.');
             setAllChildren(cRes.data?.data || []);
             setPrograms(pRes.ok ? pRes.data?.data || [] : []);
+            setError('');
         } catch (e) {
             console.error('Failed to load child management data', e);
-            setAllChildren([]);
-            setError(e.message || 'Data anak gagal dimuat dari backend.');
+            if (!silent) {
+                setAllChildren([]);
+                setError(e.message || 'Data anak gagal dimuat dari backend.');
+            }
         } finally {
-            setLoading(false);
+            if (!silent) setLoading(false);
         }
     };
 
     useEffect(() => {
         loadData();
-        window.addEventListener('childUpdated', loadData);
-        const interval = window.setInterval(loadData, 30000);
+        const refreshSilently = () => loadData({ silent: true });
+        window.addEventListener('childUpdated', refreshSilently);
+        const interval = window.setInterval(refreshSilently, 30000);
         return () => {
             window.clearInterval(interval);
-            window.removeEventListener('childUpdated', loadData);
+            window.removeEventListener('childUpdated', refreshSilently);
         };
     }, []);
 

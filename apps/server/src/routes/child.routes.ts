@@ -65,7 +65,7 @@ router.get("/:id", requireAuth, async (req, res, next) => {
 router.post("/", requireAuth, requireRole("admin"), async (req, res, next) => {
   try {
     const { parentId, firstName, lastName, ...rest } = req.body;
-    if (!parentId || !firstName) return badRequest(res, "parentId dan firstName wajib diisi");
+    if (!parentId || !String(firstName || "").trim()) return badRequest(res, "parentId dan firstName wajib diisi");
     const child = await childService.create(parentId, { firstName, lastName: lastName || "", ...rest });
     await auditLogService.create({
       actor: req.user,

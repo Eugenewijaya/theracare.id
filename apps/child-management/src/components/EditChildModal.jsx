@@ -3,6 +3,19 @@ import { useNavigate } from 'react-router-dom';
 import { therapistsApi, adminApi, childrenApi } from '../../../shared/api/client';
 import { confirmAction, notifyDialog } from '../../../shared/ui/confirmDialog';
 
+function getEditableChildData(child = {}) {
+    const nameParts = String(child.name || '').trim().split(/\s+/).filter(Boolean);
+    const firstName = child.firstName ?? nameParts[0] ?? '';
+    const lastName = child.lastName ?? nameParts.slice(1).join(' ') ?? '';
+    return {
+        firstName,
+        lastName,
+        dob: child.dob || '',
+        diagnosis: child.diagnosis || '',
+        program: child.programs?.[0]?.name || child.program || '',
+    };
+}
+
 const EditChildModal = ({ child, onClose }) => {
     const navigate = useNavigate();
     const [therapists, setTherapists] = useState([]);
@@ -13,13 +26,7 @@ const EditChildModal = ({ child, onClose }) => {
     const primaryTherapistId = child.assignmentSummary?.primaryTherapistId || child.therapistId || '';
     const firstAssistantId = child.assistantTherapistIds?.[0] || '';
 
-    const [formData, setFormData] = useState({
-        firstName: child.firstName || child.name?.split(' ')[0] || '',
-        lastName: child.lastName || child.name?.split(' ').slice(1).join(' ') || '',
-        dob: child.dob || '',
-        diagnosis: child.diagnosis || '',
-        program: child.programs?.[0]?.name || child.program || '',
-    });
+    const [formData, setFormData] = useState(() => getEditableChildData(child));
     const [assignmentForm, setAssignmentForm] = useState({
         roleType: 'primary',
         fromTherapistId: primaryTherapistId,
@@ -65,13 +72,40 @@ const EditChildModal = ({ child, onClose }) => {
     };
 
     const handleSave = async () => {
-        const changedFields = Object.keys(formData).filter(key => String(formData[key] || '') !== String({
-            firstName: child.firstName || child.name?.split(' ')[0] || '',
-            lastName: child.lastName || child.name?.split(' ').slice(1).join(' ') || '',
-            dob: child.dob || '',
-            diagnosis: child.diagnosis || '',
-            program: child.programs?.[0]?.name || child.program || '',
-        }[key] || ''));
+        const initialData = getEditableChildData(child);
+        const normalizedFormData = {
+            ...formData,
+            firstName: formData.firstName.trim(),
+            lastName: formData.lastName.trim(),
+            diagnosis: formData.diagnosis.trim(),
+        };
+
+        if (!normalizedFormData.firstName) {
+            await notifyDialog({
+                tone: 'warning',
+                icon: 'error',
+                title: 'Nama depan wajib diisi',
+                message: 'Nama belakang boleh kosong, tetapi nama depan anak tetap wajib diisi.',
+            });
+            return;
+        }
+
+        if (initialData.program && !normalizedFormData.program) {
+            await notifyDialog({
+                tone: 'warning',
+                icon: 'playlist_add',
+                title: 'Program utama tidak dikosongkan dari sini',
+                message: 'Gunakan Pendaftaran Program untuk mengubah periode atau status program agar sesi, harga, dan jadwal tetap sinkron.',
+            });
+            return;
+        }
+
+        const changedFields = Object.keys(normalizedFormData).filter(key => String(normalizedFormData[key] ?? '') !== String(initialData[key] ?? ''));
+        if (changedFields.length === 0) {
+            onClose();
+            return;
+        }
+
         if (changedFields.length > 0) {
             const confirmed = await confirmAction({
                 tone: 'warning',
@@ -85,8 +119,7 @@ const EditChildModal = ({ child, onClose }) => {
             if (!confirmed) return;
         }
         setIsSaving(true);
-        // Build updates
-        const updates = { ...formData };
+        const updates = { ...normalizedFormData };
         if (updates.program) {
             updates.programs = [{ name: updates.program, color: 'emerald' }];
         }
@@ -189,11 +222,11 @@ const EditChildModal = ({ child, onClose }) => {
                 <div className="p-6 flex flex-col gap-4 overflow-y-auto max-h-[70vh]">
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Nama Depan</label>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Nama Depan <span className="text-red-500">*</span></label>
                             <input name="firstName" value={formData.firstName} onChange={handleChange} className="w-full h-11 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 focus:ring-primary focus:border-primary focus:outline-none" />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Nama Belakang</label>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Nama Belakang <span className="text-xs font-semibold text-slate-400">(opsional)</span></label>
                             <input name="lastName" value={formData.lastName} onChange={handleChange} className="w-full h-11 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 focus:ring-primary focus:border-primary focus:outline-none" />
                         </div>
                     </div>

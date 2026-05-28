@@ -7,6 +7,7 @@ export function shouldBroadcastApiMutation(method, path = '') {
   const normalizedMethod = String(method || '').toUpperCase();
   if (!MUTATING_METHODS.has(normalizedMethod)) return false;
   if (path.startsWith('/sync')) return false;
+  if (path.startsWith('/location/signal')) return false;
   if (path.startsWith('/auth/sign-in') || path.startsWith('/auth/sign-out') || path.startsWith('/auth/get-session')) {
     return false;
   }

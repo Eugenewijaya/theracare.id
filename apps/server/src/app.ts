@@ -75,6 +75,7 @@ function shouldTrackMutation(req: express.Request) {
   if (!path.startsWith("/api/")) return false;
   if (path.startsWith("/api/sync")) return false;
   if (path.startsWith("/api/health")) return false;
+  if (path.startsWith("/api/location/signal")) return false;
   if (path.startsWith("/api/auth/sign-in") || path.startsWith("/api/auth/sign-out") || path.startsWith("/api/auth/get-session")) {
     return false;
   }
