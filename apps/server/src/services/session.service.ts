@@ -533,6 +533,21 @@ export const sessionService = {
   },
 
   async saveNotes(id: string, notes: string) {
+    if (id.startsWith("OTV-")) {
+      const visits = await readOneTimeVisits();
+      const index = visits.findIndex((visit: any) => visit?.id === id);
+      if (index === -1) return null;
+      const updated = {
+        ...normalizeOneTimeVisit(visits[index]),
+        notes,
+        updatedAt: new Date().toISOString(),
+      };
+      visits[index] = updated;
+      await writeOneTimeVisits(visits);
+      const [enriched] = await enrichOneTimeVisits([updated]);
+      return enriched || updated;
+    }
+
     const [updated] = await db.update(therapySessions)
       .set({ notes })
       .where(eq(therapySessions.id, id))

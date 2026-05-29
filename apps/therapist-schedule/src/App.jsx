@@ -64,6 +64,11 @@ async function updateSessionStatus(sessionId, status, fallbackMessage) {
     return response;
 }
 
+function isOneTimeSession(session) {
+    const raw = session?.raw || session;
+    return Boolean(raw?.isOneTime) || String(raw?.id || session?.id || '').startsWith('OTV-');
+}
+
 function App({ onLogout }) {
     const navigate = useNavigate();
     
@@ -319,6 +324,7 @@ function App({ onLogout }) {
                             </div>
                         ) : (
                             sessions.map(session => {
+                                const isOneTime = isOneTimeSession(session);
                                 const live = getLiveSessionState(session.raw || session, nowTick);
                                 const isDone = live.isDone;
                                 const isActive = live.isRunning;
@@ -366,9 +372,9 @@ function App({ onLogout }) {
                                                     <span className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-50 dark:bg-emerald-900/20 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm">
                                                         <span className="material-symbols-outlined text-[18px]">task_alt</span> Done
                                                     </span>
-                                                    {session.raw?.isOneTime ? (
+                                                    {isOneTime ? (
                                                         <span className="flex flex-1 sm:flex-none justify-center items-center gap-2 px-4 py-2 rounded-xl bg-slate-50 dark:bg-slate-900/30 text-slate-500 dark:text-slate-400 font-bold text-xs sm:text-sm border border-slate-100 dark:border-slate-800 min-w-max">
-                                                            <span className="material-symbols-outlined text-[18px]">person_search</span> One-time visit, tanpa laporan anak
+                                                            <span className="material-symbols-outlined text-[18px]">inventory_2</span> Tersimpan sebagai log, tanpa laporan
                                                         </span>
                                                     ) : (
                                                         <button onClick={() => navigate(`/reports/new?sessionId=${session.id}&childId=${session.raw?.childId || ''}`)} className="flex flex-1 sm:flex-none justify-center items-center gap-2 px-4 py-2 rounded-xl bg-teal-50 dark:bg-teal-900/20 text-teal-700 dark:text-teal-400 font-bold text-xs sm:text-sm hover:bg-teal-100 dark:hover:bg-teal-900/30 transition-colors border border-teal-100 dark:border-teal-800/50 min-w-max">
@@ -392,7 +398,7 @@ function App({ onLogout }) {
                                                         disabled={!isStoredActive}
                                                         className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-4 sm:px-6 py-2 sm:py-2.5 rounded-lg font-bold shadow-sm hover:opacity-90 transition-opacity flex items-center justify-center gap-2 text-sm sm:text-base whitespace-nowrap disabled:cursor-wait disabled:opacity-60"
                                                     >
-                                                        <span className="material-symbols-outlined text-[20px]">stop_circle</span> {isStoredActive ? 'End Session' : 'Menyiapkan'}
+                                                        <span className="material-symbols-outlined text-[20px]">stop_circle</span> {isStoredActive ? (isOneTime ? 'Selesai & Simpan Log' : 'End Session') : 'Menyiapkan'}
                                                     </button>
                                                 </div>
                                             )}
@@ -409,7 +415,7 @@ function App({ onLogout }) {
                                                     }`}
                                                 >
                                                     <span className="material-symbols-outlined text-[20px]">{attendanceConfirmed ? (live.isCountdown ? 'timer' : 'play_circle') : 'lock_clock'}</span>
-                                                    {attendanceConfirmed ? (countdownLabel || 'Start Session') : 'Menunggu Hadir'}
+                                                    {attendanceConfirmed ? (countdownLabel || (isOneTime ? 'Mulai Visit' : 'Start Session')) : 'Menunggu Hadir'}
                                                 </button>
                                             )}
                                         </div>
@@ -443,7 +449,7 @@ function App({ onLogout }) {
                                 <span className="material-symbols-outlined text-4xl" style={{fontVariationSettings:"'FILL' 1"}}>task_alt</span>
                             </div>
                             <div>
-                                <h2 className="text-2xl font-extrabold text-slate-900 dark:text-white mb-1">End Session?</h2>
+                                <h2 className="text-2xl font-extrabold text-slate-900 dark:text-white mb-1">{isOneTimeSession(finishModal) ? 'Selesaikan one-time visit?' : 'End Session?'}</h2>
                                 <p className="text-slate-500 dark:text-slate-400 text-sm">
                                     You're about to end the session with <strong className="text-slate-700 dark:text-slate-200">{finishModal.name}</strong>.
                                 </p>
@@ -451,11 +457,15 @@ function App({ onLogout }) {
                         </div>
                         <div className="bg-teal-50 dark:bg-teal-900/20 border border-teal-100 dark:border-teal-800/50 rounded-xl p-4 flex items-center gap-3">
                             <span className="material-symbols-outlined text-teal-500">info</span>
-                            <p className="text-teal-800 dark:text-teal-300 text-sm font-medium">Remember to fill a Daily Report for this session afterward.</p>
+                            <p className="text-teal-800 dark:text-teal-300 text-sm font-medium">
+                                {isOneTimeSession(finishModal)
+                                    ? 'One-time visit akan langsung tersimpan sebagai log selesai. Tidak ada laporan harian atau periodik untuk sesi ini.'
+                                    : 'Remember to fill a Daily Report for this session afterward.'}
+                            </p>
                         </div>
                         <div className="flex gap-3">
                             <button onClick={() => setFinishModal(null)} className="flex-1 px-6 py-3 rounded-xl font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors border border-slate-200 dark:border-slate-700">Cancel</button>
-                            <button onClick={confirmFinish} className="flex-1 px-6 py-3 rounded-xl font-bold bg-teal-500 text-white hover:bg-teal-600 transition-colors shadow-md shadow-teal-500/20">Confirm End</button>
+                            <button onClick={confirmFinish} className="flex-1 px-6 py-3 rounded-xl font-bold bg-teal-500 text-white hover:bg-teal-600 transition-colors shadow-md shadow-teal-500/20">{isOneTimeSession(finishModal) ? 'Selesai & Simpan Log' : 'Confirm End'}</button>
                         </div>
                     </div>
                 </div>
@@ -470,7 +480,7 @@ function App({ onLogout }) {
                                 <span className="material-symbols-outlined text-4xl" style={{fontVariationSettings:"'FILL' 1"}}>play_circle</span>
                             </div>
                             <div>
-                                <h2 className="text-2xl font-extrabold text-slate-900 dark:text-white mb-1">Start Session?</h2>
+                                <h2 className="text-2xl font-extrabold text-slate-900 dark:text-white mb-1">{isOneTimeSession(startModal) ? 'Mulai one-time visit?' : 'Start Session?'}</h2>
                                 <p className="text-slate-500 dark:text-slate-400 text-sm">
                                     Starting session for <strong className="text-slate-700 dark:text-slate-200">{startModal?.name}</strong> — {startModal?.type}
                                 </p>
@@ -478,7 +488,7 @@ function App({ onLogout }) {
                         </div>
                         <div className="flex gap-3">
                             <button onClick={() => setStartModal(null)} className="flex-1 px-6 py-3 rounded-xl font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors border border-slate-200 dark:border-slate-700">Cancel</button>
-                            <button onClick={confirmStart} className="flex-1 px-6 py-3 rounded-xl font-bold bg-primary text-slate-900 hover:bg-primary/90 transition-colors shadow-md">Start Now</button>
+                            <button onClick={confirmStart} className="flex-1 px-6 py-3 rounded-xl font-bold bg-primary text-slate-900 hover:bg-primary/90 transition-colors shadow-md">{isOneTimeSession(startModal) ? 'Mulai Visit' : 'Start Now'}</button>
                         </div>
                     </div>
                 </div>

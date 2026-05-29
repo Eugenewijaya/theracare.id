@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { reportsApi, sessionsApi } from '../../../shared/api/client';
 import { readTherapistUser } from '../../../shared/sessionIdentity';
-import { findOldestMissingDailyReportSession, isCompletedSession } from '../../../shared/reportRules';
+import { buildDailyReportQueue, findOldestMissingDailyReportSession, isOneTimeVisitSession } from '../../../shared/reportRules';
 import { formatSessionClock, getLiveSessionState } from '../../../shared/sessionLiveState';
 
 function todayKey() {
@@ -21,6 +21,11 @@ function assertApiOk(response, fallbackMessage) {
     if (response?.ok === false) {
         throw new Error(response.data?.error || response.data?.message || fallbackMessage);
     }
+}
+
+function getSessionDisplayName(session) {
+    if (isOneTimeVisitSession(session)) return session?.visitorName || session?.child?.name || 'One-time visit';
+    return session?.child?.name || session?.childId || 'anak';
 }
 
 const WelcomeFocus = () => {
@@ -61,16 +66,15 @@ const WelcomeFocus = () => {
             });
             setActiveSession(liveCandidates.find(s => getLiveSessionState(s, new Date()).isRunning) || liveCandidates[0] || null);
 
-            const completed = sessions.filter(isCompletedSession);
-            if (completed.length === 0) {
+            const dailyReportQueue = buildDailyReportQueue(sessions, reports);
+            const pendingReportsQueue = dailyReportQueue.filter(row => row.missing);
+            if (dailyReportQueue.length === 0) {
                 setPendingReports(0);
                 setPendingReportSession(null);
                 return;
             }
 
-            const reportedSessionIds = new Set(reports.map(report => report.sessionId).filter(Boolean));
-            const pending = completed.filter(session => !reportedSessionIds.has(session.id));
-            setPendingReports(pending.length);
+            setPendingReports(pendingReportsQueue.length);
             setPendingReportSession(findOldestMissingDailyReportSession(sessions, reports));
         } catch (e) {
             console.error('Failed to load therapist dashboard summary', e);
@@ -97,7 +101,8 @@ const WelcomeFocus = () => {
     }, []);
 
     const firstName = therapistName.replace(/^Dr\.\s*/i, '').split(' ')[0];
-    const activeChildName = activeSession?.child?.name || activeSession?.childId || 'anak';
+    const activeChildName = getSessionDisplayName(activeSession);
+    const activeIsOneTime = isOneTimeVisitSession(activeSession);
     const activeLive = activeSession ? getLiveSessionState(activeSession, nowTick) : null;
 
     const confirmEndSession = async () => {
@@ -143,11 +148,11 @@ const WelcomeFocus = () => {
                         </span>
                         <p className="text-sm font-bold tracking-wide">
                             {activeSession && activeLive?.isRunning
-                                ? `Sesi berjalan: ${activeChildName} - ${formatSessionClock(activeLive?.remainingSeconds || 0)} tersisa`
+                                ? `${activeIsOneTime ? 'One-time visit berjalan' : 'Sesi berjalan'}: ${activeChildName} - ${formatSessionClock(activeLive?.remainingSeconds || 0)} tersisa`
                                 : activeSession && activeLive?.isCountdown
-                                    ? `Terkonfirmasi: ${activeChildName} - mulai dalam ${formatSessionClock(activeLive?.countdownSeconds || 0)}`
+                                    ? `${activeIsOneTime ? 'One-time visit terkonfirmasi' : 'Terkonfirmasi'}: ${activeChildName} - mulai dalam ${formatSessionClock(activeLive?.countdownSeconds || 0)}`
                                     : activeSession
-                                        ? `Terkonfirmasi: ${activeChildName}`
+                                        ? `${activeIsOneTime ? 'One-time visit terkonfirmasi' : 'Terkonfirmasi'}: ${activeChildName}`
                                 : 'Tidak ada sesi berjalan'}
                         </p>
                     </div>
@@ -218,7 +223,11 @@ const WelcomeFocus = () => {
                             <div>
                                 <h2 className="text-2xl font-extrabold text-slate-900 dark:text-white mb-2">Akhiri sesi berjalan?</h2>
                                 <p className="text-slate-500 dark:text-slate-400 text-sm leading-relaxed">
-                                    Sesi dengan <strong className="text-slate-800 dark:text-slate-200">{activeChildName}</strong> akan ditandai selesai dan laporan harian perlu dibuat setelahnya.
+                                    {activeIsOneTime ? (
+                                        <>One-time visit <strong className="text-slate-800 dark:text-slate-200">{activeChildName}</strong> akan ditandai selesai dan tersimpan sebagai log kunjungan. Tidak ada laporan harian atau periodik.</>
+                                    ) : (
+                                        <>Sesi dengan <strong className="text-slate-800 dark:text-slate-200">{activeChildName}</strong> akan ditandai selesai dan laporan harian perlu dibuat setelahnya.</>
+                                    )}
                                 </p>
                             </div>
                         </div>
@@ -234,7 +243,7 @@ const WelcomeFocus = () => {
                                 disabled={ending}
                                 className="flex-1 px-6 py-3 rounded-xl font-bold bg-red-500 text-white hover:bg-red-600 transition-colors shadow-md shadow-red-500/20 disabled:opacity-60"
                             >
-                                {ending ? 'Menyimpan...' : 'Akhiri Sesi'}
+                                {ending ? 'Menyimpan...' : activeIsOneTime ? 'Selesai & Simpan Log' : 'Akhiri Sesi'}
                             </button>
                         </div>
                     </div>

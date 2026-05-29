@@ -12,6 +12,18 @@ export function isCompletedSession(session) {
   return COMPLETED_SESSION_STATUSES.includes(String(session?.status || '').toLowerCase());
 }
 
+export function isOneTimeVisitSession(session) {
+  return Boolean(session?.isOneTime)
+    || String(session?.id || '').startsWith('OTV-')
+    || String(session?.focus || session?.program || '').toLowerCase() === 'one-time visit';
+}
+
+export function requiresDailyReport(session) {
+  return isCompletedSession(session)
+    && !isOneTimeVisitSession(session)
+    && Boolean(session?.childId || session?.child?.id);
+}
+
 export function isDraftReport(report) {
   return String(report?.status || '').toLowerCase() === REPORT_DRAFT_STATUS;
 }
@@ -102,7 +114,7 @@ export function buildDailyReportQueue(sessions, reports, childId = '') {
   );
 
   return (sessions || [])
-    .filter((session) => isCompletedSession(session))
+    .filter((session) => requiresDailyReport(session))
     .filter((session) => !childId || session.childId === childId)
     .sort((a, b) => sessionSortKey(a).localeCompare(sessionSortKey(b)))
     .map((session) => ({

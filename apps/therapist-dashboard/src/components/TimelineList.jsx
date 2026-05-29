@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { reportsApi, sessionsApi } from '../../../shared/api/client';
 import ChildProfileModal from './ChildProfileModal';
 import { readTherapistUser } from '../../../shared/sessionIdentity';
-import { findOldestMissingDailyReportSession, hasPriorMissingDailyReport } from '../../../shared/reportRules';
+import { findOldestMissingDailyReportSession, hasPriorMissingDailyReport, isOneTimeVisitSession } from '../../../shared/reportRules';
 import {
     formatSessionClock,
     getLiveSessionState,
@@ -27,6 +27,11 @@ function assertApiOk(response, fallbackMessage) {
     if (response?.ok === false) {
         throw new Error(response.data?.error || response.data?.message || fallbackMessage);
     }
+}
+
+function getSessionDisplayName(session) {
+    if (isOneTimeVisitSession(session)) return session?.visitorName || session?.child?.name || 'One-time visit';
+    return session?.child?.name || session?.name || session?.childId || 'Unknown Child';
 }
 
 const TimelineList = () => {
@@ -187,11 +192,12 @@ const TimelineList = () => {
             ) : (
             <div className="relative pl-6 sm:pl-8 before:absolute before:inset-y-0 before:left-7 sm:before:left-10 before:w-1 before:bg-slate-100 dark:before:bg-slate-800 flex flex-col gap-6 sm:gap-8">
                 {sessions.map(session => {
+                    const isOneTime = isOneTimeVisitSession(session);
                     const live = getLiveSessionState(session, nowTick);
                     const isDone = live.isDone;
                     const isActive = live.isRunning;
                     const isConfirmed = live.hasAdminApproval;
-                    const childName = session.child ? session.child.name : (session.name || 'Unknown Child');
+                    const childName = getSessionDisplayName(session);
                     const countdownLabel = live.isCountdown
                         ? `Mulai dalam ${formatSessionClock(live.countdownSeconds)}`
                         : live.isOvertime
@@ -237,11 +243,17 @@ const TimelineList = () => {
                                             <h3 className={`text-xl font-bold ${isActive ? 'text-slate-900 dark:text-white' : 'text-slate-700 dark:text-slate-200'}`}>
                                                 {childName}
                                             </h3>
-                                            {session.child && (
+                                            {session.child && !isOneTime && (
                                                 <button onClick={() => setProfileModalSession(session)} className="text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/30 hover:bg-teal-100 dark:hover:bg-teal-900/50 px-2 py-1 rounded text-xs font-bold uppercase tracking-wider flex items-center gap-1 transition-colors">
                                                     <span className="material-symbols-outlined text-[14px]">person</span>
                                                     View Bio
                                                 </button>
+                                            )}
+                                            {isOneTime && (
+                                                <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2 py-1 text-[11px] font-black uppercase tracking-wide text-sky-700 dark:bg-sky-900/20 dark:text-sky-300">
+                                                    <span className="material-symbols-outlined text-[14px]">person_search</span>
+                                                    One-time visit
+                                                </span>
                                             )}
                                         </div>
                                         <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-1.5">
@@ -281,7 +293,7 @@ const TimelineList = () => {
                                     <div className="mb-4 bg-yellow-50 dark:bg-yellow-900/20 p-4 rounded-xl border border-yellow-100 dark:border-yellow-900/50 text-sm font-medium text-slate-700 dark:text-slate-300">
                                         <div className="flex items-center gap-2 mb-1 text-yellow-700 dark:text-yellow-400 font-bold">
                                             <span className="material-symbols-outlined text-[16px]">sticky_note_2</span> 
-                                            Session Notes
+                                            {isOneTime ? 'Log Kunjungan' : 'Session Notes'}
                                         </div>
                                         <p>{session.notes}</p>
                                     </div>
@@ -308,18 +320,24 @@ const TimelineList = () => {
                                 <div className="flex flex-wrap gap-3 mt-2 relative z-10">
                                     {isDone && (
                                         <>
-                                            <button
-                                                onClick={() => {
-                                                    const pending = hasPriorMissingDailyReport(allSessions, reports, session) || findOldestMissingDailyReportSession(allSessions, reports, session.childId);
-                                                    const target = pending || session;
-                                                    navigate(`/reports/new?sessionId=${target.id}&childId=${target.childId || ''}`);
-                                                }}
-                                                className="text-teal-600 dark:text-teal-400 text-sm font-bold hover:text-teal-700 flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-colors border border-teal-100 dark:border-teal-900/50"
-                                            >
-                                                <span className="material-symbols-outlined text-[18px]">description</span> Isi Laporan Harian
-                                            </button>
+                                            {isOneTime ? (
+                                                <span className="inline-flex items-center gap-1.5 rounded-lg border border-sky-100 bg-sky-50 px-3 py-1.5 text-sm font-bold text-sky-700 dark:border-sky-900/50 dark:bg-sky-900/20 dark:text-sky-300">
+                                                    <span className="material-symbols-outlined text-[18px]">inventory_2</span> Tersimpan sebagai log, tanpa laporan
+                                                </span>
+                                            ) : (
+                                                <button
+                                                    onClick={() => {
+                                                        const pending = hasPriorMissingDailyReport(allSessions, reports, session) || findOldestMissingDailyReportSession(allSessions, reports, session.childId);
+                                                        const target = pending || session;
+                                                        navigate(`/reports/new?sessionId=${target.id}&childId=${target.childId || ''}`);
+                                                    }}
+                                                    className="text-teal-600 dark:text-teal-400 text-sm font-bold hover:text-teal-700 flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-colors border border-teal-100 dark:border-teal-900/50"
+                                                >
+                                                    <span className="material-symbols-outlined text-[18px]">description</span> Isi Laporan Harian
+                                                </button>
+                                            )}
                                             <button onClick={() => { setNoteOpenId(session.id); setNoteText(session.notes || ''); }} className="text-slate-500 text-sm font-bold hover:text-slate-700 dark:hover:text-slate-300 flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-                                                <span className="material-symbols-outlined text-[18px]">edit_note</span> Edit Notes
+                                                <span className="material-symbols-outlined text-[18px]">edit_note</span> {isOneTime ? 'Edit Log' : 'Edit Notes'}
                                             </button>
                                         </>
                                     )}
@@ -331,11 +349,11 @@ const TimelineList = () => {
                                                 className="flex items-center justify-center gap-2 rounded-xl h-11 px-6 bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600 text-white transition-all text-sm font-bold shadow-md shadow-teal-500/20 hover:shadow-teal-500/40 hover:-translate-y-0.5 disabled:cursor-wait disabled:opacity-60"
                                             >
                                                 <span className="material-symbols-outlined text-[20px]" style={{fontVariationSettings: "'FILL' 1"}}>check_circle</span>
-                                                {live.isActiveStored ? 'End Session' : 'Menyiapkan Sesi'}
+                                                {live.isActiveStored ? (isOneTime ? 'Selesai & Simpan Log' : 'End Session') : 'Menyiapkan Sesi'}
                                             </button>
                                             <button onClick={() => { setNoteOpenId(noteOpenId === session.id ? null : session.id); setNoteText(session.notes || ''); }} className="flex items-center justify-center gap-2 rounded-xl h-11 px-5 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-all text-sm font-bold border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow">
                                                 <span className="material-symbols-outlined text-[20px]">edit_note</span>
-                                                {noteOpenId === session.id ? 'Close Note' : 'Quick Note'}
+                                                {noteOpenId === session.id ? 'Close Note' : (isOneTime ? 'Catatan Log' : 'Quick Note')}
                                             </button>
                                         </>
                                     )}
@@ -343,7 +361,7 @@ const TimelineList = () => {
                                         <>
                                             {isConfirmed ? (
                                                 <button onClick={() => startSession(session.id)} className="text-white hover:bg-teal-600 bg-teal-500 text-sm font-bold flex items-center gap-1.5 px-4 py-2 rounded-xl shadow-md transition-colors hover:shadow-lg">
-                                                    <span className="material-symbols-outlined text-[18px]">play_arrow</span> Mulai Sesi
+                                                    <span className="material-symbols-outlined text-[18px]">play_arrow</span> {isOneTime ? 'Mulai Visit' : 'Mulai Sesi'}
                                                 </button>
                                             ) : (
                                                 <button disabled className="cursor-not-allowed text-slate-500 bg-slate-100 dark:bg-slate-800 dark:text-slate-400 text-sm font-bold flex items-center gap-1.5 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700">
@@ -377,16 +395,20 @@ const TimelineList = () => {
                                 <span className="material-symbols-outlined text-4xl" style={{fontVariationSettings: "'FILL' 1"}}>task_alt</span>
                             </div>
                             <div>
-                                <h2 className="text-2xl font-extrabold text-slate-900 dark:text-white mb-1">End Session?</h2>
+                                <h2 className="text-2xl font-extrabold text-slate-900 dark:text-white mb-1">
+                                    {isOneTimeVisitSession(completeModal) ? 'Selesaikan one-time visit?' : 'End Session?'}
+                                </h2>
                                 <p className="text-slate-500 dark:text-slate-400 text-sm">
-                                    Ending the session with <strong className="text-slate-700 dark:text-slate-200">{completeModal.child ? completeModal.child.name : completeModal.name}</strong>
+                                    Ending the session with <strong className="text-slate-700 dark:text-slate-200">{getSessionDisplayName(completeModal)}</strong>
                                 </p>
                             </div>
                         </div>
                         <div className="bg-teal-50 dark:bg-teal-900/20 border border-teal-100 dark:border-teal-800/50 rounded-xl p-4 flex items-center gap-3">
                             <span className="material-symbols-outlined text-teal-500 text-[20px]">info</span>
                             <p className="text-teal-800 dark:text-teal-300 text-sm font-medium">
-                                A daily report for this session will be required. You can fill it right after.
+                                {isOneTimeVisitSession(completeModal)
+                                    ? 'One-time visit akan langsung tersimpan sebagai log selesai. Tidak ada laporan harian atau periodik untuk sesi ini.'
+                                    : 'A daily report for this session will be required. You can fill it right after.'}
                             </p>
                         </div>
                         <div className="flex gap-3">
@@ -394,7 +416,7 @@ const TimelineList = () => {
                                 Keep Going
                             </button>
                             <button onClick={confirmComplete} className="flex-1 px-6 py-3 rounded-xl font-bold bg-teal-500 text-white hover:bg-teal-600 transition-colors shadow-md shadow-teal-500/20">
-                                End & Report
+                                {isOneTimeVisitSession(completeModal) ? 'Selesai & Simpan Log' : 'End & Report'}
                             </button>
                         </div>
                     </div>
