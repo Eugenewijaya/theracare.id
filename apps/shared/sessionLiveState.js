@@ -45,10 +45,14 @@ export function shouldAutoStartSession(session, now = new Date()) {
 }
 
 export function shouldAutoFinishSession(session, now = new Date()) {
-  const status = getSessionStatus(session);
-  if (status !== 'active') return false;
   const live = getLiveSessionState(session, now);
-  return Boolean(live.isActiveStored && live.endAt && now >= live.endAt);
+  return Boolean(
+    live.hasAdminApproval
+    && !live.isDone
+    && !live.isCancelled
+    && live.endAt
+    && now >= live.endAt
+  );
 }
 
 export function getLiveSessionState(session, now = new Date()) {

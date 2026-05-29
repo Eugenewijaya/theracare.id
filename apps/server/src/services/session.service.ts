@@ -10,6 +10,13 @@ import { notificationService } from "./notification.service.js";
 type TherapySessionInsert = typeof therapySessions.$inferInsert;
 type DbClient = typeof db | any;
 const ONE_TIME_VISIT_LOG_KEY = "oneTimeVisitLog";
+const APP_TIME_ZONE_OFFSET = "+07:00";
+const AUTO_LIFECYCLE_STATUSES = new Set(["active", "confirmed", "checked_in", "present"]);
+
+type SessionStatusTimestampOverrides = {
+  startedAt?: Date | string | null;
+  endedAt?: Date | string | null;
+};
 
 function pickSessionValues(data: any): Partial<TherapySessionInsert> {
   return {
@@ -54,13 +61,63 @@ function parseDurationMinutes(value?: string | null) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 45;
 }
 
+function normalizeDateKey(value?: string | Date | null) {
+  if (value instanceof Date) return value.toISOString().split("T")[0];
+  return String(value || "").split("T")[0];
+}
+
+function normalizeClock(value?: string | null) {
+  const raw = String(value || "00:00").trim();
+  const match = raw.match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return "00:00";
+  const h = Math.max(0, Math.min(23, Number.parseInt(match[1], 10)));
+  const m = Math.max(0, Math.min(59, Number.parseInt(match[2], 10)));
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+function getSessionStartAt(session: Pick<TherapySessionInsert, "date" | "startTime">) {
+  const start = new Date(`${normalizeDateKey(session.date)}T${normalizeClock(session.startTime)}:00${APP_TIME_ZONE_OFFSET}`);
+  return Number.isNaN(start.getTime()) ? null : start;
+}
+
 function getSessionEndAt(session: Pick<TherapySessionInsert, "date" | "startTime" | "duration" | "startedAt">) {
   const startedAt = session.startedAt ? new Date(session.startedAt) : null;
   const start = startedAt && !Number.isNaN(startedAt.getTime())
     ? startedAt
-    : new Date(`${session.date}T${session.startTime || "00:00"}`);
-  if (Number.isNaN(start.getTime())) return null;
+    : getSessionStartAt(session);
+  if (!start || Number.isNaN(start.getTime())) return null;
   return new Date(start.getTime() + parseDurationMinutes(session.duration) * 60_000);
+}
+
+function asDateOverride(value: Date | string | null | undefined) {
+  if (typeof value === "undefined") return undefined;
+  if (value === null) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
+function asIsoOverride(value: Date | string | null | undefined) {
+  const date = asDateOverride(value);
+  if (typeof date === "undefined") return undefined;
+  return date === null ? null : date.toISOString();
+}
+
+function isAutoLifecycleStatus(status?: string | null) {
+  return AUTO_LIFECYCLE_STATUSES.has(String(status || "").toLowerCase());
+}
+
+function isStoredActiveStatus(status?: string | null) {
+  return String(status || "").toLowerCase() === "active";
+}
+
+function getCompletionTimestamp(session: Pick<TherapySessionInsert, "date" | "startTime" | "duration" | "startedAt">) {
+  const endAt = getSessionEndAt(session);
+  return endAt && !Number.isNaN(endAt.getTime()) ? endAt : null;
+}
+
+function getStartTimestamp(session: Pick<TherapySessionInsert, "date" | "startTime">) {
+  const startAt = getSessionStartAt(session);
+  return startAt && !Number.isNaN(startAt.getTime()) ? startAt : null;
 }
 
 function parseOneTimeVisits(value?: string | null) {
@@ -164,9 +221,10 @@ async function assertOneTimeVisitAvailable(visit: any, excludeVisitId?: string) 
 
 async function autoCompleteExpiredActiveSessions() {
   const activeSessions = await db.query.therapySessions.findMany({
-    where: eq(therapySessions.status, "active"),
+    where: inArray(therapySessions.status, ["active", "confirmed", "checked_in", "present"]),
     columns: {
       id: true,
+      status: true,
       date: true,
       startTime: true,
       duration: true,
@@ -175,23 +233,30 @@ async function autoCompleteExpiredActiveSessions() {
   });
   const now = new Date();
   for (const session of activeSessions) {
-    const endAt = getSessionEndAt(session);
+    const endAt = getCompletionTimestamp(session);
     if (endAt && now >= endAt) {
-      await sessionService.updateStatus(session.id, "done");
+      if (!isStoredActiveStatus(session.status)) {
+        await sessionService.updateStatus(session.id, "active", undefined, {
+          startedAt: getStartTimestamp(session) || now,
+        });
+      }
+      await sessionService.updateStatus(session.id, "done", undefined, { endedAt: endAt });
     }
   }
   const visits = await readOneTimeVisits();
   let changed = false;
   const nextVisits = visits.map((visit: any) => {
     const normalized = normalizeOneTimeVisit(visit);
-    if (normalized.status !== "active") return visit;
-    const endAt = getSessionEndAt(normalized as any);
+    if (!isAutoLifecycleStatus(normalized.status)) return visit;
+    const endAt = getCompletionTimestamp(normalized as any);
     if (!endAt || now < endAt) return visit;
     changed = true;
+    const startAt = getStartTimestamp(normalized as any);
     return {
       ...normalized,
       status: "done",
-      endedAt: new Date().toISOString(),
+      startedAt: normalized.startedAt || startAt?.toISOString() || normalized.startedAt,
+      endedAt: endAt.toISOString(),
       updatedAt: new Date().toISOString(),
     };
   });
@@ -386,7 +451,7 @@ export const sessionService = {
     return db.insert(therapySessions).values(values).returning();
   },
 
-  async updateStatus(id: string, status: string, cancelReason?: string) {
+  async updateStatus(id: string, status: string, cancelReason?: string, timestampOverrides: SessionStatusTimestampOverrides = {}) {
     if (id.startsWith("OTV-")) {
       const visits = await readOneTimeVisits();
       const index = visits.findIndex((visit: any) => visit?.id === id);
@@ -408,6 +473,10 @@ export const sessionService = {
         timestampUpdates.startedAt = null;
         timestampUpdates.endedAt = null;
       }
+      const startedAtOverride = asIsoOverride(timestampOverrides.startedAt);
+      if (typeof startedAtOverride !== "undefined") timestampUpdates.startedAt = startedAtOverride;
+      const endedAtOverride = asIsoOverride(timestampOverrides.endedAt);
+      if (typeof endedAtOverride !== "undefined") timestampUpdates.endedAt = endedAtOverride;
       const updated = {
         ...existing,
         status,
@@ -462,6 +531,10 @@ export const sessionService = {
       timestampUpdates.startedAt = null;
       timestampUpdates.endedAt = null;
     }
+    const startedAtOverride = asDateOverride(timestampOverrides.startedAt);
+    if (typeof startedAtOverride !== "undefined") timestampUpdates.startedAt = startedAtOverride;
+    const endedAtOverride = asDateOverride(timestampOverrides.endedAt);
+    if (typeof endedAtOverride !== "undefined") timestampUpdates.endedAt = endedAtOverride;
 
     return db.transaction(async (tx) => {
       const [updated] = await tx.update(therapySessions)

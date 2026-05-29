@@ -168,6 +168,7 @@ function App({ onLogout }) {
         if (sessions.some(s => s.status === 'active')) return;
         const candidate = sessions.find(session => (
             shouldAutoStartSession(session.raw || session, nowTick)
+            && !shouldAutoFinishSession(session.raw || session, nowTick)
             && !autoStartedIds.current.has(session.id)
         ));
         if (!candidate) return;
@@ -182,6 +183,25 @@ function App({ onLogout }) {
         });
     }, [sessions, nowTick]);
 
+    const finishSessionStatus = async (session, options = {}) => {
+        const raw = session.raw || session;
+        const live = getLiveSessionState(raw, nowTick);
+        if (!live.isActiveStored && live.hasAdminApproval && !live.isDone && !live.isCancelled) {
+            await updateSessionStatus(
+                session.id,
+                'active',
+                options.auto ? 'Sesi otomatis belum bisa dimulai sebelum diselesaikan.' : 'Sesi belum bisa dimulai sebelum diselesaikan.',
+            );
+        }
+        await updateSessionStatus(
+            session.id,
+            'done',
+            options.auto ? 'Sesi otomatis belum bisa diselesaikan.' : 'Sesi belum bisa diselesaikan.',
+        );
+        loadSessions();
+        window.dispatchEvent(new Event('sessionUpdated'));
+    };
+
     useEffect(() => {
         const candidate = sessions.find(session => (
             shouldAutoFinishSession(session.raw || session, nowTick)
@@ -189,10 +209,7 @@ function App({ onLogout }) {
         ));
         if (!candidate) return;
         autoFinishedIds.current.add(candidate.id);
-        updateSessionStatus(candidate.id, 'done', 'Sesi otomatis belum bisa diselesaikan.').then(() => {
-            loadSessions();
-            window.dispatchEvent(new Event('sessionUpdated'));
-        }).catch((e) => {
+        finishSessionStatus(candidate, { auto: true }).catch((e) => {
             console.error('Failed to auto-finish session', e);
             autoFinishedIds.current.delete(candidate.id);
             setActionError(e?.message || 'Sesi otomatis belum bisa diselesaikan.');
@@ -227,9 +244,7 @@ function App({ onLogout }) {
         if (!finishModal) return;
         try {
             setActionError('');
-            await updateSessionStatus(finishModal.id, 'done', 'Sesi belum bisa diselesaikan.');
-            loadSessions();
-            window.dispatchEvent(new Event('sessionUpdated'));
+            await finishSessionStatus(finishModal);
         } catch (e) {
             console.error('Failed to finish session', e);
             setActionError(e?.message || 'Sesi belum bisa diselesaikan.');
@@ -398,7 +413,7 @@ function App({ onLogout }) {
                                                         disabled={!isStoredActive}
                                                         className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-4 sm:px-6 py-2 sm:py-2.5 rounded-lg font-bold shadow-sm hover:opacity-90 transition-opacity flex items-center justify-center gap-2 text-sm sm:text-base whitespace-nowrap disabled:cursor-wait disabled:opacity-60"
                                                     >
-                                                        <span className="material-symbols-outlined text-[20px]">stop_circle</span> {isStoredActive ? (isOneTime ? 'Selesai & Simpan Log' : 'End Session') : 'Menyiapkan'}
+                                                        <span className="material-symbols-outlined text-[20px]">stop_circle</span> {isStoredActive ? (isOneTime ? 'Selesai & Simpan Log' : 'End Session') : 'Mulai otomatis...'}
                                                     </button>
                                                 </div>
                                             )}
@@ -415,7 +430,7 @@ function App({ onLogout }) {
                                                     }`}
                                                 >
                                                     <span className="material-symbols-outlined text-[20px]">{attendanceConfirmed ? (live.isCountdown ? 'timer' : 'play_circle') : 'lock_clock'}</span>
-                                                    {attendanceConfirmed ? (countdownLabel || (isOneTime ? 'Mulai Visit' : 'Start Session')) : 'Menunggu Hadir'}
+                                                    {attendanceConfirmed ? (live.isCountdown ? (isOneTime ? 'Mulai Visit Lebih Awal' : 'Mulai Lebih Awal') : (countdownLabel || (isOneTime ? 'Mulai Visit' : 'Start Session'))) : 'Menunggu Hadir'}
                                                 </button>
                                             )}
                                         </div>

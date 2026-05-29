@@ -92,9 +92,7 @@ const TimelineList = () => {
         if (!completeModal) return;
         try {
             setActionError('');
-            assertApiOk(await sessionsApi.updateStatus(completeModal.id, 'done'), 'Sesi belum bisa diakhiri.');
-            await fetchSessions();
-            window.dispatchEvent(new Event('sessionUpdated'));
+            await finishSession(completeModal);
         } catch(e) {
             console.error(e);
             setActionError(e?.message || 'Sesi belum bisa diakhiri.');
@@ -135,10 +133,27 @@ const TimelineList = () => {
         }
     };
 
+    const finishSession = async (session, options = {}) => {
+        const live = getLiveSessionState(session, nowTick);
+        if (!live.isActiveStored && live.hasAdminApproval && !live.isDone && !live.isCancelled) {
+            assertApiOk(
+                await sessionsApi.updateStatus(session.id, 'active'),
+                options.auto ? 'Sesi otomatis belum bisa dimulai sebelum diakhiri.' : 'Sesi belum bisa dimulai sebelum diakhiri.',
+            );
+        }
+        assertApiOk(
+            await sessionsApi.updateStatus(session.id, 'done'),
+            options.auto ? 'Sesi otomatis belum bisa diakhiri.' : 'Sesi belum bisa diakhiri.',
+        );
+        await fetchSessions();
+        window.dispatchEvent(new Event('sessionUpdated'));
+    };
+
     useEffect(() => {
         if (sessions.some(s => s.status === 'active')) return;
         const candidate = sessions.find(session => (
             shouldAutoStartSession(session, nowTick)
+            && !shouldAutoFinishSession(session, nowTick)
             && !autoStartedIds.current.has(session.id)
         ));
         if (!candidate) return;
@@ -153,11 +168,7 @@ const TimelineList = () => {
         ));
         if (!candidate) return;
         autoFinishedIds.current.add(candidate.id);
-        sessionsApi.updateStatus(candidate.id, 'done').then((response) => {
-            assertApiOk(response, 'Sesi otomatis belum bisa diakhiri.');
-            fetchSessions();
-            window.dispatchEvent(new Event('sessionUpdated'));
-        }).catch((e) => {
+        finishSession(candidate, { auto: true }).catch((e) => {
             console.error('Failed to auto-finish session', e);
             autoFinishedIds.current.delete(candidate.id);
             setActionError(e?.message || 'Sesi otomatis belum bisa diakhiri.');
@@ -349,7 +360,7 @@ const TimelineList = () => {
                                                 className="flex items-center justify-center gap-2 rounded-xl h-11 px-6 bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600 text-white transition-all text-sm font-bold shadow-md shadow-teal-500/20 hover:shadow-teal-500/40 hover:-translate-y-0.5 disabled:cursor-wait disabled:opacity-60"
                                             >
                                                 <span className="material-symbols-outlined text-[20px]" style={{fontVariationSettings: "'FILL' 1"}}>check_circle</span>
-                                                {live.isActiveStored ? (isOneTime ? 'Selesai & Simpan Log' : 'End Session') : 'Menyiapkan Sesi'}
+                                                {live.isActiveStored ? (isOneTime ? 'Selesai & Simpan Log' : 'End Session') : 'Mulai otomatis...'}
                                             </button>
                                             <button onClick={() => { setNoteOpenId(noteOpenId === session.id ? null : session.id); setNoteText(session.notes || ''); }} className="flex items-center justify-center gap-2 rounded-xl h-11 px-5 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-all text-sm font-bold border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow">
                                                 <span className="material-symbols-outlined text-[20px]">edit_note</span>
@@ -361,7 +372,7 @@ const TimelineList = () => {
                                         <>
                                             {isConfirmed ? (
                                                 <button onClick={() => startSession(session.id)} className="text-white hover:bg-teal-600 bg-teal-500 text-sm font-bold flex items-center gap-1.5 px-4 py-2 rounded-xl shadow-md transition-colors hover:shadow-lg">
-                                                    <span className="material-symbols-outlined text-[18px]">play_arrow</span> {isOneTime ? 'Mulai Visit' : 'Mulai Sesi'}
+                                                    <span className="material-symbols-outlined text-[18px]">{live.isCountdown ? 'timer' : 'play_arrow'}</span> {live.isCountdown ? (isOneTime ? 'Mulai Visit Lebih Awal' : 'Mulai Sesi Lebih Awal') : (isOneTime ? 'Mulai Visit' : 'Mulai Sesi')}
                                                 </button>
                                             ) : (
                                                 <button disabled className="cursor-not-allowed text-slate-500 bg-slate-100 dark:bg-slate-800 dark:text-slate-400 text-sm font-bold flex items-center gap-1.5 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700">
