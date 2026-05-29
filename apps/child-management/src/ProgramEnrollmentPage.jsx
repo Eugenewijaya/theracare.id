@@ -380,7 +380,7 @@ export default function ProgramEnrollmentPage() {
                             <span className="font-bold text-slate-500">Terapis: {getApprovalLabel(request.therapistApproval)}</span>
                           </div>
                           {request.deletedSessionCount > 0 && (
-                            <p className="mt-1 font-semibold text-slate-500">{request.deletedSessionCount} sesi belum selesai sudah dihapus.</p>
+                            <p className="mt-1 font-semibold text-slate-500">{request.deletedSessionCount} sesi yang belum selesai telah dihapus dari jadwal. Sesi selesai tetap tersimpan sebagai riwayat.</p>
                           )}
                         </div>
                       );

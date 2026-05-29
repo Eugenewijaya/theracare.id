@@ -204,7 +204,7 @@ async function executeApprovedRequest(request: PeriodDeletionRequest) {
       {
         actorRole: "system",
         action: "period_deletion.executed",
-        note: `${deleted.length} sesi belum selesai dihapus dan periode ditandai cancelled.`,
+        note: `${deleted.length} sesi yang belum selesai telah dihapus dari jadwal dan periode ditandai cancelled. Sesi selesai tetap tersimpan sebagai riwayat.`,
         createdAt: now,
       },
     ],
@@ -277,7 +277,7 @@ export const periodDeletionRequestService = {
 
     await writeRequests([request, ...requests]);
 
-    const message = `Admin meminta persetujuan untuk menghapus sesi belum selesai pada ${context.period.name} - ${context.programName} milik ${context.childName}. Alasan: ${request.reason}`;
+    const message = `Admin meminta persetujuan untuk membatalkan ${context.period.name} - ${context.programName} milik ${context.childName}. Jika disetujui, hanya sesi yang belum selesai yang dihapus dari jadwal; sesi selesai tetap menjadi riwayat. Alasan: ${request.reason}`;
     await notifyUsers("parent", [context.parentUserId], {
       title: "Persetujuan hapus periode berjalan",
       message,
@@ -365,9 +365,9 @@ export const periodDeletionRequestService = {
 
     const resultType = updated.status === "executed" ? "period_deletion_result" : "period_deletion_request";
     if (updated.status === "rejected" || updated.status === "executed") {
-      const title = updated.status === "executed" ? "Periode berjalan berhasil dihapus" : "Penghapusan periode ditolak";
+      const title = updated.status === "executed" ? "Periode berjalan dibatalkan" : "Penghapusan periode ditolak";
       const message = updated.status === "executed"
-        ? `${updated.periodName} milik ${updated.childName} dibatalkan. ${updated.deletedSessionCount || 0} sesi belum selesai dihapus.`
+        ? `${updated.periodName} milik ${updated.childName} dibatalkan. ${updated.deletedSessionCount || 0} sesi yang belum selesai telah dihapus dari jadwal. Sesi selesai tetap tersimpan sebagai riwayat.`
         : `${actor.role === "parent" ? "Orang tua" : "Terapis"} menolak penghapusan ${updated.periodName} milik ${updated.childName}.`;
       await notificationService.create({
         type: resultType,
