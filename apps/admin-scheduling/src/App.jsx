@@ -705,7 +705,7 @@ function App() {
                 return;
             }
             setIsAddModalOpen(false);
-            showToast('One-time visit berhasil masuk ke jadwal, dashboard, dan konfirmasi kehadiran.');
+            showToast('One-time visit masuk ke jadwal terapis dan notifikasi terapis dikirim.');
             await loadDb();
             window.dispatchEvent(new Event('sessionUpdated'));
             return;
@@ -735,7 +735,7 @@ function App() {
                 return;
             }
             setIsAddModalOpen(false);
-            showToast('Sesi berhasil ditambahkan ke jadwal!');
+            showToast('Sesi berhasil ditambahkan ke jadwal anak, dashboard parent, dan notifikasi.');
             await loadDb();
             window.dispatchEvent(new Event('sessionUpdated'));
         } catch(e) {

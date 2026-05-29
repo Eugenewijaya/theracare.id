@@ -20,7 +20,7 @@ type SessionStatusTimestampOverrides = {
 
 function pickSessionValues(data: any): Partial<TherapySessionInsert> {
   return {
-    ...(typeof data.therapyPeriodId === "string" ? { therapyPeriodId: data.therapyPeriodId } : {}),
+    ...(typeof data.therapyPeriodId === "string" && data.therapyPeriodId ? { therapyPeriodId: data.therapyPeriodId } : {}),
     ...(typeof data.therapistId === "string" ? { therapistId: data.therapistId } : {}),
     ...(typeof data.childId === "string" ? { childId: data.childId } : {}),
     ...(typeof data.roomId === "string" && data.roomId ? { roomId: data.roomId } : {}),
@@ -118,6 +118,108 @@ function getCompletionTimestamp(session: Pick<TherapySessionInsert, "date" | "st
 function getStartTimestamp(session: Pick<TherapySessionInsert, "date" | "startTime">) {
   const startAt = getSessionStartAt(session);
   return startAt && !Number.isNaN(startAt.getTime()) ? startAt : null;
+}
+
+function periodProgramName(period: any) {
+  return String(period?.program?.name || period?.therapyProgram?.type || "").trim();
+}
+
+function periodSortRank(period: any) {
+  const status = String(period?.status || "").toLowerCase();
+  if (status === "active") return 0;
+  if (status === "planned") return 1;
+  return 2;
+}
+
+async function resolveTherapyPeriodIdForSession(data: { childId: string; focus?: string; therapyPeriodId?: string }) {
+  if (typeof data.therapyPeriodId === "string" && data.therapyPeriodId) return data.therapyPeriodId;
+  if (!data.childId) return null;
+
+  const periods = await db.query.therapyPeriods.findMany({
+    where: eq(therapyPeriods.childId, data.childId),
+    with: { program: true, therapyProgram: true },
+  });
+  const eligible = periods
+    .filter((period: any) => ["active", "planned"].includes(String(period.status || "").toLowerCase()))
+    .sort((a: any, b: any) => periodSortRank(a) - periodSortRank(b));
+  if (eligible.length === 0) return null;
+
+  const focus = String(data.focus || "").trim().toLowerCase();
+  if (focus) {
+    const matching = eligible.find((period: any) => periodProgramName(period).toLowerCase() === focus)
+      || eligible.find((period: any) => {
+        const name = periodProgramName(period).toLowerCase();
+        return Boolean(name && (name.includes(focus) || focus.includes(name)));
+      });
+    if (matching?.id) return matching.id;
+  }
+
+  return eligible[0]?.id || null;
+}
+
+function sessionProgramLabel(session: any) {
+  return session?.focus || periodProgramName(session?.therapyPeriod) || "Program Terapi";
+}
+
+async function notifySessionScheduled(sessionId: string) {
+  const session = await db.query.therapySessions.findFirst({
+    where: eq(therapySessions.id, sessionId),
+    with: {
+      therapist: { with: { user: true } },
+      child: { with: { parent: { with: { user: true } } } },
+      therapyPeriod: { with: { program: true, therapyProgram: true } },
+    },
+  });
+  if (!session) return;
+
+  const childName = session.child?.name || session.childId;
+  const therapistName = session.therapist?.user?.name || session.therapistId;
+  const program = sessionProgramLabel(session);
+  const scheduleLabel = `${session.date} ${session.startTime}`;
+
+  const therapistUserId = session.therapist?.userId || session.therapist?.user?.id;
+  if (therapistUserId) {
+    await notificationService.create({
+      type: "schedule_change",
+      icon: "event_available",
+      title: "Jadwal terapi baru ditambahkan",
+      message: `${childName} dijadwalkan untuk ${program} pada ${scheduleLabel}.`,
+      targetRole: "therapist",
+      targetUserId: therapistUserId,
+      relatedId: session.id,
+    });
+  }
+
+  const parentUserId = session.child?.parent?.userId || session.child?.parent?.user?.id;
+  if (parentUserId) {
+    await notificationService.create({
+      type: "schedule_change",
+      icon: "event_available",
+      title: "Jadwal terapi baru ditambahkan",
+      message: `${childName} memiliki jadwal ${program} pada ${scheduleLabel} bersama ${therapistName}.`,
+      targetRole: "parent",
+      targetUserId: parentUserId,
+      relatedId: session.id,
+    });
+  }
+}
+
+async function notifyOneTimeVisitScheduled(visit: any) {
+  const therapist = visit?.therapistId
+    ? await db.query.therapists.findFirst({ where: eq(therapists.id, visit.therapistId), with: { user: true } })
+    : null;
+  const therapistUserId = therapist?.userId || therapist?.user?.id;
+  if (!therapistUserId) return;
+
+  await notificationService.create({
+    type: "schedule_change",
+    icon: "event_available",
+    title: "One-time visit baru ditambahkan",
+    message: `${visit.visitorName || "One-time visit"} dijadwalkan pada ${visit.date} ${visit.startTime}. Kunjungan ini tersimpan sebagai log, bukan data anak.`,
+    targetRole: "therapist",
+    targetUserId: therapistUserId,
+    relatedId: visit.id,
+  });
 }
 
 function parseOneTimeVisits(value?: string | null) {
@@ -382,17 +484,20 @@ export const sessionService = {
     duration?: string; focus?: string; roomId?: string; therapyPeriodId?: string;
   }) {
     const id = `S-${Date.now().toString(36).toUpperCase()}`;
+    const resolvedTherapyPeriodId = await resolveTherapyPeriodIdForSession(data);
     const values: TherapySessionInsert = {
       id,
       therapistId: data.therapistId,
       childId: data.childId,
       date: data.date,
       startTime: data.startTime,
+      ...(resolvedTherapyPeriodId ? { therapyPeriodId: resolvedTherapyPeriodId } : {}),
       ...pickSessionValues(data),
       status: "upcoming",
     };
     await assertSessionAvailable(values);
     const [session] = await db.insert(therapySessions).values(values).returning();
+    await notifySessionScheduled(session.id);
     return session;
   },
 
@@ -418,6 +523,7 @@ export const sessionService = {
     const visits = await readOneTimeVisits();
     const nextVisits = [...visits, visit];
     await writeOneTimeVisits(nextVisits);
+    await notifyOneTimeVisitScheduled(visit);
     const [enriched] = await enrichOneTimeVisits([visit]);
     return enriched || visit;
   },
@@ -426,15 +532,20 @@ export const sessionService = {
     therapistId: string; childId: string; date: string; startTime: string;
     duration?: string; focus?: string; roomId?: string; therapyPeriodId?: string;
   }>) {
-    const values: TherapySessionInsert[] = sessionsData.map((s, i) => ({
-      id: `S-BULK-${Date.now()}-${i}`,
-      therapistId: s.therapistId,
-      childId: s.childId,
-      date: s.date,
-      startTime: s.startTime,
-      ...pickSessionValues(s),
-      status: "upcoming" as const,
-    }));
+    const values: TherapySessionInsert[] = [];
+    for (const [i, s] of sessionsData.entries()) {
+      const resolvedTherapyPeriodId = await resolveTherapyPeriodIdForSession(s);
+      values.push({
+        id: `S-BULK-${Date.now()}-${i}`,
+        therapistId: s.therapistId,
+        childId: s.childId,
+        date: s.date,
+        startTime: s.startTime,
+        ...(resolvedTherapyPeriodId ? { therapyPeriodId: resolvedTherapyPeriodId } : {}),
+        ...pickSessionValues(s),
+        status: "upcoming" as const,
+      });
+    }
     const localKeys = new Set<string>();
     for (const value of values) {
       const therapistKey = `therapist:${value.therapistId}:${value.date}:${value.startTime}`;
@@ -448,7 +559,11 @@ export const sessionService = {
       if (roomKey) localKeys.add(roomKey);
       await assertSessionAvailable(value);
     }
-    return db.insert(therapySessions).values(values).returning();
+    const sessions = await db.insert(therapySessions).values(values).returning();
+    for (const session of sessions) {
+      await notifySessionScheduled(session.id);
+    }
+    return sessions;
   },
 
   async updateStatus(id: string, status: string, cancelReason?: string, timestampOverrides: SessionStatusTimestampOverrides = {}) {
