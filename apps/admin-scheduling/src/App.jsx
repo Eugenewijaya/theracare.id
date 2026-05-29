@@ -43,6 +43,30 @@ const sessionsOverlap = (a, b) => {
     return aStart < bEnd && aEnd > bStart;
 };
 
+const BLOCKING_SESSION_STATUSES = new Set(['cancelled', 'canceled', 'done', 'completed']);
+
+const TIME_OPTIONS = Array.from({ length: ((21 * 60 + 45) - (6 * 60)) / 15 + 1 }, (_, index) => {
+    const totalMinutes = 6 * 60 + index * 15;
+    const hour = Math.floor(totalMinutes / 60);
+    const minute = totalMinutes % 60;
+    return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+});
+
+function TimeSelect({ value, onChange, className = '' }) {
+    const options = TIME_OPTIONS.includes(value) ? TIME_OPTIONS : [value, ...TIME_OPTIONS].filter(Boolean);
+    return (
+        <select
+            value={value}
+            onChange={e => onChange(e.target.value)}
+            className={`appearance-none cursor-pointer ${className}`}
+        >
+            {options.map(time => (
+                <option key={time} value={time}>{time}</option>
+            ))}
+        </select>
+    );
+}
+
 const getTherapistSlotIssue = (therapist, dateStr, startTime, duration) => {
     if (!therapist || !dateStr || !startTime) return '';
     const availability = getTherapistSlotAvailability(therapist, dateStr, startTime, duration);
@@ -52,6 +76,80 @@ const getTherapistSlotIssue = (therapist, dateStr, startTime, duration) => {
     if (availability.label.startsWith('Off mulai')) return `Terapis off mulai pukul ${availability.window.end}.`;
     return availability.label;
 };
+
+const getSessionDisplayName = (session) => {
+    if (session?.isOneTime) return session.visitorName || session.child?.name || 'One-time visit';
+    return session?.child?.name || session?.childName || session?.childId || session?.id || 'sesi lain';
+};
+
+const getTherapistConflictIssue = (therapistId, sessions, dateStr, startTime, duration, excludeSessionId = '') => {
+    if (!therapistId || !dateStr || !startTime) return '';
+    const candidate = { date: dateStr, startTime, duration };
+    const conflict = (sessions || []).find(item => (
+        item.id !== excludeSessionId
+        && item.therapistId === therapistId
+        && item.date === dateStr
+        && !BLOCKING_SESSION_STATUSES.has(String(item.status || '').toLowerCase())
+        && sessionsOverlap(item, candidate)
+    ));
+    if (!conflict) return '';
+    return `Bentrok dengan ${getSessionDisplayName(conflict)} pukul ${conflict.startTime || '-'}.`;
+};
+
+const getTherapistBookingIssue = (therapist, sessions, dateStr, startTime, duration, excludeSessionId = '') => {
+    if (!therapist) return '';
+    return getTherapistSlotIssue(therapist, dateStr, startTime, duration)
+        || getTherapistConflictIssue(therapist.id, sessions, dateStr, startTime, duration, excludeSessionId);
+};
+
+function TherapistPicker({ therapistsList, value, onChange, selectedDateKey, startTime, duration, allSessions }) {
+    const options = therapistsList
+        .map(therapist => ({
+            therapist,
+            issue: getTherapistBookingIssue(therapist, allSessions, selectedDateKey, startTime, duration),
+        }))
+        .sort((a, b) => Number(Boolean(a.issue)) - Number(Boolean(b.issue)) || String(a.therapist.name || '').localeCompare(String(b.therapist.name || '')));
+
+    return (
+        <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-2 dark:border-slate-700 dark:bg-slate-900/40">
+            <div className="max-h-44 space-y-2 overflow-y-auto pr-1">
+                {options.map(({ therapist, issue }) => {
+                    const selected = therapist.id === value;
+                    const unavailable = Boolean(issue);
+                    return (
+                        <button
+                            key={therapist.id}
+                            type="button"
+                            disabled={unavailable && !selected}
+                            onClick={() => onChange(therapist.id)}
+                            className={`flex w-full items-start justify-between gap-3 rounded-lg border px-3 py-2 text-left transition ${
+                                selected
+                                    ? unavailable
+                                        ? 'border-red-300 bg-red-50 text-red-800 ring-2 ring-red-200 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200'
+                                        : 'border-primary bg-white text-slate-900 ring-2 ring-primary/30 dark:bg-slate-950 dark:text-white'
+                                    : unavailable
+                                        ? 'cursor-not-allowed border-slate-200 bg-white/50 text-slate-400 opacity-45 grayscale dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-500'
+                                        : 'border-slate-200 bg-white text-slate-800 hover:border-primary/50 hover:bg-primary/5 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100'
+                            }`}
+                        >
+                            <span className="min-w-0">
+                                <span className="block truncate text-sm font-black">{therapist.name}</span>
+                                <span className="mt-0.5 block truncate text-xs font-semibold opacity-75">{therapist.specialty || therapist.specialization || 'Terapis'}</span>
+                                {issue && <span className="mt-1 block text-[11px] font-bold leading-snug">{issue}</span>}
+                            </span>
+                            <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-black ${unavailable ? 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400' : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300'}`}>
+                                {unavailable ? 'Tidak tersedia' : 'Available'}
+                            </span>
+                        </button>
+                    );
+                })}
+            </div>
+            <p className="mt-2 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                Terapis yang pudar sedang bentrok atau off pada jam terpilih.
+            </p>
+        </div>
+    );
+}
 
 const toDateKey = (dateObj) => {
     if (!dateObj) return '';
@@ -175,11 +273,10 @@ function EditSessionModal({ session, childrenList, therapistsList, programsList,
                     {/* Time & Duration */}
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                         <div className="flex flex-col gap-2">
-                            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Jam Mulai</label>
-                            <input
-                                type="time"
+                            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Jam Mulai (24 jam)</label>
+                            <TimeSelect
                                 value={form.startTime}
-                                onChange={e => update('startTime', e.target.value)}
+                                onChange={value => update('startTime', value)}
                                 className="w-full h-11 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary"
                             />
                         </div>
@@ -589,7 +686,7 @@ function App() {
 
         if (newSession.sessionKind === 'one_time') {
             const selectedTherapist = therapistsList.find(t => t.id === newSession.therapistId);
-            const therapistIssue = getTherapistSlotIssue(selectedTherapist, dateStr, newSession.startTime, `${newSession.duration} mins`);
+            const therapistIssue = getTherapistBookingIssue(selectedTherapist, allSessions, dateStr, newSession.startTime, `${newSession.duration} mins`);
             if (therapistIssue) {
                 showToast(therapistIssue, 'error');
                 return;
@@ -625,7 +722,7 @@ function App() {
             notes: '',
         };
         const selectedTherapist = therapistsList.find(t => t.id === sessionObj.therapistId);
-        const therapistIssue = getTherapistSlotIssue(selectedTherapist, dateStr, sessionObj.startTime, sessionObj.duration);
+        const therapistIssue = getTherapistBookingIssue(selectedTherapist, allSessions, dateStr, sessionObj.startTime, sessionObj.duration);
         if (therapistIssue) {
             showToast(therapistIssue, 'error');
             return;
@@ -823,8 +920,9 @@ function App() {
 
     const selectedDateKey = toDateKey(selectedDate);
     const newSessionTherapist = therapistsList.find(t => t.id === newSession.therapistId);
-    const newSessionTherapistIssue = getTherapistSlotIssue(
+    const newSessionTherapistIssue = getTherapistBookingIssue(
         newSessionTherapist,
+        allSessions,
         selectedDateKey,
         newSession.startTime,
         `${newSession.duration} mins`,
@@ -966,22 +1064,16 @@ function App() {
                                     <span>Terapis</span>
                                     <span className="text-xs font-normal opacity-70">Otomatis / dapat diganti</span>
                                 </label>
-                                <select
+                                <input type="hidden" value={newSession.therapistId} readOnly />
+                                <TherapistPicker
+                                    therapistsList={therapistsList}
                                     value={newSession.therapistId}
-                                    onChange={e => setNewSession(p => ({ ...p, therapistId: e.target.value }))}
-                                    className="w-full h-11 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary appearance-none cursor-pointer"
-                                >
-                                    <option value="">Pilih Terapis...</option>
-                                    {therapistsList.map((t) => (
-                                        <option
-                                            key={t.id}
-                                            value={t.id}
-                                            disabled={Boolean(getTherapistSlotIssue(t, selectedDateKey, newSession.startTime, `${newSession.duration} mins`))}
-                                        >
-                                            {t.name} ({t.specialty}){getTherapistSlotIssue(t, selectedDateKey, newSession.startTime, `${newSession.duration} mins`) ? ` - ${getTherapistSlotIssue(t, selectedDateKey, newSession.startTime, `${newSession.duration} mins`)}` : ''}
-                                        </option>
-                                    ))}
-                                </select>
+                                    onChange={therapistId => setNewSession(p => ({ ...p, therapistId }))}
+                                    selectedDateKey={selectedDateKey}
+                                    startTime={newSession.startTime}
+                                    duration={`${newSession.duration} mins`}
+                                    allSessions={allSessions}
+                                />
                                 {newSessionTherapistIssue && (
                                     <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700">
                                         {newSessionTherapistIssue} Pilih jam lain atau terapis pengganti.
@@ -1005,13 +1097,13 @@ function App() {
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="flex flex-col gap-2">
-                                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Jam Mulai</label>
-                                    <input
-                                        type="time"
+                                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Jam Mulai (24 jam)</label>
+                                    <TimeSelect
                                         value={newSession.startTime}
-                                        onChange={e => setNewSession(p => ({ ...p, startTime: e.target.value }))}
+                                        onChange={value => setNewSession(p => ({ ...p, startTime: value }))}
                                         className="w-full h-11 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary"
                                     />
+                                    <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Pilih 12:30 untuk siang. 00:30 berarti lewat tengah malam.</p>
                                 </div>
                                 <div className="flex flex-col gap-2">
                                     <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Durasi</label>
