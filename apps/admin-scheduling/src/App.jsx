@@ -22,14 +22,6 @@ const getTherapistName = (therapistsList, therapistId) =>
 const getChildName = (childrenList, childId) =>
     childrenList.find(item => item.id === childId)?.name || childId || 'Anak';
 
-const parseJsonSetting = (value, fallback) => {
-    try {
-        return JSON.parse(value || JSON.stringify(fallback));
-    } catch {
-        return fallback;
-    }
-};
-
 const getApiError = (res, fallback) =>
     res?.data?.error || res?.data?.message || fallback;
 
@@ -430,25 +422,22 @@ function App() {
 
     // Data state
     const [allSessions, setAllSessions] = useState([]);
-    const [oneTimeVisits, setOneTimeVisits] = useState([]);
     const [childrenList, setChildrenList] = useState([]);
     const [therapistsList, setTherapistsList] = useState([]);
     const [programsList, setProgramsList] = useState([]);
 
     const loadDb = useCallback(async () => {
         try {
-            const [sessRes, childRes, therRes, progRes, settingsRes] = await Promise.all([
+            const [sessRes, childRes, therRes, progRes] = await Promise.all([
                 sessionsApi.getAll(),
                 childrenApi.getAll(),
                 therapistsApi.getAll(),
                 adminApi.getPrograms(),
-                adminApi.getSettings(),
             ]);
             setAllSessions(sessRes.data?.data || []);
             setChildrenList(childRes.data?.data || []);
             setTherapistsList(therRes.data?.data || []);
             setProgramsList(progRes.data?.data || []);
-            setOneTimeVisits(parseJsonSetting(settingsRes.data?.data?.oneTimeVisitLog, []));
         } catch (e) {
             console.error(e);
         }
@@ -471,17 +460,7 @@ function App() {
         return () => events.forEach((eventName) => window.removeEventListener(eventName, loadDb));
     }, [loadDb]);
 
-    const calendarSessions = React.useMemo(() => [
-        ...allSessions,
-        ...oneTimeVisits.map((visit) => ({
-            ...visit,
-            isOneTime: true,
-            childId: '',
-            child: { name: visit.visitorName },
-            focus: visit.program,
-            status: 'one_time_visit',
-        })),
-    ], [allSessions, oneTimeVisits]);
+    const calendarSessions = allSessions;
 
     const filteredSessions = React.useMemo(() => {
         return calendarSessions.filter(s => {
@@ -615,26 +594,22 @@ function App() {
                 showToast(therapistIssue, 'error');
                 return;
             }
-            const visit = {
-                id: `OTV-${Date.now().toString(36).toUpperCase()}`,
+            const res = await sessionsApi.createOneTimeVisit({
                 visitorName: newSession.visitorName.trim(),
                 therapistId: newSession.therapistId,
                 program: newSession.program,
                 date: dateStr,
                 startTime: newSession.startTime,
                 duration: `${newSession.duration} mins`,
-                notes: 'One-time visit log. Tidak membuat data anak.',
-                createdAt: new Date().toISOString(),
-            };
-            const nextVisits = [...oneTimeVisits, visit];
-            const res = await adminApi.updateSettings({ oneTimeVisitLog: JSON.stringify(nextVisits) });
+                notes: 'One-time visit. Tidak membuat data anak baru.',
+            });
             if (!res.ok) {
-                showToast(res.data?.error || 'Gagal menyimpan log one-time visit', 'error');
+                showToast(getApiError(res, 'Gagal menyimpan one-time visit'), 'error');
                 return;
             }
-            setOneTimeVisits(nextVisits);
             setIsAddModalOpen(false);
-            showToast('One-time visit berhasil dicatat di kalender.');
+            showToast('One-time visit berhasil masuk ke jadwal, dashboard, dan konfirmasi kehadiran.');
+            await loadDb();
             window.dispatchEvent(new Event('sessionUpdated'));
             return;
         }

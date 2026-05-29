@@ -288,6 +288,7 @@ export const sessionsApi = {
   getUpcomingForChild: (id) => api.get(`/sessions/child/${id}/upcoming`),
   getCompletedForChild: (id) => api.get(`/sessions/child/${id}/completed`),
   create: (data) => api.post('/sessions', data),
+  createOneTimeVisit: (data) => api.post('/sessions/one-time-visits', data),
   createBulk: (sessions) => api.post('/sessions/bulk', { sessions }),
   updateStatus: (id, status, cancelReason) => api.patch(`/sessions/${id}/status`, { status, cancelReason }),
   saveNotes: (id, notes) => api.patch(`/sessions/${id}/notes`, { notes }),

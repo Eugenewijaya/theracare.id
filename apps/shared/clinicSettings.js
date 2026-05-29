@@ -23,15 +23,36 @@ export const DEFAULT_CLINIC_SETTINGS = {
   faviconUrl: '',
   centerPhotoUrl: '',
   notificationPreferences: {
-    registration_new: { email: true, inApp: true },
-    session_reminder: { email: true, inApp: true },
-    reschedule_request: { email: true, inApp: true },
-    report_uploaded: { email: true, inApp: true },
-    center_closure: { email: true, inApp: true },
+    registration_new: { email: false, inApp: true },
+    session_reminder: { email: false, inApp: true },
+    reschedule_request: { email: false, inApp: true },
+    report_uploaded: { email: false, inApp: true },
+    center_closure: { email: false, inApp: true },
+  },
+  notificationChannels: {
+    inApp: {
+      live: true,
+      label: 'In-App',
+      status: 'Aktif',
+      description: 'Notifikasi portal aktif dan tersinkron untuk admin, terapis, dan orang tua.',
+    },
+    email: {
+      live: false,
+      label: 'Email',
+      status: 'Dalam Pengembangan',
+      description: 'Email belum aktif sampai domain pengirim dan konfigurasi pengiriman siap.',
+    },
+    sms: {
+      live: false,
+      label: 'SMS / WhatsApp',
+      status: 'Tidak Digunakan',
+      description: 'SMS dan WhatsApp otomatis belum menjadi kanal pengiriman sistem.',
+    },
   },
 };
 
 const PUBLIC_KEYS = Object.keys(DEFAULT_CLINIC_SETTINGS);
+const READ_ONLY_SETTINGS_KEYS = new Set(['notificationChannels']);
 
 function hasClinicSettingsPayload(value) {
   if (!value || typeof value !== 'object') return false;
@@ -71,11 +92,44 @@ function normalizeNotificationPreferences(value) {
   }));
 }
 
+function normalizeNotificationChannels(value) {
+  const input = parseMaybeJson(value);
+  const defaults = DEFAULT_CLINIC_SETTINGS.notificationChannels;
+  return Object.fromEntries(Object.entries(defaults).map(([key, defaultsForChannel]) => {
+    const row = input?.[key] || {};
+    return [
+      key,
+      {
+        ...defaultsForChannel,
+        ...(row && typeof row === 'object' && !Array.isArray(row) ? row : {}),
+        live: typeof row?.live === 'boolean' ? row.live : defaultsForChannel.live,
+      },
+    ];
+  }));
+}
+
+export function sanitizeNotificationPreferencesForChannels(preferences, channels) {
+  const normalized = normalizeNotificationPreferences(preferences);
+  const normalizedChannels = normalizeNotificationChannels(channels);
+  return Object.fromEntries(Object.entries(normalized).map(([key, value]) => [
+    key,
+    {
+      ...value,
+      email: normalizedChannels.email.live ? value.email : false,
+      inApp: normalizedChannels.inApp.live ? value.inApp : false,
+    },
+  ]));
+}
+
 export function normalizeClinicSettings(raw = {}) {
   const settings = { ...DEFAULT_CLINIC_SETTINGS };
   for (const key of PUBLIC_KEYS) {
     if (key === 'notificationPreferences') {
       settings.notificationPreferences = normalizeNotificationPreferences(raw[key]);
+      continue;
+    }
+    if (key === 'notificationChannels') {
+      settings.notificationChannels = normalizeNotificationChannels(raw[key]);
       continue;
     }
     if (typeof raw[key] === 'string' && raw[key].trim()) {
@@ -151,10 +205,13 @@ export async function fetchClinicSettings() {
 
 export async function saveClinicSettings(updates) {
   const next = normalizeClinicSettings({ ...getCachedClinicSettings(), ...updates });
-  const apiPayload = Object.fromEntries(Object.entries(next).map(([key, value]) => [
-    key,
-    value && typeof value === 'object' ? JSON.stringify(value) : value,
-  ]));
+  next.notificationPreferences = sanitizeNotificationPreferencesForChannels(next.notificationPreferences, next.notificationChannels);
+  const apiPayload = Object.fromEntries(Object.entries(next)
+    .filter(([key]) => !READ_ONLY_SETTINGS_KEYS.has(key))
+    .map(([key, value]) => [
+      key,
+      value && typeof value === 'object' ? JSON.stringify(value) : value,
+    ]));
   const res = await adminApi.updateSettings(apiPayload);
   if (!res.ok) {
     throw new Error(res.data?.error || res.data?.message || 'Gagal menyimpan pengaturan pusat terapi');

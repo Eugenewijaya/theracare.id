@@ -7,7 +7,6 @@ import { emailService } from "./email.service.js";
 type DbClient = typeof db | any;
 const CENTER_CLOSURES_KEY = "centerClosures";
 const NOTIFICATION_PREFERENCES_KEY = "notificationPreferences";
-const DEFAULT_NOTIFICATION_CHANNELS = { email: true, inApp: true };
 
 const NOTIFICATION_CATEGORY_MATCHERS: Array<{ key: string; match: (type: string) => boolean }> = [
   { key: "registration_new", match: (type) => type.includes("registration") || type.includes("child_registered") || type.includes("new_child") },
@@ -58,15 +57,16 @@ function getNotificationCategory(type?: string | null) {
 
 async function getNotificationChannels(type?: string | null) {
   const category = getNotificationCategory(type);
-  if (!category) return DEFAULT_NOTIFICATION_CHANNELS;
+  const defaultChannels = { email: emailService.isEnabled(), inApp: true };
+  if (!category) return defaultChannels;
   const row = await db.query.clinicSettings.findFirst({
     where: eq(clinicSettings.key, NOTIFICATION_PREFERENCES_KEY),
   });
   const preferences = parseNotificationPreferences(row?.value);
   const categoryPreferences = preferences[category] || {};
   return {
-    email: typeof categoryPreferences.email === "boolean" ? categoryPreferences.email : DEFAULT_NOTIFICATION_CHANNELS.email,
-    inApp: typeof categoryPreferences.inApp === "boolean" ? categoryPreferences.inApp : DEFAULT_NOTIFICATION_CHANNELS.inApp,
+    email: (typeof categoryPreferences.email === "boolean" ? categoryPreferences.email : defaultChannels.email) && emailService.isEnabled(),
+    inApp: typeof categoryPreferences.inApp === "boolean" ? categoryPreferences.inApp : defaultChannels.inApp,
   };
 }
 

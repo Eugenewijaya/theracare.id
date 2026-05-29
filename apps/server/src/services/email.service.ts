@@ -156,6 +156,8 @@ async function sendViaResend(to: string, subject: string, html: string) {
 }
 
 export const emailService = {
+  isEnabled: isEmailEnabled,
+
   async sendNotification(input: NotificationEmailInput) {
     if (!isEmailEnabled()) return { skipped: true, reason: "Email belum dikonfigurasi" };
 

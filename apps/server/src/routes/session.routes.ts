@@ -121,6 +121,25 @@ router.post("/", requireAuth, requireRole("admin"), async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+router.post("/one-time-visits", requireAuth, requireRole("admin"), async (req, res, next) => {
+  try {
+    const { visitorName, therapistId, date, startTime } = req.body;
+    if (!visitorName?.trim() || !therapistId || !date || !startTime) {
+      return badRequest(res, "Nama calon client, terapis, tanggal, dan jam wajib diisi");
+    }
+    const visit = await sessionService.createOneTimeVisit(req.body);
+    await auditLogService.create({
+      actor: req.user,
+      action: "session.one_time_visit.create",
+      entityType: "one_time_visit",
+      entityId: visit.id,
+      summary: `One-time visit dibuat untuk ${visitorName} pada ${date} ${startTime}`,
+      metadata: req.body,
+    });
+    created(res, visit, "One-time visit berhasil dibuat");
+  } catch (e) { next(e); }
+});
+
 router.post("/bulk", requireAuth, requireRole("admin"), async (req, res, next) => {
   try {
     if (!Array.isArray(req.body.sessions)) return badRequest(res, "Format data tidak valid");

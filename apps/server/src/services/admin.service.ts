@@ -2,6 +2,7 @@ import { db } from "../db/index.js";
 import { rooms, programs, therapyPrograms, clinicSettings, therapySessions, children, therapists, user } from "../db/schema.js";
 import { eq, sql } from "drizzle-orm";
 import { generateId } from "../utils/id-generators.js";
+import { emailService } from "./email.service.js";
 
 type RoomInsert = typeof rooms.$inferInsert;
 type ProgramInsert = typeof programs.$inferInsert;
@@ -27,6 +28,41 @@ function normalizeProgram(program: any) {
     code: program?.code || "",
     target: program?.target || "",
     goals: Array.isArray(program?.goals) ? program.goals : [],
+  };
+}
+
+function parseJsonArray(value?: string | null) {
+  try {
+    const parsed = JSON.parse(value || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function getNotificationChannelsStatus() {
+  const emailLive = emailService.isEnabled();
+  return {
+    inApp: {
+      live: true,
+      status: "Aktif",
+      label: "In-App",
+      description: "Notifikasi portal aktif dan tersinkron untuk admin, terapis, dan orang tua.",
+    },
+    email: {
+      live: emailLive,
+      status: emailLive ? "Aktif" : "Dalam Pengembangan",
+      label: "Email",
+      description: emailLive
+        ? "Email otomatis aktif sesuai preferensi admin."
+        : "Email belum aktif sampai domain pengirim dan konfigurasi Resend siap.",
+    },
+    sms: {
+      live: false,
+      status: "Tidak Digunakan",
+      label: "SMS / WhatsApp",
+      description: "SMS dan WhatsApp otomatis belum menjadi kanal pengiriman sistem.",
+    },
   };
 }
 
@@ -126,7 +162,10 @@ export const adminService = {
       "notificationPreferences",
     ];
     const settings = await this.getSettings();
-    return Object.fromEntries(safeKeys.map((key) => [key, settings[key] ?? ""]));
+    return {
+      ...Object.fromEntries(safeKeys.map((key) => [key, settings[key] ?? ""])),
+      notificationChannels: getNotificationChannelsStatus(),
+    };
   },
   async updateSettings(updates: Record<string, unknown>) {
     for (const [key, value] of Object.entries(updates)) {
@@ -142,12 +181,17 @@ export const adminService = {
     const [childCount] = await db.select({ count: sql<number>`count(*)` }).from(children);
     const [therapistCount] = await db.select({ count: sql<number>`count(*)` }).from(therapists);
     const allSessions = await db.select().from(therapySessions).where(eq(therapySessions.date, today));
+    const settings = await this.getSettings();
+    const oneTimeVisits = parseJsonArray(settings.oneTimeVisitLog)
+      .filter((visit: any) => visit?.date === today && String(visit?.status || "upcoming").toLowerCase() !== "cancelled");
+    const completedOneTimeVisits = oneTimeVisits.filter((visit: any) => ["done", "completed"].includes(String(visit?.status || "").toLowerCase()));
+    const pendingOneTimeVisits = oneTimeVisits.filter((visit: any) => ["upcoming", "confirmed"].includes(String(visit?.status || "upcoming").toLowerCase()));
     return {
       activeChildren: Number(childCount.count),
       totalTherapists: Number(therapistCount.count),
-      totalSessionsToday: allSessions.length,
-      completedSessionsToday: allSessions.filter((s) => s.status === "done").length,
-      pendingSessionsToday: allSessions.filter((s) => s.status === "upcoming").length,
+      totalSessionsToday: allSessions.length + oneTimeVisits.length,
+      completedSessionsToday: allSessions.filter((s) => s.status === "done").length + completedOneTimeVisits.length,
+      pendingSessionsToday: allSessions.filter((s) => s.status === "upcoming").length + pendingOneTimeVisits.length,
     };
   },
 };

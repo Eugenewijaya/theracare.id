@@ -94,6 +94,10 @@ function parseJsonArray(value?: string | null) {
   }
 }
 
+function parseVisitStatus(value?: string | null) {
+  return String(value || "upcoming").toLowerCase();
+}
+
 function normalizeClockValue(value?: string | null) {
   const raw = String(value || "").trim();
   const shortHour = raw.match(/^(\d{1,2})$/);
@@ -289,11 +293,34 @@ async function findSessionOverlap(
     ),
   });
 
-  return sessions.find((session) => {
+  const sessionConflict = sessions.find((session) => {
     const otherStart = parseMinutes(session.startTime);
     if (otherStart === null) return false;
     return overlaps(start, duration, otherStart, parseDurationMinutes(session.duration));
-  }) || null;
+  });
+  if (sessionConflict) return sessionConflict;
+
+  if (field === "therapistId") {
+    const settings = await getSettingsMap();
+    const oneTimeVisits = parseJsonArray(settings.oneTimeVisitLog);
+    const visitConflict = oneTimeVisits.find((visit: any) => {
+      if (visit?.therapistId !== entityId || visit?.date !== slot.date || visit?.id === excludeSessionId) return false;
+      if (["cancelled", "canceled", "done", "completed"].includes(parseVisitStatus(visit?.status))) return false;
+      const otherStart = parseMinutes(visit?.startTime);
+      if (otherStart === null) return false;
+      return overlaps(start, duration, otherStart, parseDurationMinutes(visit?.duration));
+    });
+    if (visitConflict) {
+      return {
+        id: visitConflict.id,
+        childId: visitConflict.visitorName || "one-time visit",
+        startTime: visitConflict.startTime,
+        duration: visitConflict.duration,
+      } as any;
+    }
+  }
+
+  return null;
 }
 
 export async function evaluateOperationalSlot(slot: { date: string; time: string; duration?: string }): Promise<SlotAvailability> {

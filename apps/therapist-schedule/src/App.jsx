@@ -114,7 +114,7 @@ function App({ onLogout }) {
                 const style = getProgramStyle(program);
                 return {
                     id: s.id,
-                    name: s.child?.name || 'Unknown Child',
+                    name: s.isOneTime ? (s.visitorName || s.child?.name || 'One-time visit') : (s.child?.name || 'Unknown Child'),
                     type: program,
                     typeTag: style.tag,
                     typeColor: style.color,
@@ -366,9 +366,15 @@ function App({ onLogout }) {
                                                     <span className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-50 dark:bg-emerald-900/20 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm">
                                                         <span className="material-symbols-outlined text-[18px]">task_alt</span> Done
                                                     </span>
-                                                    <button onClick={() => navigate(`/reports/new?sessionId=${session.id}&childId=${session.raw?.childId || ''}`)} className="flex flex-1 sm:flex-none justify-center items-center gap-2 px-4 py-2 rounded-xl bg-teal-50 dark:bg-teal-900/20 text-teal-700 dark:text-teal-400 font-bold text-xs sm:text-sm hover:bg-teal-100 dark:hover:bg-teal-900/30 transition-colors border border-teal-100 dark:border-teal-800/50 min-w-max">
-                                                        <span className="material-symbols-outlined text-[18px]">edit_note</span> Fill Daily Report
-                                                    </button>
+                                                    {session.raw?.isOneTime ? (
+                                                        <span className="flex flex-1 sm:flex-none justify-center items-center gap-2 px-4 py-2 rounded-xl bg-slate-50 dark:bg-slate-900/30 text-slate-500 dark:text-slate-400 font-bold text-xs sm:text-sm border border-slate-100 dark:border-slate-800 min-w-max">
+                                                            <span className="material-symbols-outlined text-[18px]">person_search</span> One-time visit, tanpa laporan anak
+                                                        </span>
+                                                    ) : (
+                                                        <button onClick={() => navigate(`/reports/new?sessionId=${session.id}&childId=${session.raw?.childId || ''}`)} className="flex flex-1 sm:flex-none justify-center items-center gap-2 px-4 py-2 rounded-xl bg-teal-50 dark:bg-teal-900/20 text-teal-700 dark:text-teal-400 font-bold text-xs sm:text-sm hover:bg-teal-100 dark:hover:bg-teal-900/30 transition-colors border border-teal-100 dark:border-teal-800/50 min-w-max">
+                                                            <span className="material-symbols-outlined text-[18px]">edit_note</span> Fill Daily Report
+                                                        </button>
+                                                    )}
                                                 </div>
                                             )}
 

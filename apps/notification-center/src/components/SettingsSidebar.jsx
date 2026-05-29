@@ -1,4 +1,5 @@
 import React from 'react';
+import { useClinicSettings } from '../../../shared/clinicSettings';
 
 const deliveryGroups = [
     'Schedule Changes',
@@ -22,6 +23,12 @@ const ChannelBadge = ({ icon, label, tone = 'primary' }) => {
 };
 
 const SettingsSidebar = () => {
+    const { settings } = useClinicSettings();
+    const channels = settings.notificationChannels || {};
+    const inAppStatus = channels.inApp?.status || 'Aktif';
+    const emailStatus = channels.email?.status || 'Dalam Pengembangan';
+    const smsStatus = channels.sms?.status || 'Tidak Digunakan';
+
     return (
         <aside className="w-full lg:w-80 flex-shrink-0 flex flex-col gap-6">
             <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-5 sm:p-6 shadow-sm">
@@ -30,7 +37,7 @@ const SettingsSidebar = () => {
                     <h3 className="min-w-0 text-lg font-bold leading-tight">Delivery Channels</h3>
                 </div>
                 <p className="mb-6 text-sm leading-relaxed text-slate-500 dark:text-slate-400">
-                    Pengumuman saat ini dikirim sebagai notifikasi in-app. Email template center sedang dalam pengembangan dan akan diaktifkan setelah domain pengirim resmi siap.
+                    Pengumuman saat ini dikirim sebagai notifikasi in-app. Email mengikuti status backend dan tetap jelas ketika belum siap produksi.
                 </p>
 
                 <div className="flex flex-col gap-5">
@@ -40,8 +47,8 @@ const SettingsSidebar = () => {
                             <div className="flex min-w-0 flex-col gap-3">
                                 <h4 className="text-sm font-semibold leading-tight">{group}</h4>
                                 <div className="flex flex-wrap gap-2">
-                                    <ChannelBadge icon="notifications_active" label="In-App Aktif" />
-                                    <ChannelBadge icon="mail" label="Email Dalam Pengembangan" tone="muted" />
+                                    <ChannelBadge icon="notifications_active" label={`In-App ${inAppStatus}`} />
+                                    <ChannelBadge icon="mail" label={`Email ${emailStatus}`} tone={channels.email?.live ? 'success' : 'muted'} />
                                 </div>
                             </div>
                         </React.Fragment>
@@ -49,7 +56,7 @@ const SettingsSidebar = () => {
                 </div>
 
                 <div className="mt-6 rounded-lg bg-slate-50 p-4 text-xs leading-relaxed text-slate-500 ring-1 ring-slate-200 dark:bg-slate-950/40 dark:text-slate-400 dark:ring-slate-800">
-                    SMS tidak digunakan. Email juga dimatikan sementara, jadi semua penerima tetap mendapatkan notifikasi melalui portal masing-masing.
+                    SMS/WhatsApp otomatis: {smsStatus}. Jika email belum Aktif, semua penerima tetap mendapatkan notifikasi melalui portal masing-masing.
                 </div>
             </div>
         </aside>

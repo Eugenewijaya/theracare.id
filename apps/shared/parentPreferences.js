@@ -1,8 +1,7 @@
 const PARENT_PREFERENCES_KEY = 'theracare_parent_portal_preferences';
 
 const DEFAULT_PARENT_PREFERENCES = {
-  notifEmail: true,
-  notifSms: false,
+  theme: 'light',
 };
 
 export const PARENT_PREFERENCES_UPDATED_EVENT = 'parentPreferencesUpdated';
@@ -17,7 +16,7 @@ export function readParentPreferences() {
     const parsed = JSON.parse(window.localStorage.getItem(PARENT_PREFERENCES_KEY) || '{}');
     return {
       ...DEFAULT_PARENT_PREFERENCES,
-      ...(parsed && typeof parsed === 'object' ? parsed : {}),
+      theme: getResolvedParentThemePreference(parsed?.theme),
     };
   } catch {
     return { ...DEFAULT_PARENT_PREFERENCES };
@@ -42,8 +41,6 @@ export function applyParentThemePreference(preferredTheme) {
 
 export function writeParentPreferences(preferences) {
   const next = {
-    ...readParentPreferences(),
-    ...preferences,
     theme: getResolvedParentThemePreference(preferences.theme),
     updatedAt: new Date().toISOString(),
   };

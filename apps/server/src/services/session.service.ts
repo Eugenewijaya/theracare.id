@@ -1,13 +1,15 @@
 import { db } from "../db/index.js";
-import { historicalSessionSummaries, reports, rescheduleRequests, sessionRatings, therapyPeriods, therapySessions } from "../db/schema.js";
+import { clinicSettings, historicalSessionSummaries, reports, rescheduleRequests, sessionRatings, therapists, therapyPeriods, therapySessions } from "../db/schema.js";
 import { eq, and, gte, inArray, sql } from "drizzle-orm";
 import { generateId } from "../utils/id-generators.js";
 import { httpError } from "../utils/http-error.js";
 import { attachChildPhotoUrl, getChildPhotoUrlMap } from "./child.service.js";
-import { evaluateSessionSlot } from "./scheduling-availability.service.js";
+import { evaluateSessionSlot, evaluateTherapistSlot } from "./scheduling-availability.service.js";
 import { notificationService } from "./notification.service.js";
 
 type TherapySessionInsert = typeof therapySessions.$inferInsert;
+type DbClient = typeof db | any;
+const ONE_TIME_VISIT_LOG_KEY = "oneTimeVisitLog";
 
 function pickSessionValues(data: any): Partial<TherapySessionInsert> {
   return {
@@ -61,6 +63,105 @@ function getSessionEndAt(session: Pick<TherapySessionInsert, "date" | "startTime
   return new Date(start.getTime() + parseDurationMinutes(session.duration) * 60_000);
 }
 
+function parseOneTimeVisits(value?: string | null) {
+  try {
+    const parsed = JSON.parse(value || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+async function readOneTimeVisits(client: DbClient = db) {
+  const row = await client.query.clinicSettings.findFirst({
+    where: eq(clinicSettings.key, ONE_TIME_VISIT_LOG_KEY),
+  });
+  return parseOneTimeVisits(row?.value);
+}
+
+async function writeOneTimeVisits(visits: any[], client: DbClient = db) {
+  await client.insert(clinicSettings)
+    .values({ key: ONE_TIME_VISIT_LOG_KEY, value: JSON.stringify(visits), updatedAt: new Date() })
+    .onConflictDoUpdate({
+      target: clinicSettings.key,
+      set: { value: JSON.stringify(visits), updatedAt: new Date() },
+    });
+}
+
+function normalizeOneTimeVisit(visit: any) {
+  const visitorName = String(visit?.visitorName || visit?.childName || "One-time visit").trim() || "One-time visit";
+  const status = String(visit?.status || "upcoming").toLowerCase();
+  return {
+    id: visit?.id || generateId("OTV"),
+    isOneTime: true,
+    visitorName,
+    childId: "",
+    child: { id: "", name: visitorName, parent: null },
+    therapistId: visit?.therapistId || "",
+    therapyPeriodId: null,
+    roomId: null,
+    room: null,
+    therapyPeriod: null,
+    date: visit?.date || "",
+    startTime: visit?.startTime || "09:00",
+    duration: visit?.duration || "60 mins",
+    focus: visit?.focus || visit?.program || "One-time Visit",
+    program: visit?.program || visit?.focus || "One-time Visit",
+    status,
+    notes: visit?.notes || "One-time visit. Tidak membuat data anak baru.",
+    cancelReason: visit?.cancelReason || null,
+    startedAt: visit?.startedAt || null,
+    endedAt: visit?.endedAt || null,
+    createdAt: visit?.createdAt || new Date().toISOString(),
+    updatedAt: visit?.updatedAt || visit?.createdAt || new Date().toISOString(),
+  };
+}
+
+async function enrichOneTimeVisits(visits: any[]) {
+  const normalized = visits.map(normalizeOneTimeVisit);
+  const therapistIds = [...new Set(normalized.map((visit) => visit.therapistId).filter(Boolean))];
+  const therapistRows = therapistIds.length
+    ? await db.query.therapists.findMany({
+        where: inArray(therapists.id, therapistIds),
+        with: { user: true },
+      })
+    : [];
+  const therapistById = new Map(therapistRows.map((therapist) => [therapist.id, attachTherapistDisplay(therapist)]));
+  return normalized.map((visit) => ({
+    ...visit,
+    therapist: therapistById.get(visit.therapistId) || null,
+  }));
+}
+
+async function getOneTimeVisitById(id: string) {
+  const visits = await readOneTimeVisits();
+  const visit = visits.find((item: any) => item?.id === id);
+  if (!visit) return null;
+  const [enriched] = await enrichOneTimeVisits([visit]);
+  return enriched || null;
+}
+
+function sessionSortAsc(a: any, b: any) {
+  return String(a.date || "").localeCompare(String(b.date || ""))
+    || String(a.startTime || "").localeCompare(String(b.startTime || ""));
+}
+
+function sessionSortDesc(a: any, b: any) {
+  return String(b.date || "").localeCompare(String(a.date || ""))
+    || String(b.startTime || "").localeCompare(String(a.startTime || ""));
+}
+
+async function assertOneTimeVisitAvailable(visit: any, excludeVisitId?: string) {
+  const availability = await evaluateTherapistSlot(
+    visit.therapistId,
+    { date: visit.date, time: visit.startTime, duration: visit.duration },
+    excludeVisitId,
+  );
+  if (availability.status !== "available") {
+    throw httpError(409, availability.reason || "Jadwal bentrok atau berada di luar jam operasional.", availability);
+  }
+}
+
 async function autoCompleteExpiredActiveSessions() {
   const activeSessions = await db.query.therapySessions.findMany({
     where: eq(therapySessions.status, "active"),
@@ -79,6 +180,22 @@ async function autoCompleteExpiredActiveSessions() {
       await sessionService.updateStatus(session.id, "done");
     }
   }
+  const visits = await readOneTimeVisits();
+  let changed = false;
+  const nextVisits = visits.map((visit: any) => {
+    const normalized = normalizeOneTimeVisit(visit);
+    if (normalized.status !== "active") return visit;
+    const endAt = getSessionEndAt(normalized as any);
+    if (!endAt || now < endAt) return visit;
+    changed = true;
+    return {
+      ...normalized,
+      status: "done",
+      endedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+  });
+  if (changed) await writeOneTimeVisits(nextVisits);
 }
 
 async function refreshPeriodCompletedCount(client: any, periodId?: string | null) {
@@ -120,15 +237,23 @@ async function assertSessionAvailable(
 export const sessionService = {
   async getAllWithDetails() {
     await autoCompleteExpiredActiveSessions();
-    const sessions = await db.query.therapySessions.findMany({
+    const [sessions, oneTimeVisits] = await Promise.all([
+      db.query.therapySessions.findMany({
       with: { therapist: { with: { user: true } }, child: { with: { parent: true, therapyPeriods: { with: { program: true, therapyProgram: true, sessions: true, historicalSummaries: true } } } }, room: true, therapyPeriod: { with: { program: true, historicalSummaries: true } } },
       orderBy: (s, { desc }) => [desc(s.date), desc(s.startTime)],
-    });
-    return enrichSessionDetails(sessions);
+      }),
+      readOneTimeVisits(),
+    ]);
+    const [regular, oneTime] = await Promise.all([
+      enrichSessionDetails(sessions),
+      enrichOneTimeVisits(oneTimeVisits),
+    ]);
+    return [...regular, ...oneTime].sort(sessionSortDesc);
   },
 
   async getById(id: string) {
     await autoCompleteExpiredActiveSessions();
+    if (id.startsWith("OTV-")) return getOneTimeVisitById(id);
     const session = await db.query.therapySessions.findFirst({
       where: eq(therapySessions.id, id),
       with: { therapist: { with: { user: true } }, child: { with: { parent: true, therapyPeriods: { with: { program: true, therapyProgram: true, sessions: true, historicalSummaries: true } } } }, room: true, therapyPeriod: { with: { program: true, historicalSummaries: true } } },
@@ -143,12 +268,23 @@ export const sessionService = {
     const conditions = [eq(therapySessions.therapistId, therapistId)];
     if (dateStr) conditions.push(eq(therapySessions.date, dateStr));
 
-    const sessions = await db.query.therapySessions.findMany({
+    const [sessions, oneTimeVisits] = await Promise.all([
+      db.query.therapySessions.findMany({
       where: and(...conditions),
       with: { child: { with: { parent: true, therapyPeriods: { with: { program: true, therapyProgram: true, sessions: true, historicalSummaries: true } } } }, room: true, therapyPeriod: { with: { program: true, historicalSummaries: true } } },
       orderBy: (s, { asc }) => [asc(s.date), asc(s.startTime)],
-    });
-    return enrichSessionDetails(sessions);
+      }),
+      readOneTimeVisits(),
+    ]);
+    const matchingVisits = oneTimeVisits.filter((visit: any) => (
+      visit?.therapistId === therapistId
+      && (!dateStr || visit?.date === dateStr)
+    ));
+    const [regular, oneTime] = await Promise.all([
+      enrichSessionDetails(sessions),
+      enrichOneTimeVisits(matchingVisits),
+    ]);
+    return [...regular, ...oneTime].sort(sessionSortAsc);
   },
 
   async getUpcomingForChild(childId: string) {
@@ -195,6 +331,32 @@ export const sessionService = {
     return session;
   },
 
+  async createOneTimeVisit(data: {
+    visitorName: string; therapistId: string; date: string; startTime: string;
+    duration?: string; program?: string; focus?: string; notes?: string;
+  }) {
+    const visit = normalizeOneTimeVisit({
+      id: generateId("OTV"),
+      visitorName: data.visitorName,
+      therapistId: data.therapistId,
+      date: data.date,
+      startTime: data.startTime,
+      duration: data.duration || "60 mins",
+      program: data.program || data.focus || "One-time Visit",
+      focus: data.focus || data.program || "One-time Visit",
+      status: "upcoming",
+      notes: data.notes || "One-time visit. Tidak membuat data anak baru.",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    await assertOneTimeVisitAvailable(visit);
+    const visits = await readOneTimeVisits();
+    const nextVisits = [...visits, visit];
+    await writeOneTimeVisits(nextVisits);
+    const [enriched] = await enrichOneTimeVisits([visit]);
+    return enriched || visit;
+  },
+
   async createBulk(sessionsData: Array<{
     therapistId: string; childId: string; date: string; startTime: string;
     duration?: string; focus?: string; roomId?: string; therapyPeriodId?: string;
@@ -225,6 +387,59 @@ export const sessionService = {
   },
 
   async updateStatus(id: string, status: string, cancelReason?: string) {
+    if (id.startsWith("OTV-")) {
+      const visits = await readOneTimeVisits();
+      const index = visits.findIndex((visit: any) => visit?.id === id);
+      if (index === -1) return null;
+      const existing = normalizeOneTimeVisit(visits[index]);
+      const timestampUpdates: Record<string, string | null> = { updatedAt: new Date().toISOString() };
+      if (status === "confirmed") {
+        timestampUpdates.startedAt = null;
+        timestampUpdates.endedAt = null;
+      }
+      if (status === "active") {
+        timestampUpdates.startedAt = new Date().toISOString();
+        timestampUpdates.endedAt = null;
+      }
+      if (status === "done") {
+        timestampUpdates.endedAt = new Date().toISOString();
+      }
+      if (status === "upcoming") {
+        timestampUpdates.startedAt = null;
+        timestampUpdates.endedAt = null;
+      }
+      const updated = {
+        ...existing,
+        status,
+        ...timestampUpdates,
+        ...(cancelReason ? { cancelReason } : {}),
+      };
+      visits[index] = updated;
+      await writeOneTimeVisits(visits);
+
+      if (status === "confirmed" && existing.therapistId) {
+        const therapist = await db.query.therapists.findFirst({
+          where: eq(therapists.id, existing.therapistId),
+          with: { user: true },
+        });
+        const therapistUserId = therapist?.userId || therapist?.user?.id;
+        if (therapistUserId) {
+          await notificationService.create({
+            type: "session_attendance_confirmed",
+            icon: "how_to_reg",
+            title: "One-time visit sudah dikonfirmasi hadir",
+            message: `${existing.visitorName} sudah dikonfirmasi hadir untuk one-time visit ${existing.startTime}. Sesi dapat dimulai saat waktunya.`,
+            targetRole: "therapist",
+            targetUserId: therapistUserId,
+            relatedId: id,
+          });
+        }
+      }
+
+      const [enriched] = await enrichOneTimeVisits([updated]);
+      return enriched || updated;
+    }
+
     const existing = await db.query.therapySessions.findFirst({
       where: eq(therapySessions.id, id),
       with: { therapist: { with: { user: true } }, child: { with: { parent: true } } },
@@ -351,6 +566,14 @@ export const sessionService = {
   },
 
   async delete(id: string) {
+    if (id.startsWith("OTV-")) {
+      const visits = await readOneTimeVisits();
+      const nextVisits = visits.filter((visit: any) => visit?.id !== id);
+      if (nextVisits.length === visits.length) return null;
+      await writeOneTimeVisits(nextVisits);
+      return { deleted: true, id };
+    }
+
     const session = await db.query.therapySessions.findFirst({ where: eq(therapySessions.id, id) });
     if (!session) return null;
 

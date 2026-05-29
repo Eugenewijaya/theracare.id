@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { parentsApi } from '../../../shared/api/client';
 import { readParentUser } from '../../../shared/sessionIdentity';
+import { useClinicSettings } from '../../../shared/clinicSettings';
 import LanguageSettingsPanel from '../../../shared/ui/LanguageSettingsPanel';
 import {
     applyParentThemePreference,
@@ -9,10 +10,18 @@ import {
     writeParentPreferences,
 } from '../../../shared/parentPreferences';
 
+const NOTIFICATION_ROWS = [
+    { id: 'session_reminder', label: 'Pengingat Sesi', desc: 'Jadwal dan perubahan sesi dari admin center.' },
+    { id: 'reschedule_request', label: 'Reschedule', desc: 'Status pengajuan perubahan jadwal.' },
+    { id: 'report_uploaded', label: 'Laporan Terapi', desc: 'Laporan yang sudah siap dibaca orang tua.' },
+    { id: 'center_closure', label: 'Jadwal Off Center', desc: 'Info libur, tanggal merah, dan tutup sementara.' },
+];
+
 export default function Settings() {
+    const { settings } = useClinicSettings();
+    const channels = settings.notificationChannels || {};
+    const notificationPreferences = settings.notificationPreferences || {};
     const [theme, setTheme] = useState(() => getResolvedParentThemePreference(readParentPreferences().theme));
-    const [notifEmail, setNotifEmail] = useState(() => readParentPreferences().notifEmail ?? true);
-    const [notifSms, setNotifSms] = useState(() => readParentPreferences().notifSms ?? false);
     const [parentData, setParentData] = useState({ name: '', email: '', phone: '' });
     const [profileNotice, setProfileNotice] = useState('');
     const [preferenceNotice, setPreferenceNotice] = useState('');
@@ -21,8 +30,6 @@ export default function Settings() {
 
     useEffect(() => {
         const prefs = readParentPreferences();
-        setNotifEmail(prefs.notifEmail ?? true);
-        setNotifSms(prefs.notifSms ?? false);
         setTheme(applyParentThemePreference(prefs.theme));
         
         const load = async () => {
@@ -64,9 +71,9 @@ export default function Settings() {
     const handleSave = (e) => {
         e.preventDefault();
         try {
-            const saved = writeParentPreferences({ notifEmail, notifSms, theme });
+            const saved = writeParentPreferences({ theme });
             setTheme(applyParentThemePreference(saved.theme));
-            setPreferenceNotice('Preferensi tersimpan di perangkat ini. Pengiriman email dan WhatsApp tetap mengikuti konfigurasi admin center.');
+            setPreferenceNotice('Preferensi tampilan tersimpan di perangkat ini. Kanal notifikasi mengikuti konfigurasi admin center.');
             setToast('Preferensi tampilan perangkat ini berhasil disimpan.');
         } catch {
             setPreferenceNotice('Preferensi belum bisa disimpan di perangkat ini.');
@@ -154,10 +161,10 @@ export default function Settings() {
                             <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700/50 bg-slate-50/50 dark:bg-slate-800/50">
                                 <h2 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
                                     <span className="material-symbols-outlined text-sm text-slate-400">notifications_active</span> 
-                                    Preferensi Notifikasi
+                                    Status Notifikasi
                                 </h2>
                                 <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-                                    Toggle ini menyimpan prioritas pengingat di perangkat ini. Kanal pengiriman email dan WhatsApp dikelola oleh admin center.
+                                    Kanal notifikasi mengikuti konfigurasi admin center. Tidak ada toggle lokal yang mengubah pengiriman server.
                                 </p>
                                 {preferenceNotice && (
                                     <p className="mt-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-bold text-sky-800 dark:border-sky-900 dark:bg-sky-950/30 dark:text-sky-200">
@@ -166,26 +173,48 @@ export default function Settings() {
                                 )}
                             </div>
                             <div className="p-6 flex flex-col gap-4">
-                                <label className="flex items-center justify-between gap-4 cursor-pointer p-4 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-                                    <div className="min-w-0">
-                                        <p className="text-sm font-bold text-slate-900 dark:text-white mb-0.5">Notifikasi Email</p>
-                                        <p className="text-xs text-slate-500 dark:text-slate-400">Prioritaskan pengingat email pada tampilan perangkat ini.</p>
+                                {[
+                                    { key: 'inApp', icon: 'notifications_active' },
+                                    { key: 'email', icon: 'mail' },
+                                    { key: 'sms', icon: 'sms' },
+                                ].map((channel) => {
+                                    const state = channels[channel.key] || {};
+                                    return (
+                                        <div key={channel.key} className="flex items-start justify-between gap-4 rounded-xl border border-slate-200 p-4 dark:border-slate-700">
+                                            <div className="min-w-0">
+                                                <p className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-white">
+                                                    <span className="material-symbols-outlined text-[18px] text-slate-400">{channel.icon}</span>
+                                                    {state.label || channel.key}
+                                                </p>
+                                                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{state.description || 'Status kanal mengikuti server.'}</p>
+                                            </div>
+                                            <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-black ${
+                                                state.live ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300' : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-300'
+                                            }`}>
+                                                {state.status || (state.live ? 'Aktif' : 'Tidak Aktif')}
+                                            </span>
+                                        </div>
+                                    );
+                                })}
+                                <div className="rounded-xl border border-sky-100 bg-sky-50/70 p-4 dark:border-sky-900/40 dark:bg-sky-950/20">
+                                    <p className="text-xs font-black uppercase tracking-wide text-sky-700 dark:text-sky-300">Kategori aktif dari admin</p>
+                                    <div className="mt-3 grid grid-cols-1 gap-2">
+                                        {NOTIFICATION_ROWS.map((row) => {
+                                            const pref = notificationPreferences[row.id] || {};
+                                            return (
+                                                <div key={row.id} className="flex items-start justify-between gap-3 rounded-lg bg-white/70 px-3 py-2 text-xs dark:bg-slate-900/50">
+                                                    <div className="min-w-0">
+                                                        <p className="font-black text-slate-800 dark:text-slate-100">{row.label}</p>
+                                                        <p className="mt-0.5 text-slate-500 dark:text-slate-400">{row.desc}</p>
+                                                    </div>
+                                                    <span className="shrink-0 rounded-full bg-slate-100 px-2 py-1 font-black text-slate-600 dark:bg-slate-700 dark:text-slate-200">
+                                                        {pref.inApp !== false ? 'Portal aktif' : 'Portal off'}
+                                                    </span>
+                                                </div>
+                                            );
+                                        })}
                                     </div>
-                                    <div className={`h-6 w-12 shrink-0 rounded-full transition-colors relative ${notifEmail ? 'bg-sky-500' : 'bg-slate-300 dark:bg-slate-600'}`}>
-                                        <input type="checkbox" className="sr-only" checked={notifEmail} onChange={() => setNotifEmail(!notifEmail)} />
-                                        <div className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform ${notifEmail ? 'translate-x-6' : 'translate-x-0'}`}></div>
-                                    </div>
-                                </label>
-                                <label className="flex items-center justify-between gap-4 cursor-pointer p-4 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-                                    <div className="min-w-0">
-                                        <p className="text-sm font-bold text-slate-900 dark:text-white mb-0.5">Notifikasi SMS / WhatsApp</p>
-                                        <p className="text-xs text-slate-500 dark:text-slate-400">Prioritaskan pengingat darurat dan jadwal pada perangkat ini.</p>
-                                    </div>
-                                    <div className={`h-6 w-12 shrink-0 rounded-full transition-colors relative ${notifSms ? 'bg-sky-500' : 'bg-slate-300 dark:bg-slate-600'}`}>
-                                        <input type="checkbox" className="sr-only" checked={notifSms} onChange={() => setNotifSms(!notifSms)} />
-                                        <div className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform ${notifSms ? 'translate-x-6' : 'translate-x-0'}`}></div>
-                                    </div>
-                                </label>
+                                </div>
                             </div>
                         </div>
 

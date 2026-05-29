@@ -50,7 +50,7 @@ const PendingAttendance = () => {
 
     const handleApprove = async (item) => {
         try {
-            const res = await sessionsApi.updateStatus(item.id, 'done');
+            const res = await sessionsApi.updateStatus(item.id, 'confirmed');
             if (!res.ok) throw new Error(res.data?.error || 'Kehadiran belum bisa disetujui.');
             showToast(`Kehadiran ${item.name} berhasil disetujui.`, 'success');
             loadSessions();

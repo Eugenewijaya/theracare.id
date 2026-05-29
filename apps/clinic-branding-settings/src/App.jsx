@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import { adminApi } from '../../shared/api/client';
-import { DEFAULT_CLINIC_SETTINGS, useClinicSettings } from '../../shared/clinicSettings';
+import { DEFAULT_CLINIC_SETTINGS, sanitizeNotificationPreferencesForChannels, useClinicSettings } from '../../shared/clinicSettings';
 import { prepareImageUploadPayload } from '../../shared/uploadImage';
 import { confirmAction } from '../../shared/ui/confirmDialog';
 import LanguageSettingsPanel from '../../shared/ui/LanguageSettingsPanel';
@@ -159,7 +159,9 @@ function App() {
     const [logoUrl, setLogoUrl] = useState(settings.logoUrl);
     const [faviconUrl, setFaviconUrl] = useState(settings.faviconUrl);
     const [centerPhotoUrl, setCenterPhotoUrl] = useState(settings.centerPhotoUrl);
-    const [notificationPreferences, setNotificationPreferences] = useState(settings.notificationPreferences || DEFAULT_CLINIC_SETTINGS.notificationPreferences);
+    const [notificationPreferences, setNotificationPreferences] = useState(() => (
+        sanitizeNotificationPreferencesForChannels(settings.notificationPreferences || DEFAULT_CLINIC_SETTINGS.notificationPreferences, settings.notificationChannels)
+    ));
     const [adminWhatsApp, setAdminWhatsApp] = useState(settings.adminWhatsApp || settings.centerPhone || '');
     const [uploadingAsset, setUploadingAsset] = useState('');
     const [toast, setToast] = useState(null);
@@ -221,7 +223,10 @@ function App() {
         setLogoUrl(settings.logoUrl);
         setFaviconUrl(settings.faviconUrl);
         setCenterPhotoUrl(settings.centerPhotoUrl);
-        setNotificationPreferences(settings.notificationPreferences || DEFAULT_CLINIC_SETTINGS.notificationPreferences);
+        setNotificationPreferences(sanitizeNotificationPreferencesForChannels(
+            settings.notificationPreferences || DEFAULT_CLINIC_SETTINGS.notificationPreferences,
+            settings.notificationChannels,
+        ));
     }, [
         settings.clinicName,
         settings.centerSubtitle,
@@ -237,7 +242,8 @@ function App() {
         settings.logoUrl,
         settings.faviconUrl,
         settings.centerPhotoUrl,
-        settings.notificationPreferences
+        settings.notificationPreferences,
+        settings.notificationChannels
     ]);
 
     const showToast = (msg, type = 'success') => {
@@ -246,6 +252,8 @@ function App() {
     };
 
     const toggleNotificationChannel = (key, channel) => {
+        if (channel === 'email' && !settings.notificationChannels?.email?.live) return;
+        if (channel === 'inApp' && !settings.notificationChannels?.inApp?.live) return;
         setNotificationPreferences((prev) => ({
             ...prev,
             [key]: {
@@ -315,7 +323,7 @@ function App() {
                 logoUrl,
                 faviconUrl,
                 centerPhotoUrl,
-                notificationPreferences,
+                notificationPreferences: sanitizeNotificationPreferencesForChannels(notificationPreferences, settings.notificationChannels),
             });
             showToast(`Pengaturan berhasil disimpan!`);
         } catch (e) {
@@ -339,7 +347,10 @@ function App() {
         setLogoUrl(latest.logoUrl);
         setFaviconUrl(latest.faviconUrl);
         setCenterPhotoUrl(latest.centerPhotoUrl);
-        setNotificationPreferences(latest.notificationPreferences || DEFAULT_CLINIC_SETTINGS.notificationPreferences);
+        setNotificationPreferences(sanitizeNotificationPreferencesForChannels(
+            latest.notificationPreferences || DEFAULT_CLINIC_SETTINGS.notificationPreferences,
+            latest.notificationChannels,
+        ));
         showToast('Pengaturan dikembalikan ke nilai terakhir yang disimpan.', 'info');
     };
 
@@ -368,7 +379,10 @@ function App() {
             setLogoUrl(next.logoUrl);
             setFaviconUrl(next.faviconUrl);
             setCenterPhotoUrl(next.centerPhotoUrl);
-            setNotificationPreferences(next.notificationPreferences || DEFAULT_CLINIC_SETTINGS.notificationPreferences);
+            setNotificationPreferences(sanitizeNotificationPreferencesForChannels(
+                next.notificationPreferences || DEFAULT_CLINIC_SETTINGS.notificationPreferences,
+                next.notificationChannels,
+            ));
             showToast('Branding sudah diatur semula ke bawaan.');
         } catch (e) {
             showToast(e.message || 'Gagal mengatur semula branding', 'error');
@@ -1015,7 +1029,12 @@ function App() {
                     {activeSection === 'notifications' && (
                         <div className="flex flex-col gap-6">
                             <div className="rounded-xl bg-white dark:bg-slate-900 p-6 shadow-sm border border-slate-100 dark:border-slate-800 flex flex-col gap-5">
-                                <h3 className="text-base font-bold text-slate-900 dark:text-white">Kanal Notifikasi</h3>
+                                <div>
+                                    <h3 className="text-base font-bold text-slate-900 dark:text-white">Kanal Notifikasi</h3>
+                                    <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                                        In-App adalah kanal aktif. Email hanya bisa diaktifkan setelah status kanal backend berubah menjadi Aktif; SMS/WhatsApp otomatis tidak digunakan.
+                                    </p>
+                                </div>
                                 {NOTIFICATION_ROWS.map((item) => (
                                     <div key={item.id} className="flex flex-col gap-3 py-3 border-b border-slate-100 dark:border-slate-800 last:border-0 sm:flex-row sm:items-center sm:justify-between">
                                         <div>
@@ -1024,22 +1043,30 @@ function App() {
                                         </div>
                                         <div className="flex items-center gap-4 text-xs font-medium text-slate-600 dark:text-slate-300">
                                             {[
-                                                { key: 'email', label: 'Email' },
-                                                { key: 'inApp', label: 'In-App' },
-                                            ].map((channel) => (
-                                                <label key={`${item.id}-${channel.key}`} className="flex cursor-pointer items-center gap-1.5">
+                                                { key: 'inApp', label: settings.notificationChannels?.inApp?.status || 'Aktif' },
+                                                { key: 'email', label: settings.notificationChannels?.email?.status || 'Dalam Pengembangan' },
+                                            ].map((channel) => {
+                                                const channelState = settings.notificationChannels?.[channel.key] || {};
+                                                const disabled = channelState.live === false;
+                                                return (
+                                                <label key={`${item.id}-${channel.key}`} className={`flex items-center gap-1.5 ${disabled ? 'cursor-not-allowed text-slate-400' : 'cursor-pointer'}`} title={channelState.description || ''}>
                                                     <input
                                                         type="checkbox"
-                                                        checked={notificationPreferences?.[item.id]?.[channel.key] !== false}
+                                                        checked={disabled ? false : notificationPreferences?.[item.id]?.[channel.key] !== false}
+                                                        disabled={disabled}
                                                         onChange={() => toggleNotificationChannel(item.id, channel.key)}
                                                         className="rounded text-primary focus:ring-primary"
                                                     />
-                                                    {channel.label}
+                                                    {channel.key === 'inApp' ? 'In-App' : 'Email'} <span className="text-[11px] font-black">({channel.label})</span>
                                                 </label>
-                                            ))}
+                                                );
+                                            })}
                                         </div>
                                     </div>
                                 ))}
+                                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs font-semibold text-slate-600 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-300">
+                                    Status kanal: In-App {settings.notificationChannels?.inApp?.status || 'Aktif'}, Email {settings.notificationChannels?.email?.status || 'Dalam Pengembangan'}, SMS/WhatsApp {settings.notificationChannels?.sms?.status || 'Tidak Digunakan'}.
+                                </div>
                             </div>
                         </div>
                     )}
