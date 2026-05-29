@@ -105,9 +105,13 @@ const ChildTable = ({ children, onDelete }) => {
                                 </td>
                                 <td className="px-5 py-4 align-middle">
                                     <div className="flex flex-wrap gap-2">
-                                        {(child.programs || []).map((p, idx) => (
-                                            <span key={p.name || p || idx} className={`max-w-[140px] break-words px-2 py-1 rounded text-xs font-medium ${programColors[p.color] || programColors.emerald}`}>{p.name || p}</span>
-                                        ))}
+                                        {(child.programs || []).length > 0 ? (
+                                            (child.programs || []).map((p, idx) => (
+                                                <span key={p.name || p || idx} className={`max-w-[140px] break-words px-2 py-1 rounded text-xs font-medium ${programColors[p.color] || programColors.emerald}`}>{p.name || p}</span>
+                                            ))
+                                        ) : (
+                                            <span className="max-w-[150px] break-words rounded bg-slate-100 px-2 py-1 text-xs font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">Belum ada program aktif</span>
+                                        )}
                                     </div>
                                 </td>
                                 <td className="px-5 py-4 align-middle">
@@ -217,9 +221,13 @@ const ChildTable = ({ children, onDelete }) => {
                             <div className="bg-slate-50 dark:bg-slate-900 rounded-lg p-2.5 sm:p-3 border border-slate-100 dark:border-slate-700 flex flex-col">
                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Programs</p>
                                 <div className="flex flex-wrap gap-1.5 h-full content-start border-l-2 border-transparent">
-                                    {(child.programs || []).map((p, idx) => (
-                                        <span key={p.name || p || idx} className={`px-1.5 py-0.5 rounded text-[10px] font-bold whitespace-nowrap ${programColors[p.color] || programColors.emerald}`}>{p.name || p}</span>
-                                    ))}
+                                    {(child.programs || []).length > 0 ? (
+                                        (child.programs || []).map((p, idx) => (
+                                            <span key={p.name || p || idx} className={`px-1.5 py-0.5 rounded text-[10px] font-bold whitespace-nowrap ${programColors[p.color] || programColors.emerald}`}>{p.name || p}</span>
+                                        ))
+                                    ) : (
+                                        <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-500 dark:bg-slate-800 dark:text-slate-400">Belum ada program aktif</span>
+                                    )}
                                 </div>
                             </div>
                         </div>

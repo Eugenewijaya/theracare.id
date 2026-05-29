@@ -142,6 +142,14 @@ function normalizeTherapyPeriod(period: any) {
   };
 }
 
+function isCurrentTherapyPeriod(period: any) {
+  return ["active", "planned"].includes(String(period?.status || "").toLowerCase());
+}
+
+function isOpenSession(session: any) {
+  return !["cancelled", "done", "completed"].includes(String(session?.status || "").toLowerCase());
+}
+
 function formatChildRecord(child: any, therapistLookup = new Map<string, any>()) {
   if (!child) return child;
   const composedName = `${child.firstName || ""} ${child.lastName || ""}`.trim();
@@ -155,9 +163,14 @@ function formatChildRecord(child: any, therapistLookup = new Map<string, any>())
   const childPeriods = Array.isArray(child.therapyPeriods)
     ? child.therapyPeriods.map(normalizeTherapyPeriod).filter(Boolean)
     : [];
-  const activePeriod = childPeriods.find((period: any) => ["active", "planned"].includes(period.status)) || childPeriods[0] || null;
-  const activeSessions = childSessions.filter((session: any) => session.status !== "cancelled");
-  const primarySession = activeSessions[0] || childSessions[0];
+  const currentPeriods = childPeriods.filter(isCurrentTherapyPeriod);
+  const hasPeriodRecords = childPeriods.length > 0;
+  const activePeriod = currentPeriods[0] || null;
+  const activeSessions = childSessions.filter(isOpenSession);
+  const currentPeriodSessions = activePeriod
+    ? activeSessions.filter((session: any) => session.therapyPeriodId === activePeriod.id)
+    : [];
+  const primarySession = activePeriod ? currentPeriodSessions[0] : (!hasPeriodRecords ? activeSessions[0] : null);
   const activePrimaryTherapistId = (Array.isArray(activePeriod?.scheduleRules) ? activePeriod.scheduleRules : [])
     .find((rule: any) => typeof rule?.therapistId === "string" && rule.therapistId)?.therapistId
     || primarySession?.therapistId
@@ -171,31 +184,39 @@ function formatChildRecord(child: any, therapistLookup = new Map<string, any>())
   const assistantTherapists = assistantTherapistIds.map((id: string) => therapistLookup.get(id) || { id, name: id });
   const periodSessions = activePeriod
     ? childSessions.filter((session: any) => session.therapyPeriodId === activePeriod.id)
-    : childSessions;
+    : (!hasPeriodRecords ? childSessions : []);
   const historicalCompletedSessions = activePeriod?.historicalOpeningBalance?.completedCount || 0;
   const donePeriodSessions = periodSessions.filter((session: any) => session.status === "done" || session.status === "completed").length;
   const completedSessions = activePeriod
     ? Math.max(Number(activePeriod.completedSessions || 0), historicalCompletedSessions + donePeriodSessions)
-    : childSessions.filter((session: any) => session.status === "done" || session.status === "completed").length;
+    : (!hasPeriodRecords ? childSessions.filter((session: any) => session.status === "done" || session.status === "completed").length : 0);
+  const activeProgramSummaries = currentPeriods.map((period: any) => ({
+    name: period.programName || period.name,
+    type: period.programName || period.name,
+    color: "emerald",
+    totalSessions: Number(period.totalSessions || 0),
+    sessionsCompleted: Number(period.completedSessions || 0),
+  }));
+  const displayPrograms = hasPeriodRecords ? activeProgramSummaries : childPrograms;
   const plannedSessions = activePeriod?.totalSessions
-    || childPrograms.reduce((sum: number, program: any) => sum + Number(program.totalSessions || 0), 0)
-    || childSessions.length;
+    || (!hasPeriodRecords ? childPrograms.reduce((sum: number, program: any) => sum + Number(program.totalSessions || 0), 0) : 0)
+    || (!hasPeriodRecords ? childSessions.length : 0);
   const progress = plannedSessions > 0 ? Math.min(100, Math.round((completedSessions / plannedSessions) * 100)) : 0;
-  const sessionLabel = plannedSessions > 0 ? `${completedSessions}/${plannedSessions} sesi` : `${completedSessions} sesi selesai`;
+  const sessionLabel = plannedSessions > 0 ? `${completedSessions}/${plannedSessions} sesi` : "Belum ada periode aktif";
   const photoUrl = child.photoUrl || "";
 
   return {
     ...child,
     name,
     age: calculateAge(child.dob),
-    programs: childPrograms,
+    programs: displayPrograms,
     periods: childPeriods,
     activePeriod,
-    periodLabel: activePeriod ? `${activePeriod.name} - ${activePeriod.programName}` : "Belum ada periode",
+    periodLabel: activePeriod ? `${activePeriod.name} - ${activePeriod.programName}` : "Belum ada periode aktif",
     financialLabel: activePeriod?.totalPrice
       ? new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(Number(activePeriod.totalPrice || 0))
       : "",
-    program: childPrograms[0]?.name || "",
+    program: displayPrograms[0]?.name || "",
     therapistId: activePrimaryTherapistId,
     therapist: therapistName || "Belum ditugaskan",
     therapistInitials: initials(therapistName || "Terapis"),
@@ -216,7 +237,7 @@ function formatChildRecord(child: any, therapistLookup = new Map<string, any>())
     sessionLabel,
     progress,
     progressColor: progress >= 70 ? "emerald" : "primary",
-    phase: activePeriod?.name || childPrograms[0]?.goal || childPrograms[0]?.name || "Program aktif",
+    phase: activePeriod?.name || (!hasPeriodRecords ? childPrograms[0]?.goal || childPrograms[0]?.name : "") || "Tidak ada periode aktif",
   };
 }
 
