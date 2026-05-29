@@ -166,6 +166,25 @@ router.patch("/:id", requireAuth, requireRole("admin"), async (req, res, next) =
   } catch (e) { next(e); }
 });
 
+router.delete("/:id", requireAuth, requireRole("admin"), async (req, res, next) => {
+  try {
+    const result = await therapyPeriodService.deleteCancelled(req.params.id as string);
+    if (!result) return notFound(res, "Periode terapi tidak ditemukan");
+    await periodDeletionRequestService.purgeForPeriod(req.params.id as string);
+    await auditLogService.create({
+      actor: req.user,
+      action: "therapy_period.cancelled.delete",
+      entityType: "therapy_period",
+      entityId: req.params.id as string,
+      summary: `Riwayat periode cancelled ${result.name} dihapus permanen`,
+      metadata: { childId: result.childId },
+    });
+    ok(res, result, "Riwayat periode cancelled berhasil dihapus permanen");
+  } catch (e) {
+    return badRequest(res, e instanceof Error ? e.message : "Gagal menghapus riwayat periode");
+  }
+});
+
 router.post("/:id/generate-sessions", requireAuth, requireRole("admin"), async (req, res, next) => {
   try {
     const result = await therapyPeriodService.generateSessions(req.params.id as string, req.body || {});

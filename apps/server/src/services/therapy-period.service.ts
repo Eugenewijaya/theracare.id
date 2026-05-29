@@ -1,6 +1,6 @@
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { children, historicalSessionSummaries, programs, therapists, therapyPeriods, therapyPrograms, therapySessions } from "../db/schema.js";
+import { children, historicalSessionSummaries, migrationRecords, programs, reports, therapists, therapyPeriods, therapyPrograms, therapySessions } from "../db/schema.js";
 import { generateId } from "../utils/id-generators.js";
 import { evaluateSessionSlot } from "./scheduling-availability.service.js";
 import { notificationService } from "./notification.service.js";
@@ -18,6 +18,7 @@ type ScheduleRule = {
 };
 
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const RESET_SEQUENCE_PERIOD_STATUSES = new Set(["cancelled", "deleted", "rejected"]);
 const DAY_INDEX: Record<string, number> = {
   sunday: 0,
   monday: 1,
@@ -164,7 +165,8 @@ function normalizePeriod(period: any) {
 
 async function getNextPeriodNumber(childId: string) {
   const rows = await db.query.therapyPeriods.findMany({ where: eq(therapyPeriods.childId, childId) });
-  return rows.reduce((max, row) => Math.max(max, Number(row.periodNumber || 0)), 0) + 1;
+  const sequenceRows = rows.filter((row) => !RESET_SEQUENCE_PERIOD_STATUSES.has(String(row.status || "").toLowerCase()));
+  return sequenceRows.reduce((max, row) => Math.max(max, Number(row.periodNumber || 0)), 0) + 1;
 }
 
 async function notifyPeriodCreated(periodId: string, generation?: { created?: unknown[] }) {
@@ -182,13 +184,25 @@ async function notifyPeriodCreated(periodId: string, generation?: { created?: un
   const childName = period.child?.name || period.childId;
   const sessionCount = Number(period.totalSessions || 0);
   const createdCount = Array.isArray(generation?.created) ? generation.created.length : 0;
+  const scheduleText = createdCount > 0
+    ? `${createdCount} sesi awal dibuat.`
+    : `${sessionCount} sesi direncanakan.`;
+
+  await notificationService.create({
+    type: "program_enrollment",
+    icon: "playlist_add_check",
+    title: "Periode terapi baru selesai dibuat",
+    message: `${childName} didaftarkan ke ${programName} (${period.name}) mulai ${period.startDate}. ${scheduleText}`,
+    targetRole: "admin",
+    relatedId: period.id,
+  });
 
   if (period.child?.parent?.userId) {
     await notificationService.create({
       type: "program_enrollment",
       icon: "playlist_add_check",
       title: "Program terapi anak didaftarkan",
-      message: `${childName} didaftarkan ke ${programName} (${period.name}) mulai ${period.startDate}. ${createdCount > 0 ? `${createdCount} sesi awal dibuat.` : `${sessionCount} sesi direncanakan.`}`,
+      message: `${childName} didaftarkan ke ${programName} (${period.name}) mulai ${period.startDate}. ${scheduleText}`,
       targetRole: "parent",
       targetUserId: period.child.parent.userId,
       relatedId: period.id,
@@ -209,7 +223,7 @@ async function notifyPeriodCreated(periodId: string, generation?: { created?: un
       type: "program_enrollment",
       icon: "event_available",
       title: "Periode terapi baru ditugaskan",
-      message: `${childName} - ${programName} (${period.name}) mulai ${period.startDate}.`,
+      message: `${childName} - ${programName} (${period.name}) mulai ${period.startDate}. ${scheduleText}`,
       targetRole: "therapist",
       targetUserId: therapist.userId,
       relatedId: period.id,
@@ -379,6 +393,10 @@ export const therapyPeriodService = {
   async renew(id: string, data: any = {}) {
     const source = await db.query.therapyPeriods.findFirst({ where: eq(therapyPeriods.id, id) });
     if (!source) return null;
+    if (String(source.status || "").toLowerCase() !== "completed") {
+      throw new Error("Periode hanya bisa dilanjutkan jika periode sebelumnya sudah selesai. Periode yang dibatalkan harus dibuat ulang dari Periode 1.");
+    }
+    const nextPeriodNumber = await getNextPeriodNumber(source.childId);
     return this.create({
       ...source,
       ...data,
@@ -387,12 +405,46 @@ export const therapyPeriodService = {
       programId: source.programId,
       renewalOf: source.id,
       status: data.status || "active",
-      periodNumber: Number(source.periodNumber || 0) + 1,
-      name: data.name || `Periode ${Number(source.periodNumber || 0) + 1}`,
+      periodNumber: nextPeriodNumber,
+      name: data.name || `Periode ${nextPeriodNumber}`,
       completedSessions: 0,
       finalReportId: undefined,
       generateSessions: data.generateSessions || false,
     });
+  },
+
+  async deleteCancelled(id: string) {
+    const period = await db.query.therapyPeriods.findFirst({ where: eq(therapyPeriods.id, id) });
+    if (!period) return null;
+    if (String(period.status || "").toLowerCase() !== "cancelled") {
+      throw new Error("Hanya periode yang sudah dibatalkan yang bisa dihapus permanen dari riwayat.");
+    }
+
+    await db.transaction(async (tx) => {
+      await tx.update(therapySessions)
+        .set({ therapyPeriodId: null })
+        .where(eq(therapySessions.therapyPeriodId, id));
+      await tx.update(reports)
+        .set({ therapyPeriodId: null })
+        .where(eq(reports.therapyPeriodId, id));
+      await tx.update(migrationRecords)
+        .set({ therapyPeriodId: null })
+        .where(eq(migrationRecords.therapyPeriodId, id));
+      await tx.delete(historicalSessionSummaries).where(eq(historicalSessionSummaries.therapyPeriodId, id));
+      await tx.delete(therapyPeriods).where(eq(therapyPeriods.id, id));
+      if (period.therapyProgramId) {
+        const [remainingPeriod] = await tx
+          .select({ id: therapyPeriods.id })
+          .from(therapyPeriods)
+          .where(eq(therapyPeriods.therapyProgramId, period.therapyProgramId))
+          .limit(1);
+        if (!remainingPeriod) {
+          await tx.delete(therapyPrograms).where(eq(therapyPrograms.id, period.therapyProgramId));
+        }
+      }
+    });
+
+    return { deleted: true, id, childId: period.childId, name: period.name };
   },
 
   async generateSessions(id: string, options: { scheduleRules?: ScheduleRule[] } = {}) {

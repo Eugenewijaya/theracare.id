@@ -314,6 +314,7 @@ export const therapyPeriodsApi = {
   requestDeletion: (id, data = {}) => api.post(`/therapy-periods/${id}/deletion-requests`, data),
   respondDeletionRequest: (requestId, data = {}) => api.patch(`/therapy-periods/deletion-requests/${requestId}/respond`, data),
   update: (id, data) => api.patch(`/therapy-periods/${id}`, data),
+  delete: (id) => api.delete(`/therapy-periods/${id}`),
   generateSessions: (id, data = {}) => api.post(`/therapy-periods/${id}/generate-sessions`, data),
   complete: (id, data = {}) => api.post(`/therapy-periods/${id}/complete`, data),
   renew: (id, data = {}) => api.post(`/therapy-periods/${id}/renew`, data),

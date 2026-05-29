@@ -69,12 +69,23 @@ const getDeletionStatusTone = (status) => {
   return 'bg-amber-100 text-amber-700';
 };
 
+const getPeriodStatusTone = (status) => {
+  const normalized = String(status || '').toLowerCase();
+  if (normalized === 'cancelled') return 'bg-red-100 text-red-700';
+  if (normalized === 'completed') return 'bg-slate-200 text-slate-700';
+  if (normalized === 'planned') return 'bg-blue-100 text-blue-700';
+  return 'bg-emerald-100 text-emerald-700';
+};
+
 const getApprovalLabel = (approval) => {
   if (!approval || approval.status === 'pending') return 'Menunggu';
   if (approval.status === 'approved') return 'Disetujui';
   if (approval.status === 'rejected') return 'Ditolak';
   return approval.status;
 };
+
+const isCompletedPeriod = (period) => String(period?.status || '').toLowerCase() === 'completed';
+const isCancelledPeriod = (period) => String(period?.status || '').toLowerCase() === 'cancelled';
 
 export default function ProgramEnrollmentPage() {
   const navigate = useNavigate();
@@ -131,12 +142,13 @@ export default function ProgramEnrollmentPage() {
   }, [deletionRequests]);
   const latestMatchingPeriod = useMemo(() => {
     if (!sortedPeriods.length) return null;
+    const renewablePeriods = sortedPeriods.filter(isCompletedPeriod);
     if (form.programId) {
-      const byProgramId = sortedPeriods.find(period => period.programId === form.programId);
+      const byProgramId = renewablePeriods.find(period => period.programId === form.programId);
       if (byProgramId) return byProgramId;
     }
     if (form.program) {
-      const byName = sortedPeriods.find(period => (period.programName || period.type || '').toLowerCase() === form.program.toLowerCase());
+      const byName = renewablePeriods.find(period => (period.programName || period.type || '').toLowerCase() === form.program.toLowerCase());
       if (byName) return byName;
       return null;
     }
@@ -305,6 +317,33 @@ export default function ProgramEnrollmentPage() {
     }
   };
 
+  const handleDeleteCancelledPeriod = async (period) => {
+    const confirmed = await confirmAction({
+      tone: 'danger',
+      icon: 'delete_forever',
+      title: `Hapus permanen riwayat ${period.name}?`,
+      message: 'Riwayat periode cancelled akan hilang dari daftar periode. Sesi/laporan selesai tetap disimpan sebagai log tanpa menempel ke periode ini.',
+      details: `${period.name} - ${period.programName || period.type || 'Program Terapi'}`,
+      confirmText: 'Hapus permanen',
+      cancelText: 'Batal',
+    });
+    if (!confirmed) return;
+
+    setMessage(null);
+    try {
+      const res = await therapyPeriodsApi.delete(period.id);
+      if (!res.ok) throw new Error(res.data?.error || 'Gagal menghapus riwayat periode.');
+      setMessage({ type: 'success', text: `${period.name} sudah dihapus permanen dari riwayat periode.` });
+      const refreshed = await childrenApi.getAll();
+      if (refreshed.ok) setChildren(refreshed.data?.data || []);
+      await reloadDeletionRequests();
+      window.dispatchEvent(new Event('childUpdated'));
+      window.dispatchEvent(new Event('sessionUpdated'));
+    } catch (e) {
+      setMessage({ type: 'error', text: e.message || 'Gagal menghapus riwayat periode.' });
+    }
+  };
+
   return (
     <div className="min-h-full min-w-0 overflow-x-hidden bg-background-light dark:bg-background-dark">
       <main className="mx-auto flex w-full max-w-[1280px] min-w-0 flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
@@ -363,7 +402,7 @@ export default function ProgramEnrollmentPage() {
                   <div key={period.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs dark:border-slate-700 dark:bg-slate-800/70">
                     <div className="flex items-center justify-between gap-2">
                       <p className="font-black text-slate-800 dark:text-slate-100">{period.name}</p>
-                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-black text-emerald-700">{period.status}</span>
+                      <span className={`rounded-full px-2 py-0.5 font-black ${getPeriodStatusTone(period.status)}`}>{period.status}</span>
                     </div>
                     <p className="mt-1 font-semibold text-slate-600 dark:text-slate-300">{period.programName || period.type}</p>
                     <p className="mt-1 text-slate-500">{period.startDate} - {period.endDate || 'selesai sesi'}</p>
@@ -406,6 +445,16 @@ export default function ProgramEnrollmentPage() {
                         </button>
                       </div>
                     )}
+                    {isCancelledPeriod(period) && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteCancelledPeriod(period)}
+                        className="mt-3 inline-flex w-full items-center justify-center gap-1 rounded-lg border border-red-200 bg-white px-3 py-2 text-[11px] font-black text-red-700 hover:bg-red-50 dark:border-red-900/60 dark:bg-slate-950 dark:text-red-300 dark:hover:bg-red-950/30"
+                      >
+                        <span className="material-symbols-outlined text-[15px]">delete_forever</span>
+                        Hapus permanen riwayat cancelled
+                      </button>
+                    )}
                   </div>
                 )) : (
                   <p className="rounded-xl bg-amber-50 p-3 text-xs font-semibold text-amber-700">Anak ini belum punya periode terapi.</p>
@@ -425,7 +474,7 @@ export default function ProgramEnrollmentPage() {
                 <input type="radio" className="sr-only" checked={mode === 'renew'} disabled={!canRenew} onChange={() => setMode('renew')} />
                 <span className="text-sm font-black text-slate-900 dark:text-white">Lanjutkan periode</span>
                 <span className="mt-1 block text-xs text-slate-500">
-                  {canRenew ? `Lanjut dari ${enrollmentSummary.renewLabel}.` : 'Pilih program yang sudah punya periode sebelumnya.'}
+                  {canRenew ? `Lanjut dari ${enrollmentSummary.renewLabel}.` : 'Hanya aktif jika periode sebelumnya sudah selesai. Periode cancelled dibuat ulang dari awal.'}
                 </span>
               </label>
               {errors.mode && <p className="text-xs font-bold text-red-600 sm:col-span-2">{errors.mode}</p>}

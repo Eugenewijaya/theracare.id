@@ -401,6 +401,14 @@ export const periodDeletionRequestService = {
   async getDeveloperSnapshot() {
     return (await readRequests()).map(summarizeRequest);
   },
+
+  async purgeForPeriod(periodId: string) {
+    const requests = await readRequests();
+    const next = requests.filter((request) => request.periodId !== periodId);
+    if (next.length === requests.length) return { deleted: false, periodId };
+    await writeRequests(next);
+    return { deleted: true, periodId };
+  },
 };
 
 export type { PeriodDeletionRequest };
