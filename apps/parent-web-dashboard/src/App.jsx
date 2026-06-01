@@ -7,10 +7,23 @@ import { formatSessionClock, getLiveSessionState } from '../../shared/sessionLiv
 import { getCurrentTherapyPrograms } from '../../shared/therapyPeriods';
 
 // ── Helpers ────────────────────────────────────────────────────────
+const toLocalDateKey = (date = new Date()) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
+const addCalendarDays = (date, amount) => {
+    const next = new Date(date);
+    next.setDate(next.getDate() + amount);
+    return next;
+};
+
 const formatDate = (dateStr) => {
     if (!dateStr) return '';
-    const today    = new Date().toISOString().split('T')[0];
-    const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+    const today    = toLocalDateKey();
+    const tomorrow = toLocalDateKey(addCalendarDays(new Date(), 1));
     if (dateStr === today)    return 'Today';
     if (dateStr === tomorrow) return 'Tomorrow';
     const d = new Date(dateStr + 'T00:00:00');

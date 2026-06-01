@@ -1,25 +1,24 @@
 import { db } from "../db/index.js";
 import { account, authSession, children, notificationReads, notifications, parents, rescheduleRequests, sessionRatings, user } from "../db/schema.js";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { auth } from "../auth.js";
 import { randomBytes } from "node:crypto";
 import { generateId, generatePortalResetPassword, generateSeqId, generateTempPassword } from "../utils/id-generators.js";
 import { setCredentialPassword, verifyCredentialPassword } from "./auth-password.service.js";
 import { deviceAccessService } from "./device-access.service.js";
+import { assertAllowedStatus, assertValidEmail, assertValidPhone, normalizeEmailAddress, normalizePhoneNumber } from "../utils/registration-validation.js";
+import { httpError } from "../utils/http-error.js";
 
 function normalizePhone(phone?: string) {
-  const digits = (phone || "").replace(/\D/g, "");
-  if (digits.startsWith("62")) return `0${digits.slice(2)}`;
-  if (digits.startsWith("8")) return `0${digits}`;
-  return digits;
+  return normalizePhoneNumber(phone);
 }
 
 function normalizeEmail(email?: string) {
-  return (email || "").trim().toLowerCase();
+  return normalizeEmailAddress(email);
 }
 
 function parentLoginEmail(phone?: string, email?: string) {
-  return email?.trim() || `${normalizePhone(phone)}@parent.theracare.id`;
+  return normalizeEmail(email) || `${normalizePhone(phone)}@parent.theracare.id`;
 }
 
 function isGeneratedParentEmail(email?: string) {
@@ -98,6 +97,33 @@ async function deleteAuthUser(userId: string) {
   await db.delete(user).where(eq(user.id, userId));
 }
 
+async function assertParentLoginAvailable(input: { email?: string; phone?: string; excludeUserId?: string }) {
+  const email = normalizeEmail(input.email);
+  const phone = normalizePhone(input.phone);
+  if (email) {
+    const existing = await db.query.user.findFirst({ where: eq(user.email, email) });
+    if (existing && existing.id !== input.excludeUserId) {
+      throw httpError(409, "Email sudah digunakan oleh akun lain.");
+    }
+  }
+  if (phone) {
+    const rows = await db.query.parents.findMany({ with: { user: true } });
+    const duplicate = rows.find((row) => (
+      row.userId !== input.excludeUserId
+      && row.user?.status !== "deleted"
+      && normalizePhone(row.user?.phone || "") === phone
+    ));
+    if (duplicate) throw httpError(409, "Nomor HP sudah digunakan oleh akun orang tua lain.");
+  }
+}
+
+async function getLastParentSequence(client: typeof db | any = db) {
+  const all = await client.select({ id: parents.id }).from(parents);
+  if (all.length === 0) return 0;
+  const nums = all.map((p: any) => parseInt(String(p.id || "").replace("P-", ""), 10)).filter((n: number) => !Number.isNaN(n));
+  return nums.length > 0 ? Math.max(...nums) : 0;
+}
+
 export const parentService = {
   async getAll() {
     const rows = await db.query.parents.findMany({
@@ -127,12 +153,9 @@ export const parentService = {
     const parent = await findLoginParent(identifier);
     if (!parent || parent.user?.status !== "active") return null;
     return {
-      parentId: parent.id,
       loginId: raw,
-      email: publicParentEmail(parent.user?.email),
-      name: parent.user?.name,
-      phone: parent.user?.phone,
-      children: parent.children || [],
+      accountType: "parent",
+      identifierMatched: true,
     };
   },
 
@@ -145,43 +168,55 @@ export const parentService = {
     return { token, parent: formatParent(parent) };
   },
 
-  async create(data: { name: string; email?: string; phone?: string; address?: string; tempPassword?: string }, lastId: number) {
+  async create(data: { name: string; email?: string; phone?: string; address?: string; tempPassword?: string }, _lastId?: number) {
+    const name = String(data.name || "").trim();
+    if (!name) throw httpError(400, "Nama orang tua wajib diisi.");
+    const phone = assertValidPhone(data.phone || "", "Nomor HP orang tua", !data.email);
+    const explicitEmail = assertValidEmail(data.email || "", "Email orang tua", !phone);
     const tempPassword = data.tempPassword?.trim() || generateTempPassword();
-    const parentId = generateSeqId("P", lastId + 1);
-    const email = parentLoginEmail(data.phone, data.email);
-    const phone = data.phone?.trim() || "";
+    const email = parentLoginEmail(phone, explicitEmail);
+    await assertParentLoginAvailable({ email, phone });
 
-    // Create Better Auth user
     const newUser = await auth.api.createUser({
       body: {
         email,
         password: tempPassword,
-        name: data.name,
+        name,
         role: "parent" as any,
         phone,
       } as any,
     });
 
-    await db.update(user)
-      .set({ phone, role: "parent", status: "active", updatedAt: new Date() })
-      .where(eq(user.id, newUser.user.id));
-    const [createdUser] = await db.select().from(user).where(eq(user.id, newUser.user.id));
+    try {
+      await db.update(user)
+        .set({ phone, role: "parent", status: "active", updatedAt: new Date() })
+        .where(eq(user.id, newUser.user.id));
+      const [createdUser] = await db.select().from(user).where(eq(user.id, newUser.user.id));
 
-    // Create parent record
-    const [parent] = await db.insert(parents).values({
-      id: parentId,
-      userId: newUser.user.id,
-      address: data.address || "",
-    }).returning();
+      const parent = await db.transaction(async (tx) => {
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtext('registration:parent-sequence'))`);
+        const parentId = generateSeqId("P", await getLastParentSequence(tx) + 1);
+        const [createdParent] = await tx.insert(parents).values({
+          id: parentId,
+          userId: newUser.user.id,
+          address: String(data.address || "").trim(),
+        }).returning();
+        return createdParent;
+      });
 
-    return { ...formatParent({ ...parent, user: createdUser, children: [] }), parent, tempPassword, user: createdUser };
+      return { ...formatParent({ ...parent, user: createdUser, children: [] }), parent, tempPassword, user: createdUser };
+    } catch (error) {
+      await deleteAuthUser(newUser.user.id);
+      throw error;
+    }
   },
 
   async updateStatus(id: string, status: string) {
     const parent = await db.query.parents.findFirst({ where: eq(parents.id, id) });
     if (!parent) return null;
-    await db.update(user).set({ status, updatedAt: new Date() }).where(eq(user.id, parent.userId));
-    return { id, status };
+    const nextStatus = assertAllowedStatus(status, ["active", "suspended"], "Status orang tua");
+    await db.update(user).set({ status: nextStatus, updatedAt: new Date() }).where(eq(user.id, parent.userId));
+    return { id, status: nextStatus };
   },
 
   async update(id: string, updates: { name?: string; email?: string; phone?: string; address?: string; status?: string }) {
@@ -189,11 +224,15 @@ export const parentService = {
     if (!parent) return null;
 
     const userUpdates: any = {};
-    if (typeof updates.name === "string") userUpdates.name = updates.name.trim();
-    if (typeof updates.phone === "string") userUpdates.phone = updates.phone.trim();
-    if (typeof updates.status === "string") userUpdates.status = updates.status;
+    if (typeof updates.name === "string") {
+      const name = updates.name.trim();
+      if (!name) throw httpError(400, "Nama orang tua wajib diisi.");
+      userUpdates.name = name;
+    }
+    if (typeof updates.phone === "string") userUpdates.phone = assertValidPhone(updates.phone, "Nomor HP orang tua", false);
+    if (typeof updates.status === "string") userUpdates.status = assertAllowedStatus(updates.status, ["active", "suspended"], "Status orang tua");
     if (typeof updates.email === "string") {
-      const nextEmail = updates.email.trim();
+      const nextEmail = assertValidEmail(updates.email, "Email orang tua", false);
       if (nextEmail) {
         userUpdates.email = nextEmail;
       } else if (typeof updates.phone === "string" || isGeneratedParentEmail(parent.user?.email)) {
@@ -203,6 +242,12 @@ export const parentService = {
     } else if (typeof updates.phone === "string" && isGeneratedParentEmail(parent.user?.email)) {
       if (normalizePhone(updates.phone)) userUpdates.email = parentLoginEmail(updates.phone);
     }
+    const nextPhone = typeof userUpdates.phone === "string" ? userUpdates.phone : parent.user?.phone || "";
+    const nextEmail = typeof userUpdates.email === "string" ? userUpdates.email : parent.user?.email || "";
+    if (!normalizePhone(nextPhone) && !normalizeEmail(nextEmail)) {
+      throw httpError(400, "Isi nomor HP atau email agar akun orang tua tetap bisa login.");
+    }
+    await assertParentLoginAvailable({ email: nextEmail, phone: nextPhone, excludeUserId: parent.userId });
     if (Object.keys(userUpdates).length > 0) {
       await db.update(user).set({ ...userUpdates, updatedAt: new Date() }).where(eq(user.id, parent.userId));
     }
@@ -250,9 +295,6 @@ export const parentService = {
   },
 
   async getLastId() {
-    const all = await db.select({ id: parents.id }).from(parents);
-    if (all.length === 0) return 0;
-    const nums = all.map((p) => parseInt(p.id.replace("P-", ""), 10)).filter(n => !isNaN(n));
-    return nums.length > 0 ? Math.max(...nums) : 0;
+    return getLastParentSequence();
   },
 };

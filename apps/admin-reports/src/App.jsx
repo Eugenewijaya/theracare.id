@@ -236,7 +236,7 @@ function App() {
             cancellationRate = (cancelled / inRangeSessions.length) * 100;
         }
 
-        const activeTherapists = Number(stats.totalTherapists ?? therapists.filter(t => t.status !== 'inactive').length);
+        const activeTherapists = Number(stats.activeTherapists ?? therapists.filter(t => (t.status || 'active') === 'active').length);
         const avgSessionsPerTherapist = activeTherapists > 0 ? (inRangeSessions.length / activeTherapists) : 0;
 
         const progCounts = {};

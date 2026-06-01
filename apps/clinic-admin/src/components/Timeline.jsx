@@ -1,6 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { sessionsApi } from '../../../shared/api/client';
 
+const todayString = () => {
+    const date = new Date();
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
 const Timeline = () => {
     const [sessions, setSessions] = useState([]);
     const [currentTimeMs, setCurrentTimeMs] = useState(Date.now());
@@ -11,7 +19,7 @@ const Timeline = () => {
             try {
                 const res = await sessionsApi.getAll();
                 const allSessions = res.data?.data || [];
-                const today = new Date().toISOString().split('T')[0];
+                const today = todayString();
                 setSessions(allSessions.filter(s => s.date === today && s.status !== 'cancelled').sort((a, b) => (a.startTime || '').localeCompare(b.startTime || '')));
             } catch {}
             setLoading(false);

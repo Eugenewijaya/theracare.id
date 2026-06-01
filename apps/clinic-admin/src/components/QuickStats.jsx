@@ -22,7 +22,7 @@ const QuickStats = () => {
                     totalSessionsToday: s.totalSessionsToday || 0,
                     completedSessionsToday: s.completedSessionsToday || 0,
                     totalTherapists: s.totalTherapists || 0,
-                    activeTherapists: s.totalTherapists || 0,
+                    activeTherapists: s.activeTherapists || 0,
                     pendingRequests: pendingCount,
                 });
             } catch {}

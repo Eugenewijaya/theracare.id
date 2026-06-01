@@ -23,12 +23,13 @@ export const auth = betterAuth({
   }),
   emailAndPassword: {
     enabled: true,
+    disableSignUp: true,
   },
   user: {
     additionalFields: {
       phone: { type: "string", required: false, input: true },
-      role: { type: "string", required: false, defaultValue: "parent", input: true },
-      status: { type: "string", required: false, defaultValue: "active", input: true },
+      role: { type: "string", required: false, defaultValue: "parent", input: false },
+      status: { type: "string", required: false, defaultValue: "active", input: false },
     },
   },
   plugins: [admin()],

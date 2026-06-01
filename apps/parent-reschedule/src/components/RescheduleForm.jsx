@@ -66,10 +66,23 @@ const getPrimaryChildId = (user = {}) => {
   return firstChild?.id || firstChild?.nita || (typeof firstChild === 'string' ? firstChild : '');
 };
 
+const toLocalDateKey = (date = new Date()) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const addCalendarDays = (date, amount) => {
+  const next = new Date(date);
+  next.setDate(next.getDate() + amount);
+  return next;
+};
+
 const formatDate = (dateStr) => {
   if (!dateStr) return '-';
-  const today = new Date().toISOString().split('T')[0];
-  const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+  const today = toLocalDateKey();
+  const tomorrow = toLocalDateKey(addCalendarDays(new Date(), 1));
   if (dateStr === today) return 'Hari ini';
   if (dateStr === tomorrow) return 'Besok';
   const date = new Date(`${dateStr}T00:00:00`);
@@ -1195,7 +1208,7 @@ const RescheduleForm = () => {
                         type="date"
                         value={currentSlot.date}
                         onChange={event => updateSlot(index, 'date', event.target.value)}
-                        min={new Date().toISOString().split('T')[0]}
+                        min={toLocalDateKey()}
                         className={`min-w-0 rounded-lg border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-1 dark:bg-surface-dark dark:text-slate-100 dark:[color-scheme:dark] ${
                           isConflict
                             ? 'border-red-300 focus:border-red-500 focus:ring-red-500 dark:border-red-800'

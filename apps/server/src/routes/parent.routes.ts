@@ -19,12 +19,8 @@ router.get("/", requireAuth, requireRole("admin"), async (req, res, next) => {
   try { ok(res, await parentService.getAll()); } catch (e) { next(e); }
 });
 
-router.get("/login-identity/:identifier", async (req, res, next) => {
-  try {
-    const identity = await parentService.getLoginIdentity(req.params.identifier as string);
-    if (!identity) return notFound(res, "Nomor telepon, Parent ID, atau email orang tua belum terdaftar atau akun ditangguhkan");
-    ok(res, identity);
-  } catch (e) { next(e); }
+router.get("/login-identity/:identifier", (_req, res) => {
+  ok(res, { lookupAvailable: false }, "Lookup identitas sebelum login dinonaktifkan. Silakan login langsung.");
 });
 
 router.post("/portal-login", async (req, res, next) => {

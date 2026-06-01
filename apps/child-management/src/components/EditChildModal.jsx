@@ -22,7 +22,8 @@ const EditChildModal = ({ child, onClose }) => {
     const [programsList, setProgramsList] = useState([]);
     const [isSaving, setIsSaving] = useState(false);
     const activePeriod = child.activePeriod || (Array.isArray(child.periods) ? child.periods.find(p => ['active', 'planned'].includes(p.status)) || child.periods[0] : null);
-    const todayKey = new Date().toISOString().slice(0, 10);
+    const today = new Date();
+    const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
     const primaryTherapistId = child.assignmentSummary?.primaryTherapistId || child.therapistId || '';
     const firstAssistantId = child.assistantTherapistIds?.[0] || '';
 

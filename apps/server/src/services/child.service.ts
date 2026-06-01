@@ -1,12 +1,15 @@
 import { db } from "../db/index.js";
-import { children, clinicSettings, historicalSessionSummaries, migrationRecords, programs, reports, rescheduleRequests, sessionRatings, therapists, therapyPeriods, therapyPrograms, therapySessions } from "../db/schema.js";
+import { children, clinicSettings, historicalSessionSummaries, migrationRecords, parents, programs, reports, rescheduleRequests, sessionRatings, therapists, therapyPeriods, therapyPrograms, therapySessions } from "../db/schema.js";
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
 import { generateNITA } from "../utils/id-generators.js";
+import { normalizeDateKey, todayDateKey } from "../utils/date-key.js";
 import { therapyPeriodService } from "./therapy-period.service.js";
 import { evaluateSessionSlot } from "./scheduling-availability.service.js";
+import { lockSchedulingSlots } from "./scheduling-guard.service.js";
 import { notificationService } from "./notification.service.js";
 import { auditLogService } from "./audit-log.service.js";
 import { httpError } from "../utils/http-error.js";
+import { assertAllowedStatus, assertPositiveInteger, assertValidDateKey } from "../utils/registration-validation.js";
 
 const CHILD_PHOTO_SETTINGS_KEY = "childPhotoUrls";
 type DbClient = typeof db | any;
@@ -256,16 +259,62 @@ function pickChildValues(data: any) {
   const values: Partial<typeof children.$inferInsert> = {
     ...(hasFirstName ? { firstName: nextFirstName } : {}),
     ...(hasLastName ? { lastName: nextLastName } : {}),
-    ...(typeof data.dob === "string" ? { dob: data.dob || null } : {}),
-    ...(typeof data.gender === "string" ? { gender: data.gender } : {}),
+    ...(typeof data.dob === "string" ? { dob: data.dob ? assertValidDateKey(data.dob, "Tanggal lahir anak") : null } : {}),
+    ...(typeof data.gender === "string" ? { gender: data.gender ? assertAllowedStatus(data.gender, ["male", "female", "other", "prefer-not-to-say"], "Gender anak") : null } : {}),
     ...(typeof data.school === "string" ? { school: data.school.trim() } : {}),
     ...(typeof data.diagnosis === "string" ? { diagnosis: data.diagnosis.trim() } : {}),
-    ...(typeof data.status === "string" ? { status: data.status } : {}),
+    ...(typeof data.status === "string" ? { status: assertAllowedStatus(data.status, ["active", "inactive"], "Status anak") } : {}),
   };
   if (hasFirstName || hasLastName) {
     values.name = `${nextFirstName} ${nextLastName}`.trim();
   }
   return values;
+}
+
+function validateChildCreateData(data: any) {
+  const firstName = String(data.firstName || "").trim();
+  const lastName = String(data.lastName || "").trim();
+  if (!firstName) throw httpError(400, "Nama depan anak wajib diisi.");
+  const dob = assertValidDateKey(data.dob, "Tanggal lahir anak", true);
+  const birthDate = new Date(`${dob}T00:00:00`);
+  const today = new Date(`${todayDateKey()}T00:00:00`);
+  if (birthDate > today) throw httpError(400, "Tanggal lahir anak tidak boleh di masa depan.");
+  const gender = typeof data.gender === "string" && data.gender
+    ? assertAllowedStatus(data.gender, ["male", "female", "other", "prefer-not-to-say"], "Gender anak")
+    : undefined;
+  return {
+    firstName,
+    lastName,
+    dob,
+    gender,
+    school: typeof data.school === "string" ? data.school.trim() : undefined,
+    diagnosis: typeof data.diagnosis === "string" ? data.diagnosis.trim() : undefined,
+  };
+}
+
+function validateTherapyProgramsList(input: unknown) {
+  if (!Array.isArray(input) || input.length === 0) {
+    throw httpError(400, "Pilih minimal satu program terapi untuk pendaftaran anak.");
+  }
+  return input.map((program: any, index) => {
+    const type = String(program?.type || program?.name || "").trim();
+    if (!type && !program?.programId) throw httpError(400, `Program terapi #${index + 1} wajib dipilih.`);
+    const totalSessions = assertPositiveInteger(program?.totalSessions, `Jumlah sesi program #${index + 1}`, { required: true, min: 1, max: 240 });
+    if (program?.startDate) assertValidDateKey(program.startDate, `Tanggal mulai program #${index + 1}`);
+    if (program?.endDate) {
+      const startDate = assertValidDateKey(program.startDate, `Tanggal mulai program #${index + 1}`, true);
+      const endDate = assertValidDateKey(program.endDate, `Tanggal selesai program #${index + 1}`);
+      if (endDate < startDate) throw httpError(400, `Tanggal selesai program #${index + 1} tidak boleh lebih awal dari tanggal mulai.`);
+    }
+    return { ...program, type: type || "Program Terapi", totalSessions };
+  });
+}
+
+async function getLastChildSequence(client: typeof db | any = db) {
+  const all = await client.select({ nita: children.nita }).from(children);
+  if (all.length === 0) return 0;
+  const nums = all.map((c: any) => parseInt(String(c.nita || "").slice(-3), 10)).filter((n: number) => !Number.isNaN(n));
+  return nums.length > 0 ? Math.max(...nums) : 0;
 }
 
 async function upsertPrimaryProgram(childId: string, data: any) {
@@ -307,7 +356,7 @@ async function upsertPrimaryProgram(childId: string, data: any) {
 
 async function updateUpcomingTherapist(childId: string, therapistId?: string) {
   if (!therapistId) return;
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayDateKey();
   await db.update(therapySessions)
     .set({ therapistId })
     .where(and(
@@ -318,8 +367,8 @@ async function updateUpcomingTherapist(childId: string, therapistId?: string) {
 }
 
 function normalizeEffectiveDate(value: unknown) {
-  const raw = typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : "";
-  return raw || new Date().toISOString().slice(0, 10);
+  const raw = normalizeDateKey(typeof value === "string" ? value : "");
+  return raw || todayDateKey();
 }
 
 function isOpenTransferSession(session: any, effectiveDate: string, fromTherapistId: string) {
@@ -464,30 +513,36 @@ export const childService = {
       scheduleRules?: Array<Record<string, unknown>>; assistantTherapistIds?: string[]; generateSessions?: boolean; createInitialPeriod?: boolean;
     }>;
   }) {
-    const lastSeq = await this.getLastSequence();
-    const nita = generateNITA(lastSeq + 1);
-    const firstName = data.firstName.trim();
-    const lastName = data.lastName?.trim() || "";
+    const parent = await db.query.parents.findFirst({ where: eq(parents.id, parentId), with: { user: true } });
+    if (!parent) throw httpError(404, "Akun orang tua tidak ditemukan.");
+    if (parent.user?.status && parent.user.status !== "active") throw httpError(409, "Akun orang tua tidak aktif.");
+    const childValues = validateChildCreateData(data);
+    const therapyProgramsList = validateTherapyProgramsList(data.therapyProgramsList);
 
-    const [child] = await db.insert(children).values({
-      id: nita,
-      nita,
-      parentId,
-      firstName,
-      lastName,
-      name: `${firstName} ${lastName}`.trim(),
-      dob: data.dob,
-      gender: data.gender,
-      school: data.school,
-      diagnosis: data.diagnosis,
-    }).returning();
+    const child = await db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext('registration:child-sequence'))`);
+      const nita = generateNITA(await getLastChildSequence(tx) + 1);
+      const [createdChild] = await tx.insert(children).values({
+        id: nita,
+        nita,
+        parentId,
+        firstName: childValues.firstName,
+        lastName: childValues.lastName,
+        name: `${childValues.firstName} ${childValues.lastName}`.trim(),
+        dob: childValues.dob,
+        gender: childValues.gender,
+        school: childValues.school,
+        diagnosis: childValues.diagnosis,
+      }).returning();
+      return createdChild;
+    });
 
     try {
       // Insert therapy programs if provided
-      if (data.therapyProgramsList && data.therapyProgramsList.length > 0) {
+      if (therapyProgramsList.length > 0) {
         const insertedPrograms = await db.insert(therapyPrograms).values(
-          data.therapyProgramsList.map((tp) => ({
-            childId: nita,
+          therapyProgramsList.map((tp) => ({
+            childId: child.id,
             programId: tp.programId || null,
             type: tp.type,
             totalSessions: tp.totalSessions,
@@ -499,10 +554,10 @@ export const childService = {
         ).returning();
 
         for (let i = 0; i < insertedPrograms.length; i += 1) {
-          const source = data.therapyProgramsList[i];
+          const source = therapyProgramsList[i];
           if (source?.createInitialPeriod === false) continue;
           await therapyPeriodService.create({
-            childId: nita,
+            childId: child.id,
             therapyProgramId: insertedPrograms[i].id,
             programId: insertedPrograms[i].programId,
             type: insertedPrograms[i].type,
@@ -522,12 +577,12 @@ export const childService = {
       }
     } catch (error) {
       await db.transaction(async (tx) => {
-        await tx.delete(therapySessions).where(eq(therapySessions.childId, nita));
-        await tx.delete(historicalSessionSummaries).where(eq(historicalSessionSummaries.childId, nita));
-        await tx.update(migrationRecords).set({ childId: null, therapyPeriodId: null }).where(eq(migrationRecords.childId, nita));
-        await tx.delete(therapyPeriods).where(eq(therapyPeriods.childId, nita));
-        await tx.delete(therapyPrograms).where(eq(therapyPrograms.childId, nita));
-        await tx.delete(children).where(eq(children.id, nita));
+        await tx.delete(therapySessions).where(eq(therapySessions.childId, child.id));
+        await tx.delete(historicalSessionSummaries).where(eq(historicalSessionSummaries.childId, child.id));
+        await tx.update(migrationRecords).set({ childId: null, therapyPeriodId: null }).where(eq(migrationRecords.childId, child.id));
+        await tx.delete(therapyPeriods).where(eq(therapyPeriods.childId, child.id));
+        await tx.delete(therapyPrograms).where(eq(therapyPrograms.childId, child.id));
+        await tx.delete(children).where(eq(children.id, child.id));
       });
       throw error;
     }
@@ -642,6 +697,25 @@ export const childService = {
 
     const relatedId = `CHILD-ASSIGN-${id}-${Date.now().toString(36).toUpperCase()}`;
     await db.transaction(async (tx) => {
+      for (const session of sessionsToTransfer) {
+        const candidate = {
+          ...session,
+          therapistId: toTherapistId,
+        };
+        await lockSchedulingSlots(tx, [session, candidate]);
+        const availability = await evaluateSessionSlot({
+          therapistId: toTherapistId,
+          childId: session.childId,
+          roomId: session.roomId || null,
+          date: session.date,
+          startTime: session.startTime,
+          duration: session.duration || undefined,
+        }, session.id);
+        if (availability.status !== "available") {
+          throw httpError(409, `${session.date} ${session.startTime}: ${availability.reason || "Terapis pengganti tidak tersedia."}`, availability);
+        }
+      }
+
       for (const update of periodUpdates) {
         await tx.update(therapyPeriods)
           .set({
@@ -659,6 +733,8 @@ export const childService = {
           .set({
             therapistId: toTherapistId,
             status: "upcoming",
+            startedAt: null,
+            endedAt: null,
             notes: existingNotes ? `${existingNotes}\n${decisionLine}` : decisionLine,
             cancelReason: `Case dialihkan dari ${fromTherapist.user?.name || fromTherapistId} ke ${toTherapist.user?.name || toTherapistId}.`,
           })
@@ -775,9 +851,6 @@ export const childService = {
   },
 
   async getLastSequence() {
-    const all = await db.select({ nita: children.nita }).from(children);
-    if (all.length === 0) return 0;
-    const nums = all.map((c) => parseInt(c.nita.slice(-3), 10)).filter(n => !isNaN(n));
-    return nums.length > 0 ? Math.max(...nums) : 0;
+    return getLastChildSequence();
   },
 };

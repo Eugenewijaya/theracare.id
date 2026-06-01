@@ -6,6 +6,7 @@ import { notificationService } from "./notification.service.js";
 import { auditLogService } from "./audit-log.service.js";
 import { evaluateSessionSlot, evaluateTherapistSlot, getAvailableTherapistsForSlot } from "./scheduling-availability.service.js";
 import { httpError } from "../utils/http-error.js";
+import { lockSchedulingSlots } from "./scheduling-guard.service.js";
 
 const SUBSTITUTE_REQUESTS_KEY = "substituteTherapistRequests";
 
@@ -21,6 +22,7 @@ type SubstituteRequest = {
   childName: string;
   date: string;
   startTime: string;
+  duration?: string | null;
   focus?: string;
   leaveType: string;
   note?: string;
@@ -76,6 +78,7 @@ async function enrichRequest(request: SubstituteRequest) {
   return {
     ...request,
     availableTherapists: await getAvailableTherapistsForSlot(request.date, request.startTime, {
+      duration: request.duration || undefined,
       excludeTherapistId: request.originalTherapistId,
       excludeSessionId: request.sessionId,
     }),
@@ -155,6 +158,7 @@ export const substituteRequestService = {
       childName: session.child?.name || session.childId,
       date: session.date,
       startTime: session.startTime,
+      duration: session.duration,
       focus: session.focus || "",
       leaveType: data.leaveType,
       note: (data.note || "").trim(),
@@ -225,6 +229,7 @@ export const substituteRequestService = {
       childName: session.child?.name || session.childId,
       date: session.date,
       startTime: session.startTime,
+      duration: session.duration,
       focus: session.focus || "",
       leaveType: "schedule_update",
       note: (data.note || "").trim(),
@@ -292,30 +297,33 @@ export const substituteRequestService = {
         const session = await db.query.therapySessions.findFirst({ where: eq(therapySessions.id, current.sessionId) });
         if (!session) throw httpError(404, "Sesi tidak ditemukan");
         const updates = current.proposedUpdates || {};
-        const next = {
-          ...session,
-          ...updates,
-          therapistId: session.therapistId,
-          childId: session.childId,
-        };
-        if (["date", "startTime", "duration", "roomId"].some((key) => Object.prototype.hasOwnProperty.call(updates, key))) {
-          const availability = await evaluateSessionSlot({
-            therapistId: next.therapistId,
-            childId: next.childId,
-            roomId: (next.roomId as string | null) || undefined,
-            date: next.date,
-            startTime: next.startTime,
-            duration: next.duration || undefined,
-          }, current.sessionId);
-          if (availability.status !== "available") {
-            throw httpError(409, availability.reason || "Perubahan jadwal bentrok atau di luar jam operasional", availability);
-          }
-        }
-        const existingNotes = String(session.notes || "").trim();
         const approvalLine = `[${now}] Terapis utama menyetujui perubahan jadwal/program. ${responseNote}`.trim();
         const approvedRequest = { ...current, status: "approved" as const, responseNote, respondedAt: now };
         requests[index] = approvedRequest;
         await db.transaction(async (tx) => {
+          const lockedSession = await tx.query.therapySessions.findFirst({ where: eq(therapySessions.id, current.sessionId) });
+          if (!lockedSession) throw httpError(404, "Sesi tidak ditemukan");
+          const next = {
+            ...lockedSession,
+            ...updates,
+            therapistId: lockedSession.therapistId,
+            childId: lockedSession.childId,
+          };
+          if (["date", "startTime", "duration", "roomId"].some((key) => Object.prototype.hasOwnProperty.call(updates, key))) {
+            await lockSchedulingSlots(tx, [lockedSession, next]);
+            const availability = await evaluateSessionSlot({
+              therapistId: next.therapistId,
+              childId: next.childId,
+              roomId: (next.roomId as string | null) || undefined,
+              date: next.date,
+              startTime: next.startTime,
+              duration: next.duration || undefined,
+            }, current.sessionId);
+            if (availability.status !== "available") {
+              throw httpError(409, availability.reason || "Perubahan jadwal bentrok atau di luar jam operasional", availability);
+            }
+          }
+          const existingNotes = String(lockedSession.notes || "").trim();
           await tx.update(therapySessions)
             .set({
               ...(typeof updates.date === "string" ? { date: updates.date } : {}),
@@ -324,6 +332,8 @@ export const substituteRequestService = {
               ...(typeof updates.focus === "string" ? { focus: updates.focus } : {}),
               ...(typeof updates.roomId === "string" ? { roomId: updates.roomId } : {}),
               status: "upcoming",
+              startedAt: null,
+              endedAt: null,
               notes: existingNotes ? `${existingNotes}\n${approvalLine}` : approvalLine,
             })
             .where(eq(therapySessions.id, current.sessionId));
@@ -360,14 +370,35 @@ export const substituteRequestService = {
 
       const replacementLine = `[${now}] Terapis utama menyetujui pergantian ke ${current.substituteTherapistName}. ${responseNote}`.trim();
       const session = await db.query.therapySessions.findFirst({ where: eq(therapySessions.id, current.sessionId) });
-      const existingNotes = String(session?.notes || "").trim();
+      if (!session) throw httpError(404, "Sesi tidak ditemukan");
       const next = { ...current, status: "approved" as const, responseNote, respondedAt: now };
       requests[index] = next;
       await db.transaction(async (tx) => {
+        const lockedSession = await tx.query.therapySessions.findFirst({ where: eq(therapySessions.id, current.sessionId) });
+        if (!lockedSession) throw httpError(404, "Sesi tidak ditemukan");
+        const candidate = {
+          ...lockedSession,
+          therapistId: current.substituteTherapistId,
+        };
+        await lockSchedulingSlots(tx, [lockedSession, candidate]);
+        const availability = await evaluateSessionSlot({
+          therapistId: current.substituteTherapistId,
+          childId: lockedSession.childId,
+          roomId: lockedSession.roomId || undefined,
+          date: lockedSession.date,
+          startTime: lockedSession.startTime,
+          duration: lockedSession.duration || undefined,
+        }, lockedSession.id);
+        if (availability.status !== "available") {
+          throw httpError(409, availability.reason || "Terapis pengganti sudah tidak tersedia pada slot tersebut", availability);
+        }
+        const existingNotes = String(lockedSession.notes || "").trim();
         await tx.update(therapySessions)
           .set({
             therapistId: current.substituteTherapistId,
             status: "upcoming",
+            startedAt: null,
+            endedAt: null,
             notes: existingNotes ? `${existingNotes}\n${replacementLine}` : replacementLine,
             cancelReason: `Terapis utama ${current.originalTherapistName} menyetujui pengganti ${current.substituteTherapistName}.`,
           })

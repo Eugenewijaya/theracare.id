@@ -1,7 +1,8 @@
 import { db } from "../db/index.js";
 import { rooms, programs, therapyPrograms, clinicSettings, therapySessions, children, therapists, user } from "../db/schema.js";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 import { generateId } from "../utils/id-generators.js";
+import { todayDateKey } from "../utils/date-key.js";
 import { emailService } from "./email.service.js";
 
 type RoomInsert = typeof rooms.$inferInsert;
@@ -177,9 +178,16 @@ export const adminService = {
 
   // ── Dashboard Stats ──
   async getDashboardStats() {
-    const today = new Date().toISOString().split("T")[0];
-    const [childCount] = await db.select({ count: sql<number>`count(*)` }).from(children);
-    const [therapistCount] = await db.select({ count: sql<number>`count(*)` }).from(therapists);
+    const today = todayDateKey();
+    const [childCount] = await db.select({ count: sql<number>`count(*)` }).from(children).where(eq(children.status, "active"));
+    const [therapistCount] = await db.select({ count: sql<number>`count(*)` })
+      .from(therapists)
+      .innerJoin(user, eq(therapists.userId, user.id))
+      .where(ne(user.status, "deleted"));
+    const [activeTherapistCount] = await db.select({ count: sql<number>`count(*)` })
+      .from(therapists)
+      .innerJoin(user, eq(therapists.userId, user.id))
+      .where(and(eq(user.status, "active"), sql`${user.banned} is not true`));
     const allSessions = await db.select().from(therapySessions).where(eq(therapySessions.date, today));
     const settings = await this.getSettings();
     const oneTimeVisits = parseJsonArray(settings.oneTimeVisitLog)
@@ -189,6 +197,7 @@ export const adminService = {
     return {
       activeChildren: Number(childCount.count),
       totalTherapists: Number(therapistCount.count),
+      activeTherapists: Number(activeTherapistCount.count),
       totalSessionsToday: allSessions.length + oneTimeVisits.length,
       completedSessionsToday: allSessions.filter((s) => s.status === "done").length + completedOneTimeVisits.length,
       pendingSessionsToday: allSessions.filter((s) => s.status === "upcoming").length + pendingOneTimeVisits.length,

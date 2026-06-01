@@ -2,6 +2,7 @@ import { db } from "../db/index.js";
 import { auditLogs, clinicSettings, notifications, notificationReads, user as userTable } from "../db/schema.js";
 import { and, eq, inArray, isNull, or } from "drizzle-orm";
 import { generateId } from "../utils/id-generators.js";
+import { todayDateKey } from "../utils/date-key.js";
 import { emailService } from "./email.service.js";
 
 type DbClient = typeof db | any;
@@ -74,7 +75,7 @@ async function getActiveFutureClosureIds() {
   const row = await db.query.clinicSettings.findFirst({
     where: eq(clinicSettings.key, CENTER_CLOSURES_KEY),
   });
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayDateKey();
   return new Set(parseCenterClosures(row?.value)
     .filter((closure) => closure?.id && closure.isActive !== false && (closure.endDate || closure.startDate || "") >= today)
     .map((closure) => closure.id as string));

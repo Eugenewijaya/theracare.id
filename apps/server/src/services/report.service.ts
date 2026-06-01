@@ -1,6 +1,6 @@
 import { db } from "../db/index.js";
 import { children, parents, reports, rooms as clinicRooms, therapyPeriods, therapySessions } from "../db/schema.js";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, sql } from "drizzle-orm";
 import { generateSeqId } from "../utils/id-generators.js";
 import { notificationService } from "./notification.service.js";
 import { auditLogService } from "./audit-log.service.js";
@@ -22,6 +22,20 @@ const PUBLISHED_EDIT_WINDOW_HOURS = 48;
 const PUBLISHED_EDIT_WINDOW_MS = PUBLISHED_EDIT_WINDOW_HOURS * 60 * 60 * 1000;
 const REPORT_DRAFT_STATUS = "draft";
 const REPORT_INCOMPLETE_STATUSES = new Set([REPORT_DRAFT_STATUS, "needs_revision"]);
+const REPORT_TYPES = new Set(["harian", "periodik", "observasi_awal"]);
+const REPORT_ID_SEQUENCE_LOCK = "registration:report-sequence";
+const REPORT_UPDATE_PROTECTED_FIELDS = new Set([
+  "id",
+  "type",
+  "childId",
+  "therapistId",
+  "therapyPeriodId",
+  "sessionId",
+  "status",
+  "reviewLog",
+  "createdAt",
+  "updatedAt",
+]);
 
 function isDraftReportStatus(status?: string | null) {
   return String(status || "").toLowerCase() === REPORT_DRAFT_STATUS;
@@ -29,6 +43,10 @@ function isDraftReportStatus(status?: string | null) {
 
 function isIncompleteReportStatus(status?: string | null) {
   return REPORT_INCOMPLETE_STATUSES.has(String(status || "").toLowerCase());
+}
+
+function isCompletedSessionStatus(status?: string | null) {
+  return COMPLETED_SESSION_STATUSES.includes(String(status || "").toLowerCase() as typeof COMPLETED_SESSION_STATUSES[number]);
 }
 
 function getReportTypeLabel(type?: string | null) {
@@ -426,6 +444,13 @@ export const reportService = {
   async save(data: any, actor?: AuditActor) {
     const now = new Date();
     const isDraft = isDraftReportStatus(data?.status);
+    const reportType = String(data?.type || "").trim();
+    if (!REPORT_TYPES.has(reportType)) {
+      throw httpError(400, "Jenis laporan tidak valid.");
+    }
+    if (!String(data?.childId || "").trim()) {
+      throw httpError(400, "childId wajib diisi untuk menyimpan laporan.");
+    }
     const nextReportStatus = isDraft ? REPORT_DRAFT_STATUS : "ready_for_parent";
     const nextReportNote = isDraft
       ? "Terapis menyimpan laporan sebagai draft."
@@ -449,6 +474,9 @@ export const reportService = {
     if (data.type === "harian" && linkedSession) {
       if (linkedSession.therapistId !== data.therapistId || linkedSession.childId !== data.childId) {
         throw httpError(403, "Laporan harian hanya bisa dibuat untuk sesi terapis dan anak yang sesuai.");
+      }
+      if (!isDraft && !isCompletedSessionStatus(linkedSession.status)) {
+        throw httpError(409, "Laporan harian hanya bisa dikirim setelah sesi selesai.");
       }
     }
     const existingForAccess = data.id
@@ -550,6 +578,7 @@ export const reportService = {
       }
 
       // Create new report
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${REPORT_ID_SEQUENCE_LOCK}))`);
       const lastId = await getLastReportSeq(tx);
       const id = generateSeqId("REP", lastId + 1);
       const values: ReportInsert = {
@@ -673,10 +702,15 @@ export const reportService = {
     const existing = await db.query.reports.findFirst({ where: eq(reports.id, id) });
     if (!existing) return null;
     assertReportEditable(existing);
-    if (Array.isArray(updates.roomsUsed)) {
-      updates.roomsUsed = await filterActiveRoomNames(updates.roomsUsed);
+    const nextUpdates = updates && typeof updates === "object" ? updates : {};
+    const protectedFields = Object.keys(nextUpdates).filter((field) => REPORT_UPDATE_PROTECTED_FIELDS.has(field));
+    if (protectedFields.length > 0) {
+      throw httpError(400, "Field identitas/status laporan tidak boleh diubah lewat endpoint edit konten.", { protectedFields });
     }
-    const values: any = pickReportValues(updates, options);
+    if (Array.isArray(nextUpdates.roomsUsed)) {
+      nextUpdates.roomsUsed = await filterActiveRoomNames(nextUpdates.roomsUsed);
+    }
+    const values: any = pickReportValues(nextUpdates, { ...options, allowStatus: false });
     if (Object.keys(values).length === 0) return this.getById(id);
 
     return db.transaction(async (tx) => {
@@ -690,7 +724,7 @@ export const reportService = {
         options.actor?.role === "admin" ? "report.admin.update" : "report.update",
         updated,
         `Laporan ${id} diperbarui`,
-        { changedFields: Object.keys(updates || {}) },
+        { changedFields: Object.keys(nextUpdates) },
       );
       return formatReport(updated);
     });

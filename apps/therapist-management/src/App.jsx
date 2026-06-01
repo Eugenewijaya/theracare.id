@@ -12,6 +12,25 @@ import { confirmAction } from '../../shared/ui/confirmDialog';
 
 const WORK_DAYS = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
 
+const parseTimeMinutes = (value) => {
+    const match = String(value || '').match(/^(\d{1,2}):(\d{2})$/);
+    if (!match) return null;
+    const hour = Number(match[1]);
+    const minute = Number(match[2]);
+    if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+    return hour * 60 + minute;
+};
+
+const getScheduleValidationError = (schedule = {}) => {
+    const activeEntries = Object.entries(schedule).filter(([, value]) => value);
+    const invalid = activeEntries.find(([day, value]) => {
+        const start = parseTimeMinutes(value?.start);
+        const end = parseTimeMinutes(value?.end);
+        return start === null || end === null || end <= start;
+    });
+    return invalid ? `Jam kerja ${invalid[0]} tidak valid. Jam selesai harus lebih besar dari jam mulai.` : '';
+};
+
 function TherapistScheduleModal({ therapist, onClose, onSave, saving }) {
     const [schedule, setSchedule] = useState(() => therapist?.schedule || {});
     const [primaryRoom, setPrimaryRoom] = useState(() => therapist?.primaryRoom || '');
@@ -20,6 +39,7 @@ function TherapistScheduleModal({ therapist, onClose, onSave, saving }) {
     const [strNumber, setStrNumber] = useState(() => therapist?.raw?.strNumber || '');
     const [strExpiry, setStrExpiry] = useState(() => therapist?.raw?.strExpiry || '');
     const [bulkTime, setBulkTime] = useState({ start: '08:00', end: '17:00' });
+    const [formError, setFormError] = useState('');
 
     useEffect(() => {
         setSchedule(therapist?.schedule || {});
@@ -28,6 +48,7 @@ function TherapistScheduleModal({ therapist, onClose, onSave, saving }) {
         setSpecialty(therapist?.raw?.specialty || therapist?.specializations?.[0] || '');
         setStrNumber(therapist?.raw?.strNumber || '');
         setStrExpiry(therapist?.raw?.strExpiry || '');
+        setFormError('');
     }, [therapist]);
 
     if (!therapist) return null;
@@ -73,6 +94,11 @@ function TherapistScheduleModal({ therapist, onClose, onSave, saving }) {
 
     const handleSubmit = (event) => {
         event.preventDefault();
+        const scheduleError = getScheduleValidationError(schedule);
+        if (scheduleError) {
+            setFormError(scheduleError);
+            return;
+        }
         onSave({
             schedule,
             primaryRoom,
@@ -234,6 +260,11 @@ function TherapistScheduleModal({ therapist, onClose, onSave, saving }) {
                     {activeDayCount === 0 && (
                         <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
                             Semua hari sedang off. Sistem akan menolak jadwal baru untuk terapis ini sampai minimal satu hari kerja diaktifkan.
+                        </div>
+                    )}
+                    {formError && (
+                        <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+                            {formError}
                         </div>
                     )}
                 </div>

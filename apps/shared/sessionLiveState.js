@@ -14,9 +14,17 @@ export function getSessionDurationSeconds(session, fallbackMinutes = 45) {
   return parseDurationMinutes(session?.duration || session?.raw?.duration, fallbackMinutes) * 60;
 }
 
+function todayDateKey() {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export function getSessionStartDate(session) {
   const rawDate = session?.date || session?.raw?.date;
-  const date = rawDate ? String(rawDate).split('T')[0] : new Date().toISOString().split('T')[0];
+  const date = rawDate ? String(rawDate).split('T')[0] : todayDateKey();
   const time = session?.startTime || session?.start || session?.time || session?.raw?.startTime || '00:00';
   const value = new Date(`${date}T${time}`);
   return Number.isNaN(value.getTime()) ? null : value;

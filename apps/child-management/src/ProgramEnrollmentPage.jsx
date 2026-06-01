@@ -4,7 +4,14 @@ import { childrenApi, therapyPeriodsApi } from '../../shared/api/client';
 import { confirmAction } from '../../shared/ui/confirmDialog';
 import ProgramForm from '../../child-registration/src/components/ProgramForm';
 
-const todayString = () => new Date().toISOString().split('T')[0];
+const toDateKey = (date = new Date()) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const todayString = () => toDateKey();
 const DAY_LABELS = {
   Monday: 'Senin',
   Tuesday: 'Selasa',

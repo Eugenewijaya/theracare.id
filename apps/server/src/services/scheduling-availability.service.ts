@@ -1,6 +1,7 @@
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { clinicSettings, rooms, therapists, therapySessions } from "../db/schema.js";
+import { parseScheduleDurationMinutes } from "./scheduling-guard.service.js";
 
 export type SlotAvailabilityStatus = "available" | "conflict";
 export type SlotConflictKind = "operational" | "therapist" | "child" | "room";
@@ -120,13 +121,7 @@ function parseMinutes(value?: string | null) {
 }
 
 function parseDurationMinutes(value?: string | null) {
-  if (!value) return 60;
-  const raw = String(value).trim().toLowerCase();
-  const hourMatch = raw.match(/(\d+(?:\.\d+)?)\s*(h|hour|hours|jam)/);
-  if (hourMatch) return Math.max(1, Math.round(Number(hourMatch[1]) * 60));
-  const minuteMatch = raw.match(/(\d+)\s*(m|min|mins|minute|minutes|menit)?/);
-  if (minuteMatch) return Math.max(1, Number(minuteMatch[1]));
-  return 60;
+  return parseScheduleDurationMinutes(value);
 }
 
 function parseOperatingWindow(value?: string | null) {
@@ -288,7 +283,7 @@ async function findSessionOverlap(
     where: and(
       eq(therapySessions[field], entityId),
       eq(therapySessions.date, slot.date),
-      sql`${therapySessions.status} not in ('cancelled', 'done')`,
+      sql`${therapySessions.status} not in ('cancelled', 'canceled', 'done', 'completed')`,
       excludeSessionId ? sql`${therapySessions.id} != ${excludeSessionId}` : sql`true`,
     ),
   });
@@ -450,14 +445,14 @@ export async function annotateSlotsForTherapist(
 export async function getAvailableTherapistsForSlot(
   date: string,
   time: string,
-  options: { excludeTherapistId?: string; excludeSessionId?: string } = {},
+  options: { duration?: string; excludeTherapistId?: string; excludeSessionId?: string } = {},
 ) {
   const allTherapists = await db.query.therapists.findMany({ with: { user: true } });
   const rows = await Promise.all(allTherapists
     .filter((therapist) => therapist.id !== options.excludeTherapistId)
     .map(async (therapist) => ({
       therapist,
-      availability: await evaluateTherapistSlot(therapist.id, { date, time }, options.excludeSessionId),
+      availability: await evaluateTherapistSlot(therapist.id, { date, time, duration: options.duration }, options.excludeSessionId),
     })));
 
   return rows.map(({ therapist, availability }) => ({

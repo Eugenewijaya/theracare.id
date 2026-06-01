@@ -1,12 +1,14 @@
 import { db } from "../db/index.js";
 import { account, authSession, notificationReads, notifications, reports, therapists, therapySessions, user } from "../db/schema.js";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { auth } from "../auth.js";
 import { randomBytes } from "node:crypto";
 import { generateId, generatePortalResetPassword, generateTempPassword, generateNIT } from "../utils/id-generators.js";
 import { setCredentialPassword, verifyCredentialPassword } from "./auth-password.service.js";
 import { notifyTherapistScheduleConflicts } from "./schedule-conflict-notification.service.js";
 import { deviceAccessService } from "./device-access.service.js";
+import { assertAllowedStatus, assertPositiveInteger, assertValidDateKey, assertValidEmail, assertValidPhone, normalizeEmailAddress, normalizeTherapistSchedule } from "../utils/registration-validation.js";
+import { httpError } from "../utils/http-error.js";
 
 type TherapistProfileInput = {
   name?: string;
@@ -36,7 +38,7 @@ function cleanText(value: unknown) {
   return typeof value === "string" ? value.trim() : undefined;
 }
 
-function pickTherapistProfileValues(data: TherapistProfileInput) {
+function pickTherapistProfileValues(data: TherapistProfileInput, options: { requireSchedule?: boolean } = {}) {
   const specialty = cleanText(data.specialty) || cleanText(data.specialization);
   const values: any = {};
 
@@ -48,7 +50,7 @@ function pickTherapistProfileValues(data: TherapistProfileInput) {
   if (typeof data.educationInstitution === "string") values.educationInstitution = data.educationInstitution.trim();
   if (data.graduationYear !== undefined) values.graduationYear = String(data.graduationYear || "").trim() || null;
   if (typeof data.strNumber === "string") values.strNumber = data.strNumber.trim();
-  if (data.strExpiry !== undefined) values.strExpiry = data.strExpiry || null;
+  if (data.strExpiry !== undefined) values.strExpiry = data.strExpiry ? assertValidDateKey(data.strExpiry, "Masa berlaku STR") : null;
   if (typeof data.yearsExperience === "string") values.yearsExperience = data.yearsExperience.trim();
   if (typeof data.languages === "string") values.languages = data.languages.trim();
   if (Array.isArray(data.certifications)) {
@@ -58,12 +60,13 @@ function pickTherapistProfileValues(data: TherapistProfileInput) {
     });
   }
   if (data.schedule && typeof data.schedule === "object" && !Array.isArray(data.schedule)) {
-    values.schedule = data.schedule;
+    values.schedule = normalizeTherapistSchedule(data.schedule, { required: options.requireSchedule });
+  } else if (options.requireSchedule) {
+    values.schedule = normalizeTherapistSchedule(data.schedule, { required: true });
   }
   if (typeof data.primaryRoom === "string") values.primaryRoom = data.primaryRoom.trim();
   if (data.maxClients !== undefined) {
-    const parsed = data.maxClients === null || data.maxClients === "" ? null : Number(data.maxClients);
-    values.maxClients = Number.isFinite(parsed) ? parsed : null;
+    values.maxClients = assertPositiveInteger(data.maxClients, "Kapasitas client per hari", { min: 1, max: 60 });
   }
 
   return values;
@@ -136,6 +139,22 @@ async function deleteAuthUser(userId: string) {
   await db.delete(user).where(eq(user.id, userId));
 }
 
+async function assertTherapistEmailAvailable(email: string, excludeUserId?: string) {
+  const normalized = normalizeEmailAddress(email);
+  if (!normalized) return;
+  const existing = await db.query.user.findFirst({ where: eq(user.email, normalized) });
+  if (existing && existing.id !== excludeUserId) {
+    throw httpError(409, "Email sudah digunakan oleh akun lain.");
+  }
+}
+
+async function getLastTherapistSequence(client: typeof db | any = db) {
+  const all = await client.select({ nit: therapists.nit }).from(therapists);
+  if (all.length === 0) return 0;
+  const nums = all.map((t: any) => parseInt(String(t.nit || "").slice(-3), 10)).filter((n: number) => !Number.isNaN(n));
+  return nums.length > 0 ? Math.max(...nums) : 0;
+}
+
 export const therapistService = {
   async getAll() {
     const rows = await db.query.therapists.findMany({ with: { user: true } });
@@ -167,47 +186,55 @@ export const therapistService = {
     });
     if (!therapist || therapist.user?.status !== "active") return null;
     return {
-      therapistId: therapist.id,
-      nit: therapist.nit,
-      email: therapist.user?.email,
-      name: therapist.user?.name,
-      specialty: therapist.specialty,
-      bio: therapist.bio,
-      avatar: therapist.avatar,
+      loginId: id,
+      accountType: "therapist",
+      identifierMatched: true,
     };
   },
 
   async create(data: TherapistProfileInput & { name: string; email: string }) {
+    const name = String(data.name || "").trim();
+    if (!name) throw httpError(400, "Nama terapis wajib diisi.");
+    const email = assertValidEmail(data.email, "Email terapis", true);
+    const phone = assertValidPhone(data.phone || "", "Nomor HP terapis", false);
+    await assertTherapistEmailAvailable(email);
     const tempPassword = data.tempPassword?.trim() || generateTempPassword();
-    const lastSeq = await this.getLastSequence();
-    const nit = generateNIT(data.name, lastSeq + 1);
-    const phone = data.phone?.trim() || "";
-    const profileValues = pickTherapistProfileValues(data);
+    const profileValues = pickTherapistProfileValues(data, { requireSchedule: true });
 
     const newUser = await auth.api.createUser({
       body: {
-        email: data.email,
+        email,
         password: tempPassword,
-        name: data.name,
+        name,
         role: "therapist" as any,
         phone,
       } as any,
     });
 
-    await db.update(user)
-      .set({ phone, role: "therapist", status: "active", updatedAt: new Date() })
-      .where(eq(user.id, newUser.user.id));
-    const [createdUser] = await db.select().from(user).where(eq(user.id, newUser.user.id));
+    try {
+      await db.update(user)
+        .set({ phone, role: "therapist", status: "active", updatedAt: new Date() })
+        .where(eq(user.id, newUser.user.id));
+      const [createdUser] = await db.select().from(user).where(eq(user.id, newUser.user.id));
 
-    const [therapist] = await db.insert(therapists).values({
-      id: nit,
-      userId: newUser.user.id,
-      nit,
-      ...profileValues,
-      specialty: profileValues.specialty || "Therapist",
-    }).returning();
+      const therapist = await db.transaction(async (tx) => {
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtext('registration:therapist-sequence'))`);
+        const nit = generateNIT(name, await getLastTherapistSequence(tx) + 1);
+        const [createdTherapist] = await tx.insert(therapists).values({
+          id: nit,
+          userId: newUser.user.id,
+          nit,
+          ...profileValues,
+          specialty: profileValues.specialty || "Therapist",
+        }).returning();
+        return createdTherapist;
+      });
 
-    return { ...formatTherapist({ ...therapist, user: createdUser }), therapist, tempPassword, user: createdUser };
+      return { ...formatTherapist({ ...therapist, user: createdUser }), therapist, tempPassword, user: createdUser };
+    } catch (error) {
+      await deleteAuthUser(newUser.user.id);
+      throw error;
+    }
   },
 
   async updateProfile(id: string, updates: TherapistProfileInput) {
@@ -221,11 +248,18 @@ export const therapistService = {
     }
 
     const userUpdates: any = {};
-    if (typeof updates.name === "string") userUpdates.name = updates.name.trim();
-    if (typeof updates.email === "string" && updates.email.trim()) userUpdates.email = updates.email.trim();
-    if (typeof updates.phone === "string") userUpdates.phone = updates.phone.trim();
+    if (typeof updates.name === "string") {
+      const name = updates.name.trim();
+      if (!name) throw httpError(400, "Nama terapis wajib diisi.");
+      userUpdates.name = name;
+    }
+    if (typeof updates.email === "string" && updates.email.trim()) {
+      userUpdates.email = assertValidEmail(updates.email, "Email terapis", true);
+      await assertTherapistEmailAvailable(userUpdates.email, therapist.userId);
+    }
+    if (typeof updates.phone === "string") userUpdates.phone = assertValidPhone(updates.phone, "Nomor HP terapis", false);
     if (typeof updates.avatar === "string") userUpdates.image = updates.avatar.trim();
-    if (typeof updates.status === "string") userUpdates.status = updates.status;
+    if (typeof updates.status === "string") userUpdates.status = assertAllowedStatus(updates.status, ["active", "suspended"], "Status terapis");
     if (Object.keys(userUpdates).length > 0) {
       await db.update(user).set({ ...userUpdates, updatedAt: new Date() }).where(eq(user.id, therapist.userId));
     }
@@ -238,8 +272,9 @@ export const therapistService = {
   async updateStatus(id: string, status: string) {
     const therapist = await db.query.therapists.findFirst({ where: eq(therapists.id, id) });
     if (!therapist) return null;
-    await db.update(user).set({ status, updatedAt: new Date() }).where(eq(user.id, therapist.userId));
-    return { id, status };
+    const nextStatus = assertAllowedStatus(status, ["active", "suspended"], "Status terapis");
+    await db.update(user).set({ status: nextStatus, updatedAt: new Date() }).where(eq(user.id, therapist.userId));
+    return { id, status: nextStatus };
   },
 
   async resetPassword(id: string, passwordOverride?: string) {
@@ -286,9 +321,6 @@ export const therapistService = {
   },
 
   async getLastSequence() {
-    const all = await db.select({ nit: therapists.nit }).from(therapists);
-    if (all.length === 0) return 0;
-    const nums = all.map((t) => parseInt(t.nit.slice(-3), 10)).filter(n => !isNaN(n));
-    return nums.length > 0 ? Math.max(...nums) : 0;
+    return getLastTherapistSequence();
   },
 };

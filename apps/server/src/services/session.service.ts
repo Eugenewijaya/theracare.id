@@ -6,6 +6,9 @@ import { httpError } from "../utils/http-error.js";
 import { attachChildPhotoUrl, getChildPhotoUrlMap } from "./child.service.js";
 import { evaluateSessionSlot, evaluateTherapistSlot } from "./scheduling-availability.service.js";
 import { notificationService } from "./notification.service.js";
+import { assertNoLocalScheduleConflicts, lockSchedulingSlots, parseScheduleDurationMinutes } from "./scheduling-guard.service.js";
+import { normalizeDateKey, todayDateKey } from "../utils/date-key.js";
+import { isValidSessionStatus } from "../domain/workflow-status.js";
 
 type TherapySessionInsert = typeof therapySessions.$inferInsert;
 type DbClient = typeof db | any;
@@ -57,13 +60,7 @@ async function enrichSessionDetails<T extends { child?: any; therapist?: any }>(
 }
 
 function parseDurationMinutes(value?: string | null) {
-  const parsed = Number.parseInt(String(value || ""), 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 45;
-}
-
-function normalizeDateKey(value?: string | Date | null) {
-  if (value instanceof Date) return value.toISOString().split("T")[0];
-  return String(value || "").split("T")[0];
+  return parseScheduleDurationMinutes(value || "45 mins");
 }
 
 function normalizeClock(value?: string | null) {
@@ -456,7 +453,7 @@ export const sessionService = {
 
   async getUpcomingForChild(childId: string) {
     await autoCompleteExpiredActiveSessions();
-    const today = new Date().toISOString().split("T")[0];
+    const today = todayDateKey();
     const sessions = await db.query.therapySessions.findMany({
       where: and(
         eq(therapySessions.childId, childId),
@@ -479,14 +476,28 @@ export const sessionService = {
     return enrichSessionDetails(sessions);
   },
 
+  async getAttendanceHistoryForChild(childId: string) {
+    await autoCompleteExpiredActiveSessions();
+    const today = todayDateKey();
+    const sessions = await db.query.therapySessions.findMany({
+      where: and(
+        eq(therapySessions.childId, childId),
+        sql`${therapySessions.date} <= ${today}`,
+        inArray(therapySessions.status, ["confirmed", "active", "done", "completed", "cancelled"]),
+      ),
+      with: { therapist: { with: { user: true } }, therapyPeriod: { with: { program: true, historicalSummaries: true } } },
+      orderBy: (s, { desc }) => [desc(s.date), desc(s.startTime)],
+    });
+    return enrichSessionDetails(sessions);
+  },
+
   async create(data: {
     therapistId: string; childId: string; date: string; startTime: string;
     duration?: string; focus?: string; roomId?: string; therapyPeriodId?: string;
   }) {
-    const id = `S-${Date.now().toString(36).toUpperCase()}`;
     const resolvedTherapyPeriodId = await resolveTherapyPeriodIdForSession(data);
     const values: TherapySessionInsert = {
-      id,
+      id: generateId("S"),
       therapistId: data.therapistId,
       childId: data.childId,
       date: data.date,
@@ -495,8 +506,12 @@ export const sessionService = {
       ...pickSessionValues(data),
       status: "upcoming",
     };
-    await assertSessionAvailable(values);
-    const [session] = await db.insert(therapySessions).values(values).returning();
+    const session = await db.transaction(async (tx) => {
+      await lockSchedulingSlots(tx, [values]);
+      await assertSessionAvailable(values);
+      const [created] = await tx.insert(therapySessions).values(values).returning();
+      return created;
+    });
     await notifySessionScheduled(session.id);
     return session;
   },
@@ -519,10 +534,13 @@ export const sessionService = {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     });
-    await assertOneTimeVisitAvailable(visit);
-    const visits = await readOneTimeVisits();
-    const nextVisits = [...visits, visit];
-    await writeOneTimeVisits(nextVisits);
+    await db.transaction(async (tx) => {
+      await lockSchedulingSlots(tx, [visit]);
+      await assertOneTimeVisitAvailable(visit);
+      const visits = await readOneTimeVisits(tx);
+      const nextVisits = [...visits, visit];
+      await writeOneTimeVisits(nextVisits, tx);
+    });
     await notifyOneTimeVisitScheduled(visit);
     const [enriched] = await enrichOneTimeVisits([visit]);
     return enriched || visit;
@@ -533,10 +551,10 @@ export const sessionService = {
     duration?: string; focus?: string; roomId?: string; therapyPeriodId?: string;
   }>) {
     const values: TherapySessionInsert[] = [];
-    for (const [i, s] of sessionsData.entries()) {
+    for (const s of sessionsData) {
       const resolvedTherapyPeriodId = await resolveTherapyPeriodIdForSession(s);
       values.push({
-        id: `S-BULK-${Date.now()}-${i}`,
+        id: generateId("S"),
         therapistId: s.therapistId,
         childId: s.childId,
         date: s.date,
@@ -546,20 +564,14 @@ export const sessionService = {
         status: "upcoming" as const,
       });
     }
-    const localKeys = new Set<string>();
-    for (const value of values) {
-      const therapistKey = `therapist:${value.therapistId}:${value.date}:${value.startTime}`;
-      const childKey = `child:${value.childId}:${value.date}:${value.startTime}`;
-      const roomKey = value.roomId ? `room:${value.roomId}:${value.date}:${value.startTime}` : "";
-      if (localKeys.has(therapistKey) || localKeys.has(childKey) || (roomKey && localKeys.has(roomKey))) {
-        throw httpError(409, "Jadwal massal memiliki slot yang duplikat untuk terapis, anak, atau ruangan.");
+    assertNoLocalScheduleConflicts(values);
+    const sessions = await db.transaction(async (tx) => {
+      await lockSchedulingSlots(tx, values);
+      for (const value of values) {
+        await assertSessionAvailable(value);
       }
-      localKeys.add(therapistKey);
-      localKeys.add(childKey);
-      if (roomKey) localKeys.add(roomKey);
-      await assertSessionAvailable(value);
-    }
-    const sessions = await db.insert(therapySessions).values(values).returning();
+      return tx.insert(therapySessions).values(values).returning();
+    });
     for (const session of sessions) {
       await notifySessionScheduled(session.id);
     }
@@ -567,6 +579,10 @@ export const sessionService = {
   },
 
   async updateStatus(id: string, status: string, cancelReason?: string, timestampOverrides: SessionStatusTimestampOverrides = {}) {
+    status = String(status || "").trim().toLowerCase();
+    if (!isValidSessionStatus(status)) {
+      throw httpError(400, "Status sesi tidak valid.");
+    }
     if (id.startsWith("OTV-")) {
       const visits = await readOneTimeVisits();
       const index = visits.findIndex((visit: any) => visit?.id === id);
@@ -753,19 +769,27 @@ export const sessionService = {
     const existing = await db.query.therapySessions.findFirst({ where: eq(therapySessions.id, id) });
     if (!existing) return null;
     const next = { ...existing, ...values };
-    if (["therapistId", "childId", "roomId", "date", "startTime", "duration"].some((key) => key in values)) {
-      await assertSessionAvailable(next, id);
+    const scheduleChanged = ["therapistId", "childId", "roomId", "date", "startTime", "duration"].some((key) => key in values);
+    if (!scheduleChanged) {
+      const [updated] = await db.update(therapySessions)
+        .set(values)
+        .where(eq(therapySessions.id, id))
+        .returning();
+      return updated;
     }
 
-    const scheduleChanged = ["therapistId", "childId", "roomId", "date", "startTime", "duration"].some((key) => key in values);
-    const [updated] = await db.update(therapySessions)
-      .set({
-        ...values,
-        ...(scheduleChanged && existing.status !== "cancelled" ? { status: "upcoming", startedAt: null, endedAt: null } : {}),
-      })
-      .where(eq(therapySessions.id, id))
-      .returning();
-    return updated;
+    return db.transaction(async (tx) => {
+      await lockSchedulingSlots(tx, [existing, next]);
+      await assertSessionAvailable(next, id);
+      const [updated] = await tx.update(therapySessions)
+        .set({
+          ...values,
+          ...(existing.status !== "cancelled" ? { status: "upcoming", startedAt: null, endedAt: null } : {}),
+        })
+        .where(eq(therapySessions.id, id))
+        .returning();
+      return updated;
+    });
   },
 
   async delete(id: string) {

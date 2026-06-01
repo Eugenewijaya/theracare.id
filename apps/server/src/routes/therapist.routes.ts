@@ -7,6 +7,20 @@ import { ok, created, notFound, badRequest, conflict } from "../utils/response.j
 import { getRequestClientMeta } from "../utils/request-context.js";
 
 const router = Router();
+const THERAPIST_SELF_PROFILE_FIELDS = new Set([
+  "phone",
+  "avatar",
+  "bio",
+  "educationLevel",
+  "educationField",
+  "educationInstitution",
+  "graduationYear",
+  "strNumber",
+  "strExpiry",
+  "yearsExperience",
+  "languages",
+  "certifications",
+]);
 
 async function canAccessTherapist(req: any, therapistId: string) {
   if (req.user?.role === "admin") return true;
@@ -19,12 +33,8 @@ router.get("/", requireAuth, requireRole("admin"), async (req, res, next) => {
   try { ok(res, await therapistService.getAll()); } catch (e) { next(e); }
 });
 
-router.get("/login-identity/:nit", async (req, res, next) => {
-  try {
-    const identity = await therapistService.getLoginIdentity(req.params.nit as string);
-    if (!identity) return notFound(res, "NIT belum terdaftar atau akun ditangguhkan");
-    ok(res, identity);
-  } catch (e) { next(e); }
+router.get("/login-identity/:nit", (_req, res) => {
+  ok(res, { lookupAvailable: false }, "Lookup identitas sebelum login dinonaktifkan. Silakan login langsung.");
 });
 
 router.post("/portal-login", async (req, res, next) => {
@@ -75,6 +85,7 @@ router.post("/", requireAuth, requireRole("admin"), async (req, res, next) => {
 
 router.patch("/:id", requireAuth, async (req, res, next) => {
   try {
+    let updates = req.body || {};
     if (req.user!.role !== "admin") {
       if (req.user!.role !== "therapist") {
         return res.status(403).json({ success: false, error: "Akses ditolak" });
@@ -83,8 +94,19 @@ router.patch("/:id", requireAuth, async (req, res, next) => {
       if (!ownProfile || ownProfile.id !== req.params.id) {
         return res.status(403).json({ success: false, error: "Akses ditolak" });
       }
+      const rejectedFields = Object.keys(updates).filter((field) => !THERAPIST_SELF_PROFILE_FIELDS.has(field));
+      if (rejectedFields.length > 0) {
+        return res.status(403).json({
+          success: false,
+          error: "Terapis hanya boleh memperbarui data profil pribadi. Jadwal, status, nama, email, specialty, room, dan kapasitas client harus diubah oleh admin.",
+          data: { rejectedFields },
+        });
+      }
+    } else {
+      const { role, userRole, ...adminUpdates } = updates;
+      updates = adminUpdates;
     }
-    const result = await therapistService.updateProfile(req.params.id as string, req.body);
+    const result = await therapistService.updateProfile(req.params.id as string, updates);
     if (!result) return notFound(res);
     await auditLogService.create({
       actor: req.user,
@@ -92,7 +114,7 @@ router.patch("/:id", requireAuth, async (req, res, next) => {
       entityType: "therapist",
       entityId: req.params.id as string,
       summary: `Profil terapis ${result.name || req.params.id} diperbarui`,
-      metadata: { changedFields: Object.keys(req.body || {}) },
+      metadata: { changedFields: Object.keys(updates || {}) },
     });
     ok(res, result);
   } catch (e) { next(e); }

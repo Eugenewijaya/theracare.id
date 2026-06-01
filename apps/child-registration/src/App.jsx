@@ -43,6 +43,13 @@ const EMPTY_CHILD  = {
     assistantTherapistId: '',
 };
 
+const normalizePhone = (phone = '') => {
+    const digits = String(phone || '').replace(/\D/g, '');
+    if (digits.startsWith('62')) return `0${digits.slice(2)}`;
+    if (digits.startsWith('8')) return `0${digits}`;
+    return digits;
+};
+
 const STEP_META = {
     0: { title: 'Jenis Pendaftaran',   subtitle: 'Pilih mode registrasi pasien baru.',                      icon: 'select_all'    },
     1: { title: 'Parent Information',   subtitle: 'Enter the parent or guardian contact details.',            icon: 'person'        },
@@ -60,6 +67,7 @@ function App() {
     const [errors, setErrors]               = useState({});
     const [submitted, setSubmitted]         = useState(false);
     const [result, setResult]               = useState(null);
+    const [submitting, setSubmitting]       = useState(false);
     const [isExistingParent, setIsExistingParent] = useState(false);
     const [existingParentId, setExistingParentId] = useState(null);
 
@@ -110,7 +118,7 @@ function App() {
             try {
                 const res = await parentsApi.getAll();
                 const parents = res.data?.data || [];
-                const existing = parents.find(p => p.phone === parentData.phone);
+                const existing = parents.find(p => normalizePhone(p.phone) === normalizePhone(parentData.phone));
                 setIsExistingParent(!!existing);
                 if (existing) setParentData({ name: existing.name, phone: existing.phone, email: existing.email || '', address: existing.address });
             } catch (e) {
@@ -132,6 +140,13 @@ function App() {
 
     const goPrev = () => {
         setErrors({});
+        if (step === 4 && childrenList.length > 0) {
+            const lastChild = childrenList[childrenList.length - 1];
+            setChildrenList(prev => prev.slice(0, -1));
+            setCurrentChild(lastChild);
+            setStep(3);
+            return;
+        }
         const currentIdx = activeSteps.findIndex(s => s.id === step);
         if (currentIdx > 0) {
             setStep(activeSteps[currentIdx - 1].id);
@@ -159,11 +174,18 @@ function App() {
     };
 
     const handleSubmit = async () => {
+        if (submitting) return;
+        if (childrenList.length === 0) {
+            setErrors({ submit: 'Tambahkan minimal satu anak sebelum submit registrasi.' });
+            return;
+        }
         let parentId;
         let parentObj;
         let isNew = false;
         let tempPassword = null;
+        const registeredChildren = [];
 
+        setSubmitting(true);
         try {
             if (regMode === 'existing' && existingParentId) {
                 parentId = existingParentId;
@@ -180,7 +202,6 @@ function App() {
                 tempPassword = parent.tempPassword;
             }
 
-            const registeredChildren = [];
             for (const child of childrenList) {
                 const scheduleRules = Array.isArray(child.therapyDays)
                     ? child.therapyDays.map(day => ({
@@ -223,7 +244,16 @@ function App() {
             setSubmitted(true);
         } catch (e) {
             console.error(e);
+            if (isNew && parentId && registeredChildren.length === 0) {
+                try {
+                    await parentsApi.delete(parentId);
+                } catch (rollbackError) {
+                    console.error('Failed to rollback parent after registration error', rollbackError);
+                }
+            }
             setErrors({ submit: e.message || 'Registrasi gagal. Periksa koneksi backend dan coba lagi.' });
+        } finally {
+            setSubmitting(false);
         }
     };
 
@@ -409,9 +439,10 @@ function App() {
                             </button>
                         ) : (
                             <button type="button" onClick={handleSubmit}
-                                className="inline-flex items-center gap-2 px-6 py-2.5 text-sm font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition-colors shadow-sm focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500">
-                                <span className="material-symbols-outlined text-[18px]">send</span>
-                                Submit Registration
+                                disabled={submitting}
+                                className="inline-flex items-center gap-2 px-6 py-2.5 text-sm font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition-colors shadow-sm focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 disabled:cursor-not-allowed disabled:opacity-60">
+                                <span className={`material-symbols-outlined text-[18px] ${submitting ? 'animate-spin' : ''}`}>{submitting ? 'progress_activity' : 'send'}</span>
+                                {submitting ? 'Submitting...' : 'Submit Registration'}
                             </button>
                         )}
                     </div>

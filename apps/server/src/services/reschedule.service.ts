@@ -7,6 +7,8 @@ import { auditLogService } from "./audit-log.service.js";
 import { evaluateOperationalSlot, evaluateSessionSlot } from "./scheduling-availability.service.js";
 import { httpError } from "../utils/http-error.js";
 import { isOpenRescheduleStatus } from "../domain/workflow-status.js";
+import { lockAdvisoryKeys, lockSchedulingSlots } from "./scheduling-guard.service.js";
+import { normalizeDateKey as normalizeCalendarDateKey, todayDateKey } from "../utils/date-key.js";
 
 type ProposedSlot = { date: string; time: string; status?: string; reason?: string; kind?: string };
 type AuditActor = { id?: string; role?: string; name?: string; email?: string } | null | undefined;
@@ -17,8 +19,8 @@ const sessionTrackingDetails = {
   therapyPeriod: { with: { program: true } },
 } as const;
 
-function normalizeDateKey(value?: string | null) {
-  const raw = String(value || "").trim();
+function normalizeDateKey(value?: string | Date | null) {
+  const raw = normalizeCalendarDateKey(value);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return "";
   const date = new Date(`${raw}T00:00:00`);
   return Number.isNaN(date.getTime()) ? "" : raw;
@@ -50,15 +52,15 @@ function normalizeProposedSlots(slots?: Array<{ date: string; time: string }> | 
 }
 
 function isClosedSessionStatus(status?: string | null) {
-  return ["done", "completed", "selesai", "cancelled", "canceled"].includes(String(status || "").toLowerCase());
+  return ["confirmed", "active", "checked_in", "present", "done", "completed", "selesai", "cancelled", "canceled"].includes(String(status || "").toLowerCase());
 }
 
 function assertFutureSession(session: { date?: string | Date | null; status?: string | null }) {
   if (isClosedSessionStatus(session.status)) {
-    throw httpError(409, "Sesi ini sudah selesai atau dibatalkan sehingga tidak bisa diajukan reschedule.");
+    throw httpError(409, "Sesi ini sudah dikonfirmasi, berjalan, selesai, atau dibatalkan sehingga tidak bisa diajukan reschedule.");
   }
-  const today = new Date().toISOString().slice(0, 10);
-  const sessionDate = normalizeDateKey(session.date instanceof Date ? session.date.toISOString().slice(0, 10) : String(session.date || ""));
+  const today = todayDateKey();
+  const sessionDate = normalizeDateKey(session.date);
   if (sessionDate && sessionDate < today) {
     throw httpError(409, "Sesi lampau tidak bisa diajukan reschedule.");
   }
@@ -83,7 +85,7 @@ function removeCurrentSessionSlot(
   slots: Array<{ date: string; time: string }>,
   session: { date?: string | Date | null; startTime?: string | null },
 ) {
-  const sessionDate = normalizeDateKey(session.date instanceof Date ? session.date.toISOString().slice(0, 10) : String(session.date || ""));
+  const sessionDate = normalizeDateKey(session.date);
   const sessionTime = normalizeTimeKey(session.startTime || "");
   return slots.filter((slot) => !(slot.date === sessionDate && slot.time === sessionTime));
 }
@@ -199,19 +201,20 @@ export const rescheduleService = {
     if (!annotatedSlots.some((slot) => slot.status === "available")) {
       throw httpError(409, "Semua opsi jadwal bentrok. Pilih minimal satu opsi yang tersedia.", { proposedSlots: annotatedSlots });
     }
-    const openRequests = await db.query.rescheduleRequests.findMany({
-      where: eq(rescheduleRequests.parentId, data.parentId),
-    });
-    const duplicateOpenRequest = openRequests.find((request) => (
-      request.childId === data.childId
-      && request.sessionId === data.sessionId
-      && isOpenRescheduleStatus(request.status)
-    ));
-    if (duplicateOpenRequest) {
-      throw httpError(409, "Sesi ini sudah memiliki pengajuan reschedule yang sedang diproses.");
-    }
     const therapist = await db.query.therapists.findFirst({ where: eq(therapists.id, session.therapistId) });
     const req = await db.transaction(async (tx) => {
+      await lockAdvisoryKeys(tx, [`reschedule:session:${data.sessionId}`]);
+      const openRequests = await tx.query.rescheduleRequests.findMany({
+        where: eq(rescheduleRequests.parentId, data.parentId),
+      });
+      const duplicateOpenRequest = openRequests.find((request: any) => (
+        request.childId === data.childId
+        && request.sessionId === data.sessionId
+        && isOpenRescheduleStatus(request.status)
+      ));
+      if (duplicateOpenRequest) {
+        throw httpError(409, "Sesi ini sudah memiliki pengajuan reschedule yang sedang diproses.");
+      }
       const id = generateId("RR");
       const [created] = await tx.insert(rescheduleRequests).values({
         id,
@@ -266,24 +269,33 @@ export const rescheduleService = {
       where: eq(therapySessions.id, req.sessionId),
     });
 
-    if (status === "approved") {
-      if (!session) throw httpError(404, "Sesi asli tidak ditemukan");
-      if (!updates.newDate) throw httpError(400, "Pilih slot jadwal baru yang tersedia");
-      const chosenSlot = { date: updates.newDate, time: updates.newStartTime || session.startTime };
-      const availability = await evaluateSessionSlot({
-        therapistId: session.therapistId,
-        childId: session.childId,
-        roomId: session.roomId,
-        date: chosenSlot.date,
-        startTime: chosenSlot.time,
-        duration: session.duration,
-      }, session.id);
-      if (availability.status !== "available") {
-        throw httpError(409, `Slot tidak bisa dipilih: ${availability.reason || "jadwal bentrok"}`, availability);
-      }
-    }
-
+    let sessionForNotification = session;
     await db.transaction(async (tx) => {
+      await lockAdvisoryKeys(tx, [`reschedule:session:${req.sessionId}`]);
+      if (status === "approved") {
+        if (!updates.newDate) throw httpError(400, "Pilih slot jadwal baru yang tersedia");
+        const lockedSession = await tx.query.therapySessions.findFirst({
+          where: eq(therapySessions.id, req.sessionId),
+        });
+        if (!lockedSession) throw httpError(404, "Sesi asli tidak ditemukan");
+        assertFutureSession(lockedSession);
+        const chosenSlot = { date: updates.newDate, time: updates.newStartTime || lockedSession.startTime };
+        const candidate = {
+          therapistId: lockedSession.therapistId,
+          childId: lockedSession.childId,
+          roomId: lockedSession.roomId,
+          date: chosenSlot.date,
+          startTime: chosenSlot.time,
+          duration: lockedSession.duration,
+        };
+        await lockSchedulingSlots(tx, [lockedSession, candidate]);
+        const availability = await evaluateSessionSlot(candidate, lockedSession.id);
+        if (availability.status !== "available") {
+          throw httpError(409, `Slot tidak bisa dipilih: ${availability.reason || "jadwal bentrok"}`, availability);
+        }
+        sessionForNotification = lockedSession;
+      }
+
       await tx.update(rescheduleRequests).set({
         status,
         resolvedAt: new Date(),
@@ -293,14 +305,16 @@ export const rescheduleService = {
         ...(updates.newStartTime ? { newStartTime: updates.newStartTime } : {}),
       }).where(eq(rescheduleRequests.id, id));
 
-      if (status === "approved" && updates.newDate && session) {
+      if (status === "approved" && updates.newDate && sessionForNotification) {
         await tx.update(therapySessions)
           .set({
             date: updates.newDate,
-            startTime: updates.newStartTime || session.startTime,
+            startTime: updates.newStartTime || sessionForNotification.startTime,
             status: "upcoming",
+            startedAt: null,
+            endedAt: null,
           })
-          .where(eq(therapySessions.id, session.id));
+          .where(eq(therapySessions.id, sessionForNotification.id));
       }
 
       if (parent?.userId) {
@@ -310,7 +324,7 @@ export const rescheduleService = {
           title: status === "approved" ? "Reschedule disetujui" : "Reschedule diperbarui",
           message: updates.reviewNote || (
             status === "approved" && updates.newDate
-              ? `Jadwal baru: ${updates.newDate} ${updates.newStartTime || session?.startTime || ""}.`
+              ? `Jadwal baru: ${updates.newDate} ${updates.newStartTime || sessionForNotification?.startTime || ""}.`
               : `Permintaan reschedule ${req.sessionId} berstatus ${status}.`
           ),
           targetRole: "parent",
@@ -318,14 +332,14 @@ export const rescheduleService = {
           relatedId: id,
         }, tx);
       }
-      if (status === "approved" && session) {
-        const therapist = await tx.query.therapists.findFirst({ where: eq(therapists.id, session.therapistId) });
+      if (status === "approved" && sessionForNotification) {
+        const therapist = await tx.query.therapists.findFirst({ where: eq(therapists.id, sessionForNotification.therapistId) });
         if (therapist?.userId) {
           await notificationService.create({
             type: "schedule_change",
             icon: "event_available",
             title: "Jadwal sesi diperbarui",
-            message: `Sesi ${req.sessionId} dipindahkan ke ${updates.newDate} ${updates.newStartTime || session.startTime}.`,
+            message: `Sesi ${req.sessionId} dipindahkan ke ${updates.newDate} ${updates.newStartTime || sessionForNotification.startTime}.`,
             targetRole: "therapist",
             targetUserId: therapist.userId,
             relatedId: id,
@@ -440,6 +454,26 @@ export const rescheduleService = {
     }
 
     await db.transaction(async (tx) => {
+      await lockAdvisoryKeys(tx, [`reschedule:session:${req.sessionId}`]);
+      const lockedSession = await tx.query.therapySessions.findFirst({
+        where: eq(therapySessions.id, req.session.id),
+      });
+      if (!lockedSession) throw httpError(404, "Sesi asli tidak ditemukan");
+      assertFutureSession(lockedSession);
+      const candidate = {
+        therapistId: lockedSession.therapistId,
+        childId: lockedSession.childId,
+        roomId: lockedSession.roomId,
+        date: chosen.date,
+        startTime: chosen.time,
+        duration: lockedSession.duration,
+      };
+      await lockSchedulingSlots(tx, [lockedSession, candidate]);
+      const availability = await evaluateSessionSlot(candidate, lockedSession.id);
+      if (availability.status !== "available") {
+        throw httpError(409, availability.reason || "Slot yang dipilih sudah tidak tersedia", availability);
+      }
+
       await tx.update(rescheduleRequests)
         .set({
           status: "approved",
@@ -456,8 +490,10 @@ export const rescheduleService = {
           date: chosen.date,
           startTime: chosen.time,
           status: "upcoming",
+          startedAt: null,
+          endedAt: null,
         })
-        .where(eq(therapySessions.id, req.session.id));
+        .where(eq(therapySessions.id, lockedSession.id));
 
       if (req.parent?.userId) {
         await notificationService.create({

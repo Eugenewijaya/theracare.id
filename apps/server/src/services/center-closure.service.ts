@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { clinicSettings } from "../db/schema.js";
 import { generateId } from "../utils/id-generators.js";
+import { todayDateKey } from "../utils/date-key.js";
 import { notificationService } from "./notification.service.js";
 import { notifyCenterClosureSessionConflicts } from "./schedule-conflict-notification.service.js";
 
@@ -164,7 +165,7 @@ async function fetchFromNager(year: number): Promise<HolidayCandidate[]> {
 export const centerClosureService = {
   async getAll() {
     const closures = await readClosures();
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayDateKey();
     const activeToday = closures.find((closure) => (
       closure.isActive && closure.startDate <= today && (closure.endDate || closure.startDate) >= today
     )) || null;

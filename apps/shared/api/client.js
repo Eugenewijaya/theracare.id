@@ -237,7 +237,6 @@ export const parentsApi = {
   getAll: () => api.get('/parents'),
   getById: (id) => api.get(`/parents/${id}`),
   getMe: () => api.get('/parents/me/profile'),
-  getLoginIdentity: (identifier) => api.get(`/parents/login-identity/${encodeURIComponent(identifier)}`),
   portalLogin: async (identifier, password, rememberMe = true) => {
     const res = await api.post('/parents/portal-login', { identifier, password });
     if (res.ok && res.data?.data?.token) storeAuthToken(res.data.data.token, rememberMe);
@@ -267,7 +266,6 @@ export const therapistsApi = {
   getAll: () => api.get('/therapists'),
   getById: (id) => api.get(`/therapists/${id}`),
   getMe: () => api.get('/therapists/me/profile'),
-  getLoginIdentity: (nit) => api.get(`/therapists/login-identity/${encodeURIComponent(nit)}`),
   portalLogin: async (nit, password, rememberMe = true) => {
     const res = await api.post('/therapists/portal-login', { nit, password });
     if (res.ok && res.data?.data?.token) storeAuthToken(res.data.data.token, rememberMe);
@@ -287,6 +285,7 @@ export const sessionsApi = {
   getForTherapist: (id, date) => api.get(`/sessions/therapist/${id}${date ? `?date=${date}` : ''}`),
   getUpcomingForChild: (id) => api.get(`/sessions/child/${id}/upcoming`),
   getCompletedForChild: (id) => api.get(`/sessions/child/${id}/completed`),
+  getAttendanceHistoryForChild: (id) => api.get(`/sessions/child/${id}/attendance-history`),
   create: (data) => api.post('/sessions', data),
   createOneTimeVisit: (data) => api.post('/sessions/one-time-visits', data),
   createBulk: (sessions) => api.post('/sessions/bulk', { sessions }),

@@ -14,6 +14,11 @@ import { created, notFound, ok, badRequest } from "../utils/response.js";
 
 const router = Router();
 
+function routeError(res: any, next: any, error: unknown, fallbackMessage: string) {
+  if (error && typeof error === "object" && "status" in error) return next(error);
+  return badRequest(res, error instanceof Error ? error.message : fallbackMessage);
+}
+
 async function canReadChildPeriods(req: any, childId: string) {
   if (req.user?.role === "admin") return true;
   if (req.user?.role === "parent") {
@@ -79,7 +84,7 @@ router.patch("/deletion-requests/:requestId/respond", requireAuth, async (req, r
     });
     ok(res, result, "Keputusan persetujuan tersimpan");
   } catch (e) {
-    return badRequest(res, e instanceof Error ? e.message : "Gagal memproses persetujuan");
+    return routeError(res, next, e, "Gagal memproses persetujuan");
   }
 });
 
@@ -109,7 +114,7 @@ router.post("/", requireAuth, requireRole("admin"), async (req, res, next) => {
     });
     created(res, period, "Periode terapi berhasil dibuat");
   } catch (e) {
-    return badRequest(res, e instanceof Error ? e.message : "Gagal membuat periode terapi");
+    return routeError(res, next, e, "Gagal membuat periode terapi");
   }
 });
 
@@ -128,7 +133,7 @@ router.post("/:id/deletion-requests", requireAuth, requireRole("admin"), async (
     });
     created(res, request, "Pengajuan penghapusan periode dikirim ke orang tua dan terapis");
   } catch (e) {
-    return badRequest(res, e instanceof Error ? e.message : "Gagal mengajukan penghapusan periode");
+    return routeError(res, next, e, "Gagal mengajukan penghapusan periode");
   }
 });
 
@@ -181,7 +186,7 @@ router.delete("/:id", requireAuth, requireRole("admin"), async (req, res, next) 
     });
     ok(res, result, "Riwayat periode cancelled berhasil dihapus permanen");
   } catch (e) {
-    return badRequest(res, e instanceof Error ? e.message : "Gagal menghapus riwayat periode");
+    return routeError(res, next, e, "Gagal menghapus riwayat periode");
   }
 });
 
@@ -199,7 +204,7 @@ router.post("/:id/generate-sessions", requireAuth, requireRole("admin"), async (
     });
     created(res, result, "Jadwal sesi periode berhasil dibuat");
   } catch (e) {
-    return badRequest(res, e instanceof Error ? e.message : "Gagal membuat jadwal sesi periode");
+    return routeError(res, next, e, "Gagal membuat jadwal sesi periode");
   }
 });
 
@@ -233,7 +238,7 @@ router.post("/:id/renew", requireAuth, requireRole("admin"), async (req, res, ne
     });
     created(res, period, "Periode lanjutan berhasil dibuat");
   } catch (e) {
-    return badRequest(res, e instanceof Error ? e.message : "Gagal membuat periode lanjutan");
+    return routeError(res, next, e, "Gagal membuat periode lanjutan");
   }
 });
 

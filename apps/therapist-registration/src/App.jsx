@@ -547,6 +547,26 @@ const EMPTY_DATA = {
     schedule: {}, primaryRoom: '', maxClients: '',
 };
 
+const parseTimeMinutes = (value) => {
+    const match = String(value || '').match(/^(\d{1,2}):(\d{2})$/);
+    if (!match) return null;
+    const hour = Number(match[1]);
+    const minute = Number(match[2]);
+    if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+    return hour * 60 + minute;
+};
+
+const validateSchedule = (schedule = {}) => {
+    const active = Object.entries(schedule).filter(([, value]) => value);
+    if (active.length === 0) return 'Pilih setidaknya satu hari kerja untuk terapis.';
+    const invalid = active.find(([day, value]) => {
+        const start = parseTimeMinutes(value?.start);
+        const end = parseTimeMinutes(value?.end);
+        return start === null || end === null || end <= start;
+    });
+    return invalid ? `Jam kerja ${invalid[0]} tidak valid. Jam selesai harus lebih besar dari jam mulai.` : null;
+};
+
 function App() {
     const navigate = useNavigate();
     const clinicSettings = useClinicSettings();
@@ -592,6 +612,7 @@ function App() {
             if (!formData.strNumber.trim()) return 'Nomor STR wajib diisi.';
             if (!formData.yearsExperience) return 'Tahun pengalaman wajib dipilih.';
         }
+        if (step === 3) return validateSchedule(formData.schedule);
         return null;
     };
 
@@ -609,11 +630,12 @@ function App() {
     const handleBack = () => setCurrentStep(p => p - 1);
 
     const handleSubmit = async () => {
-        const scheduleEmpty = Object.values(formData.schedule).filter(Boolean).length === 0;
-        if (scheduleEmpty) {
-            showPopup('error', 'Jadwal Diperlukan', 'Pilih setidaknya satu hari kerja untuk terapis.');
+        const scheduleError = validateSchedule(formData.schedule);
+        if (scheduleError) {
+            showPopup('error', 'Jadwal Diperlukan', scheduleError);
             return;
         }
+        if (submitting) return;
         setSubmitting(true);
         try {
             const fullName = `${formData.firstName} ${formData.lastName}`.trim();

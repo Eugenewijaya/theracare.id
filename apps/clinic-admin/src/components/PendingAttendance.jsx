@@ -2,6 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { sessionsApi } from '../../../shared/api/client';
 
+const todayString = () => {
+    const date = new Date();
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
 const PendingAttendance = () => {
     const navigate = useNavigate();
     const [items, setItems] = useState([]);
@@ -16,7 +24,7 @@ const PendingAttendance = () => {
                 throw new Error(res.data?.error || 'Data sesi belum bisa dimuat.');
             }
             const allSessions = res.data?.data || [];
-            const today = new Date().toISOString().split('T')[0];
+            const today = todayString();
             const pending = allSessions
                 .filter(s => s.status === 'upcoming' && s.date === today)
                 .sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));

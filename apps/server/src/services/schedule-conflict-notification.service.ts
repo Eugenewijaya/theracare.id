@@ -1,12 +1,12 @@
 import { eq, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { children, parents, therapists, therapySessions } from "../db/schema.js";
+import { normalizeDateKey, todayDateKey } from "../utils/date-key.js";
 import { evaluateSessionSlot } from "./scheduling-availability.service.js";
 import { notificationService } from "./notification.service.js";
 
 function getSessionDateKey(session: { date?: string | Date | null }) {
-  if (session.date instanceof Date) return session.date.toISOString().slice(0, 10);
-  return String(session.date || "");
+  return normalizeDateKey(session.date);
 }
 
 function formatSessionTime(session: { date?: string | Date | null; startTime?: string | null }) {
@@ -64,7 +64,7 @@ async function notifyImpactedSession(
 }
 
 export async function notifyTherapistScheduleConflicts(therapistId: string) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayDateKey();
   const sessions = await db.query.therapySessions.findMany({
     where: sql`${therapySessions.therapistId} = ${therapistId}
       and ${therapySessions.date} >= ${today}

@@ -1,10 +1,14 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { children, historicalSessionSummaries, migrationRecords, programs, reports, therapists, therapyPeriods, therapyPrograms, therapySessions } from "../db/schema.js";
+import { children, historicalSessionSummaries, migrationRecords, programs, reports, rooms, therapists, therapyPeriods, therapyPrograms, therapySessions } from "../db/schema.js";
 import { generateId } from "../utils/id-generators.js";
 import { evaluateSessionSlot } from "./scheduling-availability.service.js";
+import { findLocalScheduleConflict, lockAdvisoryKeys, lockSchedulingSlots } from "./scheduling-guard.service.js";
 import { notificationService } from "./notification.service.js";
 import { periodDeletionRequestService } from "./period-deletion-request.service.js";
+import { dateKeyFromDate, parseDateKey, todayDateKey } from "../utils/date-key.js";
+import { assertPositiveInteger, assertValidDateKey, normalizeClockValue } from "../utils/registration-validation.js";
+import { httpError } from "../utils/http-error.js";
 
 type TherapyPeriodInsert = typeof therapyPeriods.$inferInsert;
 type TherapySessionInsert = typeof therapySessions.$inferInsert;
@@ -38,10 +42,7 @@ const DAY_INDEX: Record<string, number> = {
 };
 
 function toDateString(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  return dateKeyFromDate(date);
 }
 
 function parseDayOfWeek(rule: ScheduleRule) {
@@ -58,8 +59,9 @@ function normalizeScheduleRules(input: unknown, fallbackTherapistId?: string) {
     .map((raw) => {
       const rule = raw as ScheduleRule;
       const dayOfWeek = parseDayOfWeek(rule);
-      const startTime = typeof rule.startTime === "string" && rule.startTime ? rule.startTime : "";
-      if (dayOfWeek === null || !startTime) return null;
+      const startTime = normalizeClockValue(rule.startTime);
+      if (dayOfWeek === null) throw httpError(400, "Hari terapi pada aturan jadwal tidak valid.");
+      if (!startTime) throw httpError(400, "Jam mulai terapi pada aturan jadwal tidak valid.");
       return {
         day: rule.day || DAY_NAMES[dayOfWeek],
         dayOfWeek,
@@ -77,9 +79,26 @@ function normalizeGoals(input: unknown) {
   return input.filter((goal): goal is string => typeof goal === "string" && !!goal.trim()).map((goal) => goal.trim());
 }
 
+async function assertScheduleRuleResources(rules: Array<NonNullable<ReturnType<typeof normalizeScheduleRules>[number]>>) {
+  const therapistIds = Array.from(new Set(rules.map((rule) => rule.therapistId).filter((id): id is string => !!id)));
+  if (therapistIds.length > 0) {
+    const existingTherapists = await db.query.therapists.findMany({ where: inArray(therapists.id, therapistIds) });
+    const existingIds = new Set(existingTherapists.map((therapist) => therapist.id));
+    const missing = therapistIds.find((id) => !existingIds.has(id));
+    if (missing) throw httpError(400, `Terapis pada aturan jadwal tidak ditemukan: ${missing}.`);
+  }
+
+  const roomIds = Array.from(new Set(rules.map((rule) => rule.roomId).filter((id): id is string => !!id)));
+  if (roomIds.length > 0) {
+    const existingRooms = await db.query.rooms.findMany({ where: inArray(rooms.id, roomIds) });
+    const existingIds = new Set(existingRooms.map((room) => room.id));
+    const missing = roomIds.find((id) => !existingIds.has(id));
+    if (missing) throw httpError(400, `Ruangan pada aturan jadwal tidak ditemukan: ${missing}.`);
+  }
+}
+
 function todayAtMidnight() {
-  const today = new Date();
-  return new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  return parseDateKey(todayDateKey()) || new Date();
 }
 
 function normalizeTherapistIds(input: unknown, primaryTherapistId?: string) {
@@ -145,7 +164,9 @@ function calculateTotalPrice(data: {
 }
 
 function pickPeriodValues(data: any): Partial<TherapyPeriodInsert> {
-  const totalSessions = Number(data.totalSessions);
+  const totalSessions = data.totalSessions !== undefined
+    ? assertPositiveInteger(data.totalSessions, "Jumlah sesi periode", { min: 1, max: 240 })
+    : null;
   const pricePerSession = Number(data.pricePerSession || 0);
   const pricePerMonth = Number(data.pricePerMonth || 0);
   const billingMode = typeof data.billingMode === "string" ? data.billingMode : "per_session";
@@ -161,14 +182,14 @@ function pickPeriodValues(data: any): Partial<TherapyPeriodInsert> {
     ...(Number.isFinite(Number(data.periodNumber)) ? { periodNumber: Number(data.periodNumber) } : {}),
     ...(typeof data.name === "string" && data.name.trim() ? { name: data.name.trim() } : {}),
     ...(typeof data.status === "string" ? { status: data.status } : {}),
-    ...(typeof data.startDate === "string" && data.startDate ? { startDate: data.startDate } : {}),
-    ...(typeof data.endDate === "string" && data.endDate ? { endDate: data.endDate } : {}),
-    ...(Number.isFinite(totalSessions) ? { totalSessions } : {}),
+    ...(typeof data.startDate === "string" && data.startDate ? { startDate: assertValidDateKey(data.startDate, "Tanggal mulai periode") } : {}),
+    ...(typeof data.endDate === "string" && data.endDate ? { endDate: assertValidDateKey(data.endDate, "Tanggal selesai periode") } : {}),
+    ...(totalSessions !== null ? { totalSessions } : {}),
     ...(Number.isFinite(Number(data.completedSessions)) ? { completedSessions: Number(data.completedSessions) } : {}),
     ...(Number.isFinite(pricePerSession) ? { pricePerSession } : {}),
     ...(Number.isFinite(pricePerMonth) ? { pricePerMonth } : {}),
     billingMode,
-    totalPrice: calculateTotalPrice({ billingMode, pricePerSession, pricePerMonth, totalSessions, totalPrice: Number(data.totalPrice || 0) }),
+    totalPrice: calculateTotalPrice({ billingMode, pricePerSession, pricePerMonth, totalSessions: totalSessions ?? undefined, totalPrice: Number(data.totalPrice || 0) }),
     ...(Array.isArray(data.scheduleRules) ? { scheduleRules: normalizedScheduleRules } : {}),
     ...(Array.isArray(data.assistantTherapistIds) ? { assistantTherapistIds: normalizeTherapistIds(data.assistantTherapistIds, primaryTherapistId) } : {}),
     ...(Array.isArray(data.goals) ? { goals: normalizeGoals(data.goals) } : {}),
@@ -388,6 +409,7 @@ export const therapyPeriodService = {
     const child = await db.query.children.findFirst({ where: eq(children.id, childId) });
     if (!child) return null;
     const generationRules = normalizeScheduleRules(data.scheduleRules, data.therapistId);
+    await assertScheduleRuleResources(generationRules);
     if (data.generateSessions) {
       if (generationRules.length === 0) {
         throw new Error("Pilih minimal satu hari terapi, jam mulai, dan terapis utama sebelum membuat jadwal sesi.");
@@ -411,7 +433,11 @@ export const therapyPeriodService = {
         programId: data.programId || therapyProgram.programId,
         type: data.type || therapyProgram.type,
       });
-    const startDate = typeof data.startDate === "string" && data.startDate ? data.startDate : new Date().toISOString().split("T")[0];
+    const startDate = typeof data.startDate === "string" && data.startDate ? assertValidDateKey(data.startDate, "Tanggal mulai periode") : todayDateKey();
+    const endDate = typeof data.endDate === "string" && data.endDate ? assertValidDateKey(data.endDate, "Tanggal selesai periode") : "";
+    if (endDate && endDate < startDate) {
+      throw httpError(400, "Tanggal selesai periode tidak boleh lebih awal dari tanggal mulai.");
+    }
     const values = pickPeriodValues({
       ...data,
       childId,
@@ -421,6 +447,7 @@ export const therapyPeriodService = {
       periodNumber,
       name: data.name || `Periode ${periodNumber}`,
       startDate,
+      ...(endDate ? { endDate } : {}),
       totalSessions: Number(data.totalSessions || therapyProgram.totalSessions || 12),
       goal: data.goal || therapyProgram.goal || "",
     });
@@ -559,70 +586,77 @@ export const therapyPeriodService = {
   },
 
   async generateSessions(id: string, options: { scheduleRules?: ScheduleRule[] } = {}) {
-    const period = await db.query.therapyPeriods.findFirst({
-      where: eq(therapyPeriods.id, id),
-      with: { program: true, therapyProgram: true, sessions: true },
-    });
-    if (!period) return null;
+    const result = await db.transaction(async (tx) => {
+      await lockAdvisoryKeys(tx, [`therapy-period:${id}:generate-sessions`]);
+      const period = await tx.query.therapyPeriods.findFirst({
+        where: eq(therapyPeriods.id, id),
+        with: { program: true, therapyProgram: true, sessions: true },
+      });
+      if (!period) return null;
 
-    const rules = normalizeScheduleRules(options.scheduleRules || period.scheduleRules || []);
-    if (rules.length === 0) return { period: normalizePeriod(period), created: [] };
-    if (rules.some((rule) => !rule.therapistId)) {
-      throw new Error("Setiap aturan jadwal wajib memiliki therapistId.");
-    }
-
-    const periodStart = new Date(`${period.startDate}T00:00:00`);
-    const start = periodStart < todayAtMidnight() ? todayAtMidnight() : periodStart;
-    const limit = Math.max(0, Number(period.totalSessions || 0));
-    const searchDays = Math.max(366, limit * 14);
-    const hardEnd = period.endDate
-      ? new Date(`${period.endDate}T00:00:00`)
-      : new Date(start.getFullYear(), start.getMonth(), start.getDate() + searchDays);
-    const existing = Array.isArray(period.sessions) ? period.sessions : [];
-    const countedExisting = existing.filter((session: any) => {
-      const status = String(session.status || "").toLowerCase();
-      return status !== "cancelled" && status !== "canceled";
-    });
-    const existingKeys = new Set(countedExisting.map((session: any) => `${session.date}|${session.startTime}|${session.therapistId}`));
-    const values: TherapySessionInsert[] = [];
-    const skipped: Array<{ date: string; startTime: string; therapistId: string; reason?: string }> = [];
-
-    for (let cursor = new Date(start); cursor <= hardEnd && (limit === 0 || countedExisting.length + values.length < limit); cursor.setDate(cursor.getDate() + 1)) {
-      const dayRules = rules.filter((rule) => rule.dayOfWeek === cursor.getDay());
-      for (const rule of dayRules) {
-        if (limit > 0 && countedExisting.length + values.length >= limit) break;
-        const date = toDateString(cursor);
-        const key = `${date}|${rule.startTime}|${rule.therapistId}`;
-        if (existingKeys.has(key)) continue;
-        const availability = await evaluateSessionSlot({
-          therapistId: rule.therapistId!,
-          childId: period.childId,
-          roomId: rule.roomId || null,
-          date,
-          startTime: rule.startTime,
-          duration: rule.duration || "60 mins",
-        });
-        if (availability.status !== "available") {
-          skipped.push({ date, startTime: rule.startTime, therapistId: rule.therapistId!, reason: availability.reason });
-          continue;
-        }
-        existingKeys.add(key);
-        values.push({
-          id: `S-PER-${Date.now()}-${values.length}`,
-          therapyPeriodId: period.id,
-          therapistId: rule.therapistId!,
-          childId: period.childId,
-          roomId: rule.roomId || null,
-          date,
-          startTime: rule.startTime,
-          duration: rule.duration || "60 mins",
-          focus: period.program?.name || period.therapyProgram?.type || "Program Terapi",
-          status: "upcoming",
-        });
+      const rules = normalizeScheduleRules(options.scheduleRules || period.scheduleRules || []);
+      if (rules.length === 0) return { created: [], skipped: [] };
+      if (rules.some((rule) => !rule.therapistId)) {
+        throw new Error("Setiap aturan jadwal wajib memiliki therapistId.");
       }
-    }
 
-    const created = values.length > 0 ? await db.insert(therapySessions).values(values).returning() : [];
-    return { period: await this.getById(id), created, skipped };
+      const periodStart = parseDateKey(period.startDate) || todayAtMidnight();
+      const start = periodStart < todayAtMidnight() ? todayAtMidnight() : periodStart;
+      const limit = Math.max(0, Number(period.totalSessions || 0));
+      const searchDays = Math.max(366, limit * 14);
+      const hardEnd = period.endDate
+        ? parseDateKey(period.endDate) || new Date(start.getFullYear(), start.getMonth(), start.getDate() + searchDays)
+        : new Date(start.getFullYear(), start.getMonth(), start.getDate() + searchDays);
+      const existing = Array.isArray(period.sessions) ? period.sessions : [];
+      const countedExisting = existing.filter((session: any) => {
+        const status = String(session.status || "").toLowerCase();
+        return status !== "cancelled" && status !== "canceled";
+      });
+      const existingKeys = new Set(countedExisting.map((session: any) => `${session.date}|${session.startTime}|${session.therapistId}`));
+      const values: TherapySessionInsert[] = [];
+      const skipped: Array<{ date: string; startTime: string; therapistId: string; reason?: string }> = [];
+
+      for (let cursor = new Date(start); cursor <= hardEnd && (limit === 0 || countedExisting.length + values.length < limit); cursor.setDate(cursor.getDate() + 1)) {
+        const dayRules = rules.filter((rule) => rule.dayOfWeek === cursor.getDay());
+        for (const rule of dayRules) {
+          if (limit > 0 && countedExisting.length + values.length >= limit) break;
+          const date = toDateString(cursor);
+          const key = `${date}|${rule.startTime}|${rule.therapistId}`;
+          if (existingKeys.has(key)) continue;
+          const candidate = {
+            therapistId: rule.therapistId!,
+            childId: period.childId,
+            roomId: rule.roomId || null,
+            date,
+            startTime: rule.startTime,
+            duration: rule.duration || "60 mins",
+          };
+          const localConflict = findLocalScheduleConflict(values, candidate);
+          if (localConflict) {
+            skipped.push({ date, startTime: rule.startTime, therapistId: rule.therapistId!, reason: "Bentrok dengan slot lain dalam generate periode yang sama." });
+            continue;
+          }
+          await lockSchedulingSlots(tx, [candidate]);
+          const availability = await evaluateSessionSlot(candidate);
+          if (availability.status !== "available") {
+            skipped.push({ date, startTime: rule.startTime, therapistId: rule.therapistId!, reason: availability.reason });
+            continue;
+          }
+          existingKeys.add(key);
+          values.push({
+            id: generateId("S"),
+            therapyPeriodId: period.id,
+            ...candidate,
+            focus: period.program?.name || period.therapyProgram?.type || "Program Terapi",
+            status: "upcoming",
+          });
+        }
+      }
+
+      const created = values.length > 0 ? await tx.insert(therapySessions).values(values).returning() : [];
+      return { created, skipped };
+    });
+    if (!result) return null;
+    return { period: await this.getById(id), created: result.created, skipped: result.skipped };
   },
 };

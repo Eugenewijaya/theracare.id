@@ -7,9 +7,11 @@ import { therapistService } from "../services/therapist.service.js";
 import { auditLogService } from "../services/audit-log.service.js";
 import { notificationService } from "../services/notification.service.js";
 import { ok, created, notFound, badRequest, conflict } from "../utils/response.js";
-import { isAttendanceConfirmedSessionStatus } from "../domain/workflow-status.js";
+import { COMPLETED_SESSION_STATUSES, isAttendanceConfirmedSessionStatus, isValidSessionStatus } from "../domain/workflow-status.js";
 
 const router = Router();
+const ADMIN_MUTABLE_SESSION_STATUSES = new Set(["upcoming", "confirmed", "cancelled"]);
+const THERAPIST_MUTABLE_SESSION_STATUSES = new Set(["active", "done"]);
 
 async function canAccessTherapistSchedule(req: any, therapistId: string) {
   if (req.user?.role === "admin") return true;
@@ -19,7 +21,10 @@ async function canAccessTherapistSchedule(req: any, therapistId: string) {
 }
 
 async function canMutateSession(req: any, sessionId: string) {
-  if (req.user?.role === "admin") return { allowed: true, session: null };
+  if (req.user?.role === "admin") {
+    const session = await sessionService.getById(sessionId);
+    return { allowed: true, session };
+  }
   if (req.user?.role !== "therapist") return { allowed: false, session: null };
   const [ownProfile, session] = await Promise.all([
     therapistService.getByUserId(req.user.id),
@@ -27,6 +32,43 @@ async function canMutateSession(req: any, sessionId: string) {
   ]);
   if (!session) return { allowed: true, session: null };
   return { allowed: ownProfile?.id === session.therapistId, session };
+}
+
+function validateSessionStatusTransition(req: any, currentStatus: string | undefined, nextStatus: string) {
+  const role = req.user?.role;
+  const current = String(currentStatus || "").toLowerCase();
+
+  if (!isValidSessionStatus(nextStatus)) {
+    return { status: 400, error: "Status sesi tidak valid." };
+  }
+  if (role === "admin" && !ADMIN_MUTABLE_SESSION_STATUSES.has(nextStatus)) {
+    return { status: 403, error: "Admin hanya boleh mengonfirmasi, membatalkan, atau mengembalikan sesi ke upcoming." };
+  }
+  if (role === "therapist" && !THERAPIST_MUTABLE_SESSION_STATUSES.has(nextStatus)) {
+    return { status: 403, error: "Terapis hanya boleh memulai atau menyelesaikan sesi miliknya." };
+  }
+  if ((current === "done" || current === "cancelled") && current !== nextStatus) {
+    return { status: 409, error: "Status sesi final tidak dapat diubah langsung." };
+  }
+  if (current === nextStatus) {
+    return { status: 409, error: "Status sesi sudah berada pada kondisi tersebut." };
+  }
+  if (role === "admin" && nextStatus === "confirmed" && current && current !== "upcoming") {
+    return { status: 409, error: "Admin hanya dapat mengonfirmasi sesi dari status upcoming." };
+  }
+  if (role === "admin" && nextStatus === "upcoming" && current && current !== "confirmed") {
+    return { status: 409, error: "Sesi hanya dapat dikembalikan ke upcoming dari status confirmed." };
+  }
+  if (role === "admin" && nextStatus === "cancelled" && current && !["upcoming", "confirmed"].includes(current)) {
+    return { status: 409, error: "Sesi hanya dapat dibatalkan sebelum berjalan atau selesai." };
+  }
+  if (role === "therapist" && nextStatus === "active" && current && !isAttendanceConfirmedSessionStatus(current)) {
+    return { status: 409, error: "Sesi belum bisa dimulai karena kehadiran anak belum dikonfirmasi admin.", data: { currentStatus, requiredStatus: "confirmed" } };
+  }
+  if (role === "therapist" && nextStatus === "done" && current !== "active") {
+    return { status: 409, error: "Sesi hanya bisa diakhiri setelah statusnya berjalan.", data: { currentStatus, requiredStatus: "active" } };
+  }
+  return null;
 }
 
 async function canAccessChildSchedule(req: any, childId: string) {
@@ -90,6 +132,15 @@ router.get("/child/:id/completed", requireAuth, async (req, res, next) => {
       return res.status(403).json({ success: false, error: "Akses ditolak" });
     }
     ok(res, await sessionService.getCompletedForChild(req.params.id as string));
+  } catch (e) { next(e); }
+});
+
+router.get("/child/:id/attendance-history", requireAuth, async (req, res, next) => {
+  try {
+    if (!(await canAccessChildSchedule(req, req.params.id as string))) {
+      return res.status(403).json({ success: false, error: "Akses ditolak" });
+    }
+    ok(res, await sessionService.getAttendanceHistoryForChild(req.params.id as string));
   } catch (e) { next(e); }
 });
 
@@ -160,21 +211,14 @@ router.patch("/:id/status", requireAuth, async (req, res, next) => {
     const access = await canMutateSession(req, req.params.id as string);
     if (!access.allowed) return res.status(403).json({ success: false, error: "Akses ditolak" });
     if (access.session === null && req.user!.role !== "admin") return notFound(res);
-    const nextStatus = String(req.body?.status || "").trim();
+    const nextStatus = String(req.body?.status || "").trim().toLowerCase();
     if (!nextStatus) return badRequest(res, "Status sesi wajib diisi");
-    if (req.user?.role === "therapist" && nextStatus === "active") {
-      const currentStatus = access.session?.status;
-      if (currentStatus !== "active" && !isAttendanceConfirmedSessionStatus(currentStatus)) {
-        return conflict(res, "Sesi belum bisa dimulai karena kehadiran anak belum dikonfirmasi admin.", {
-          currentStatus,
-          requiredStatus: "confirmed",
-        });
-      }
-    }
-    if (req.user?.role === "therapist" && nextStatus === "done" && access.session?.status !== "active") {
-      return conflict(res, "Sesi hanya bisa diakhiri setelah statusnya berjalan.", {
-        currentStatus: access.session?.status,
-        requiredStatus: "active",
+    const transitionError = validateSessionStatusTransition(req, access.session?.status, nextStatus);
+    if (transitionError) {
+      return res.status(transitionError.status).json({
+        success: false,
+        error: transitionError.error,
+        ...(transitionError.data ? { data: transitionError.data } : {}),
       });
     }
     const result = await sessionService.updateStatus(req.params.id as string, nextStatus, req.body.cancelReason);
@@ -185,7 +229,7 @@ router.patch("/:id/status", requireAuth, async (req, res, next) => {
       entityType: "session",
       entityId: req.params.id as string,
       summary: `Status sesi diubah menjadi ${nextStatus}`,
-      metadata: { status: nextStatus, cancelReason: req.body.cancelReason },
+      metadata: { fromStatus: access.session?.status || null, status: nextStatus, cancelReason: req.body.cancelReason },
     });
     ok(res, result);
   } catch (e) { next(e); }
@@ -283,6 +327,12 @@ router.post("/:id/rating", requireAuth, requireRole("parent"), async (req, res, 
     if (!session) return notFound(res);
     if (!(await canAccessSession(req, session))) {
       return res.status(403).json({ success: false, error: "Akses ditolak" });
+    }
+    if (!COMPLETED_SESSION_STATUSES.includes(String(session.status || "").toLowerCase() as typeof COMPLETED_SESSION_STATUSES[number])) {
+      return conflict(res, "Rating hanya bisa diberikan setelah sesi selesai.", {
+        currentStatus: session.status,
+        requiredStatus: "done",
+      });
     }
 
     const parentProfile = await parentService.getByUserId(req.user!.id);

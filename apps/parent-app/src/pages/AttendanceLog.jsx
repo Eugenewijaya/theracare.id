@@ -13,6 +13,21 @@ const calculateEndTime = (startTime, duration) => {
     return `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
 };
 
+const formatTime = (value) => {
+    if (!value) return null;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return null;
+    return date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+};
+
+const mapAttendanceStatus = (status) => {
+    const normalized = String(status || '').toLowerCase();
+    if (normalized === 'done' || normalized === 'completed') return 'present';
+    if (normalized === 'active' || normalized === 'confirmed') return 'present';
+    if (normalized === 'cancelled' || normalized === 'canceled') return 'absent';
+    return 'rescheduled';
+};
+
 export default function AttendanceLog() {
     const [child, setChild] = useState(null);
     const [attendanceLog, setAttendanceLog] = useState([]);
@@ -49,27 +64,26 @@ export default function AttendanceLog() {
             if (!nextChild) throw new Error('Profil anak belum ditemukan.');
             setChild(nextChild);
 
-            const sessionsRes = await sessionsApi.getCompletedForChild(targetChildId);
+            const sessionsRes = await sessionsApi.getAttendanceHistoryForChild(targetChildId);
             if (!sessionsRes.ok) throw new Error(sessionsRes.data?.error || 'Riwayat kehadiran belum bisa dimuat.');
             const childSessions = sessionsRes.data?.data || [];
 
             const logs = childSessions.map(s => {
-                let status = 'rescheduled';
-                if (s.status === 'done') status = 'present';
-                else if (s.status === 'cancelled') status = 'absent';
+                const status = mapAttendanceStatus(s.status);
                 const therapistName = s.therapist?.name
                     || s.therapistName
                     || s.therapist?.user?.name
                     || 'Terapis';
+                const isPresent = status === 'present';
 
                 return {
                     id: s.id,
                     date: s.date,
-                    program: s.focus || 'Therapy',
+                    program: s.focus || s.therapyPeriod?.program?.name || s.therapyPeriod?.therapyProgram?.type || 'Therapy',
                     status: status,
-                    checkIn: s.status === 'done' ? s.startTime : null,
-                    checkOut: s.status === 'done' ? calculateEndTime(s.startTime, s.duration) : null,
-                    note: s.notes || (status === 'rescheduled' ? 'Sesi dipindahkan' : ''),
+                    checkIn: isPresent ? (formatTime(s.startedAt) || s.startTime) : null,
+                    checkOut: isPresent ? (formatTime(s.endedAt) || calculateEndTime(s.startTime, s.duration)) : null,
+                    note: s.cancelReason || s.notes || (status === 'rescheduled' ? 'Sesi dipindahkan' : ''),
                     therapist: therapistName
                 };
             }).sort((a,b) => new Date(b.date) - new Date(a.date));
