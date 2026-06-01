@@ -369,6 +369,12 @@ function buildGenerationFailureMessage(createdCount: number, targetCount: number
   return `Jadwal otomatis hanya membuat ${createdCount}/${targetCount} sesi. Periksa hari terapi, jam mulai, jadwal terapis, jam operasional, atau rentang tanggal.${reasonText}`;
 }
 
+function isForfeitedCancellation(session: any) {
+  const status = String(session?.status || "").toLowerCase();
+  const reason = String(session?.cancelReason || "").toLowerCase();
+  return ["cancelled", "canceled"].includes(status) && (reason.includes("hangus") || reason.includes("forfeit"));
+}
+
 export const therapyPeriodService = {
   async getAll(filters: { childId?: string; status?: string } = {}) {
     const conditions = [];
@@ -409,8 +415,9 @@ export const therapyPeriodService = {
     const child = await db.query.children.findFirst({ where: eq(children.id, childId) });
     if (!child) return null;
     const generationRules = normalizeScheduleRules(data.scheduleRules, data.therapistId);
+    const shouldGenerateSessions = data.generateSessions !== false;
     await assertScheduleRuleResources(generationRules);
-    if (data.generateSessions) {
+    if (shouldGenerateSessions) {
       if (generationRules.length === 0) {
         throw new Error("Pilih minimal satu hari terapi, jam mulai, dan terapis utama sebelum membuat jadwal sesi.");
       }
@@ -473,10 +480,10 @@ export const therapyPeriodService = {
 
     let generation = null;
     try {
-      generation = data.generateSessions
+      generation = shouldGenerateSessions
         ? await this.generateSessions(period.id, { scheduleRules: generationRules })
         : null;
-      if (data.generateSessions) {
+      if (shouldGenerateSessions) {
         const targetCount = Math.max(0, Number(period.totalSessions || 0));
         const createdCount = Array.isArray(generation?.created) ? generation.created.length : 0;
         if (targetCount > 0 && createdCount < targetCount) {
@@ -546,7 +553,7 @@ export const therapyPeriodService = {
       name: data.name || `Periode ${nextPeriodNumber}`,
       completedSessions: 0,
       finalReportId: undefined,
-      generateSessions: data.generateSessions || false,
+      generateSessions: data.generateSessions !== false,
     });
   },
 
@@ -610,7 +617,7 @@ export const therapyPeriodService = {
       const existing = Array.isArray(period.sessions) ? period.sessions : [];
       const countedExisting = existing.filter((session: any) => {
         const status = String(session.status || "").toLowerCase();
-        return status !== "cancelled" && status !== "canceled";
+        return (status !== "cancelled" && status !== "canceled") || isForfeitedCancellation(session);
       });
       const existingKeys = new Set(countedExisting.map((session: any) => `${session.date}|${session.startTime}|${session.therapistId}`));
       const values: TherapySessionInsert[] = [];

@@ -159,6 +159,13 @@ const toDateKey = (dateObj) => {
     return `${y}-${m}-${d}`;
 };
 
+const addDaysKey = (dateStr, amount) => {
+    const base = dateStr ? new Date(`${dateStr}T00:00:00`) : new Date();
+    if (Number.isNaN(base.getTime())) return toDateKey(new Date());
+    base.setDate(base.getDate() + amount);
+    return toDateKey(base);
+};
+
 // ── Toast Notification ──────────────────────────────────────────────────────
 function Toast({ message, type = 'success', onClose }) {
     React.useEffect(() => {
@@ -307,11 +314,11 @@ function EditSessionModal({ session, childrenList, therapistsList, programsList,
                     </button>
                     <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:justify-end">
                         <button
-                            onClick={() => onMarkLeave(session.id)}
+                            onClick={() => onMarkLeave(session)}
                             className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-red-50 px-3 py-2 text-sm font-bold text-red-700 transition-colors hover:bg-red-100 sm:px-4"
                         >
                             <span className="material-symbols-outlined text-[16px]">event_busy</span>
-                            Cuti Terapis
+                            Batal / Pengganti
                         </button>
                         <button
                             onClick={() => onAssignSubstitute(session)}
@@ -336,6 +343,197 @@ function EditSessionModal({ session, childrenList, therapistsList, programsList,
                     </div>
                 </div>
             </div>
+            <style>{`@keyframes scaleIn { from { opacity:0; transform:scale(0.93) translateY(8px); } to { opacity:1; transform:scale(1) translateY(0); } }`}</style>
+        </div>
+    );
+}
+
+function CancellationPolicyModal({ session, childrenList, therapistsList, allSessions, onSubmit, onClose }) {
+    const [policy, setPolicy] = useState('replacement');
+    const [replacementDate, setReplacementDate] = useState(() => addDaysKey(session.date, 7));
+    const [replacementTime, setReplacementTime] = useState(session.startTime || '09:00');
+    const [replacementTherapistId, setReplacementTherapistId] = useState(session.therapistId || '');
+    const [reason, setReason] = useState('Sesi dibatalkan sesuai kebijakan center.');
+    const [submitting, setSubmitting] = useState(false);
+
+    const childName = getChildName(childrenList, session.childId);
+    const currentTherapistName = getTherapistName(therapistsList, session.therapistId);
+    const replacementTherapist = therapistsList.find(item => item.id === replacementTherapistId);
+    const replacementIssue = policy === 'replacement'
+        ? getTherapistBookingIssue(
+            replacementTherapist,
+            allSessions,
+            replacementDate,
+            replacementTime,
+            session.duration || '60 mins',
+            session.id,
+        )
+        : '';
+    const sameSlot = policy === 'replacement'
+        && replacementDate === session.date
+        && replacementTime === session.startTime;
+    const canSubmit = reason.trim().length >= 8
+        && (policy === 'forfeit' || (
+            replacementDate
+            && replacementTime
+            && replacementTherapistId
+            && !replacementIssue
+            && !sameSlot
+        ));
+
+    const handleSubmit = async (event) => {
+        event.preventDefault();
+        if (!canSubmit || submitting) return;
+        setSubmitting(true);
+        try {
+            await onSubmit(session.id, {
+                policy,
+                cancelReason: reason.trim(),
+                ...(policy === 'replacement'
+                    ? {
+                        replacement: {
+                            date: replacementDate,
+                            startTime: replacementTime,
+                            therapistId: replacementTherapistId,
+                            duration: session.duration || '60 mins',
+                            note: `Pengganti dari jadwal ${session.date} ${session.startTime}.`,
+                        },
+                    }
+                    : {}),
+            });
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm">
+            <form
+                onSubmit={handleSubmit}
+                className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-2xl max-h-[calc(100vh-2rem)] overflow-hidden flex flex-col"
+                style={{ animation: 'scaleIn 0.2s ease-out' }}
+            >
+                <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 flex items-start justify-between gap-4">
+                    <div>
+                        <h3 className="font-black text-lg text-slate-900 dark:text-white flex items-center gap-2">
+                            <span className="material-symbols-outlined text-primary">event_repeat</span>
+                            Kebijakan Sesi Batal
+                        </h3>
+                        <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                            {childName} - {session.date} pukul {session.startTime} bersama {currentTherapistName}
+                        </p>
+                    </div>
+                    <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                        <span className="material-symbols-outlined">close</span>
+                    </button>
+                </div>
+
+                <div className="flex flex-col gap-4 overflow-y-auto p-6">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                        <label className={`cursor-pointer rounded-xl border p-4 transition ${
+                            policy === 'replacement'
+                                ? 'border-primary bg-primary/5 text-slate-950 dark:bg-primary/10 dark:text-white'
+                                : 'border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800/60'
+                        }`}>
+                            <input type="radio" className="sr-only" checked={policy === 'replacement'} onChange={() => setPolicy('replacement')} />
+                            <span className="flex items-center gap-2 text-sm font-black">
+                                <span className="material-symbols-outlined text-[18px]">event_repeat</span>
+                                Buat sesi pengganti
+                            </span>
+                            <span className="mt-1 block text-xs font-semibold text-slate-500">Sesi lama dibatalkan, slot baru masuk ke jadwal orang tua dan terapis.</span>
+                        </label>
+                        <label className={`cursor-pointer rounded-xl border p-4 transition ${
+                            policy === 'forfeit'
+                                ? 'border-red-300 bg-red-50 text-red-900 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-100'
+                                : 'border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800/60'
+                        }`}>
+                            <input type="radio" className="sr-only" checked={policy === 'forfeit'} onChange={() => setPolicy('forfeit')} />
+                            <span className="flex items-center gap-2 text-sm font-black">
+                                <span className="material-symbols-outlined text-[18px]">event_busy</span>
+                                Sesi hangus
+                            </span>
+                            <span className="mt-1 block text-xs font-semibold text-slate-500">Sesi lama dibatalkan tanpa jadwal pengganti.</span>
+                        </label>
+                    </div>
+
+                    {policy === 'replacement' && (
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950">
+                            <p className="text-xs font-black uppercase tracking-wide text-slate-500">Slot pengganti</p>
+                            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                                <div className="flex flex-col gap-2">
+                                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Tanggal</label>
+                                    <input
+                                        type="date"
+                                        value={replacementDate}
+                                        min={toDateKey(new Date())}
+                                        onChange={event => setReplacementDate(event.target.value)}
+                                        className="h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:[color-scheme:dark]"
+                                    />
+                                </div>
+                                <div className="flex flex-col gap-2">
+                                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Jam</label>
+                                    <TimeSelect
+                                        value={replacementTime}
+                                        onChange={setReplacementTime}
+                                        className="h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                                    />
+                                </div>
+                                <div className="flex flex-col gap-2">
+                                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Terapis</label>
+                                    <select
+                                        value={replacementTherapistId}
+                                        onChange={event => setReplacementTherapistId(event.target.value)}
+                                        className="h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                                    >
+                                        <option value="">Pilih terapis...</option>
+                                        {therapistsList.filter(item => (item.status || 'active') === 'active').map(therapist => (
+                                            <option key={therapist.id} value={therapist.id}>{therapist.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+                            {sameSlot && (
+                                <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700">
+                                    Slot pengganti harus berbeda dari jadwal lama.
+                                </p>
+                            )}
+                            {replacementIssue && (
+                                <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700">
+                                    {replacementIssue}
+                                </p>
+                            )}
+                        </div>
+                    )}
+
+                    <div className="flex flex-col gap-2">
+                        <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Alasan / catatan kebijakan</label>
+                        <textarea
+                            rows={3}
+                            value={reason}
+                            onChange={event => setReason(event.target.value)}
+                            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                            placeholder="Contoh: terapis sakit, sesi dipindahkan ke pekan depan."
+                        />
+                        {reason.trim().length > 0 && reason.trim().length < 8 && (
+                            <p className="text-xs font-bold text-red-600">Catatan minimal 8 karakter.</p>
+                        )}
+                    </div>
+                </div>
+
+                <div className="flex flex-col-reverse gap-3 border-t border-slate-200 bg-slate-50 px-6 py-4 dark:border-slate-800 dark:bg-slate-800/50 sm:flex-row sm:justify-end">
+                    <button type="button" onClick={onClose} className="rounded-lg px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-200 dark:text-slate-300 dark:hover:bg-slate-700">
+                        Batal
+                    </button>
+                    <button
+                        type="submit"
+                        disabled={!canSubmit || submitting}
+                        className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-5 py-2 text-sm font-black text-white shadow-sm transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-45"
+                    >
+                        <span className="material-symbols-outlined text-[16px]">{policy === 'replacement' ? 'event_repeat' : 'event_busy'}</span>
+                        {submitting ? 'Menyimpan...' : policy === 'replacement' ? 'Batalkan & Buat Pengganti' : 'Batalkan sebagai Hangus'}
+                    </button>
+                </div>
+            </form>
             <style>{`@keyframes scaleIn { from { opacity:0; transform:scale(0.93) translateY(8px); } to { opacity:1; transform:scale(1) translateY(0); } }`}</style>
         </div>
     );
@@ -507,6 +705,7 @@ function App() {
     const [selectedDate, setSelectedDate] = useState(null);
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [editSession, setEditSession] = useState(null); // session object being edited
+    const [cancellationSession, setCancellationSession] = useState(null);
     const [replacementSession, setReplacementSession] = useState(null);
     const [currentMonth, setCurrentMonth] = useState(today.getMonth());
     const [currentYear, setCurrentYear] = useState(today.getFullYear());
@@ -860,27 +1059,38 @@ function App() {
         }
     };
 
-    const handleMarkTherapistLeave = async (sessionId) => {
-        const confirmed = await confirmAction({
-            tone: 'warning',
-            title: 'Tandai terapis off?',
-            message: 'Sesi akan ditandai merah. Pastikan orang tua diarahkan untuk reschedule atau gunakan terapis pendamping.',
-            confirmText: 'Tandai off',
-            cancelText: 'Batal',
-        });
-        if (!confirmed) return;
+    const handleOpenCancellationPolicy = (sessionOrId) => {
+        const session = typeof sessionOrId === 'string'
+            ? allSessions.find(item => item.id === sessionOrId)
+            : sessionOrId;
+        if (!session) return;
+        if (['done', 'completed', 'active', 'cancelled', 'canceled'].includes(String(session.status || '').toLowerCase())) {
+            showToast('Sesi yang sudah berjalan, selesai, atau sudah batal tidak bisa diproses dari menu ini.', 'error');
+            return;
+        }
+        setCancellationSession(session);
+    };
+
+    const handleApplyCancellationPolicy = async (sessionId, payload) => {
         try {
-            const res = await sessionsApi.updateStatus(sessionId, 'cancelled', 'Terapis cuti - sarankan reschedule atau jadwalkan dengan terapis pendamping.');
+            const res = await sessionsApi.cancelWithPolicy(sessionId, payload);
             if (!res.ok) {
-                showToast(getApiError(res, 'Gagal menandai cuti terapis'), 'error');
+                showToast(getApiError(res, 'Gagal memproses kebijakan sesi batal'), 'error');
                 return;
             }
+            setCancellationSession(null);
             setEditSession(null);
-            showToast('Sesi ditandai sebagai cuti terapis.', 'info');
+            showToast(payload.policy === 'replacement'
+                ? 'Sesi lama dibatalkan dan jadwal pengganti dibuat.'
+                : 'Sesi dibatalkan sebagai hangus sesuai kebijakan center.',
+                payload.policy === 'replacement' ? 'success' : 'info');
             await loadDb();
             window.dispatchEvent(new Event('sessionUpdated'));
+            window.dispatchEvent(new Event('scheduleUpdated'));
+            window.dispatchEvent(new Event('rescheduleUpdated'));
+            window.dispatchEvent(new Event('notificationsUpdated'));
         } catch (e) {
-            showToast('Gagal menandai cuti terapis', 'error');
+            showToast('Gagal memproses kebijakan sesi batal', 'error');
         }
     };
 
@@ -1153,9 +1363,20 @@ function App() {
                     programsList={programsList}
                     onSave={handleEditSave}
                     onDelete={handleEditDelete}
-                    onMarkLeave={handleMarkTherapistLeave}
+                    onMarkLeave={handleOpenCancellationPolicy}
                     onAssignSubstitute={handleOpenSubstitute}
                     onClose={() => setEditSession(null)}
+                />
+            )}
+
+            {cancellationSession && (
+                <CancellationPolicyModal
+                    session={cancellationSession}
+                    childrenList={childrenList}
+                    therapistsList={therapistsList}
+                    allSessions={allSessions}
+                    onSubmit={handleApplyCancellationPolicy}
+                    onClose={() => setCancellationSession(null)}
                 />
             )}
 

@@ -206,6 +206,28 @@ router.post("/bulk", requireAuth, requireRole("admin"), async (req, res, next) =
   } catch (e) { next(e); }
 });
 
+router.post("/:id/cancel-policy", requireAuth, requireRole("admin"), async (req, res, next) => {
+  try {
+    const result = await sessionService.cancelWithPolicy(req.params.id as string, req.body || {});
+    if (!result) return notFound(res);
+    await auditLogService.create({
+      actor: req.user,
+      action: "session.cancel_policy.apply",
+      entityType: "session",
+      entityId: req.params.id as string,
+      summary: result.policy === "replacement"
+        ? `Sesi ${req.params.id} dibatalkan dan dibuat sesi pengganti ${result.replacement?.id || ""}`.trim()
+        : `Sesi ${req.params.id} dibatalkan dengan kebijakan hangus`,
+      metadata: {
+        policy: result.policy,
+        replacementId: result.replacement?.id || null,
+        requested: req.body || {},
+      },
+    });
+    ok(res, result, result.policy === "replacement" ? "Sesi pengganti berhasil dibuat" : "Sesi dibatalkan dengan kebijakan hangus");
+  } catch (e) { next(e); }
+});
+
 router.patch("/:id/status", requireAuth, async (req, res, next) => {
   try {
     const access = await canMutateSession(req, req.params.id as string);

@@ -94,9 +94,14 @@ const getApprovalLabel = (approval) => {
 const isCompletedPeriod = (period) => String(period?.status || '').toLowerCase() === 'completed';
 const isCancelledPeriod = (period) => String(period?.status || '').toLowerCase() === 'cancelled';
 const isActiveSchedulePeriod = (period) => ['active', 'planned'].includes(String(period?.status || '').toLowerCase());
+const isForfeitedCancellation = (session) => {
+  const status = String(session?.status || '').toLowerCase();
+  const reason = String(session?.cancelReason || '').toLowerCase();
+  return ['cancelled', 'canceled'].includes(status) && (reason.includes('hangus') || reason.includes('forfeit'));
+};
 const countScheduledSessions = (period) => {
   const sessions = Array.isArray(period?.sessions) ? period.sessions : [];
-  return sessions.filter(session => !['cancelled', 'canceled'].includes(String(session?.status || '').toLowerCase())).length;
+  return sessions.filter(session => !['cancelled', 'canceled'].includes(String(session?.status || '').toLowerCase()) || isForfeitedCancellation(session)).length;
 };
 const getMissingSessionCount = (period) => Math.max(0, Number(period?.totalSessions || 0) - countScheduledSessions(period));
 
@@ -114,7 +119,6 @@ export default function ProgramEnrollmentPage() {
   const [deletionRequests, setDeletionRequests] = useState([]);
   const [deletionReasonByPeriod, setDeletionReasonByPeriod] = useState({});
   const [requestingDeletionId, setRequestingDeletionId] = useState('');
-  const [generatingScheduleId, setGeneratingScheduleId] = useState('');
 
   useEffect(() => {
     const load = async () => {
@@ -359,41 +363,6 @@ export default function ProgramEnrollmentPage() {
     }
   };
 
-  const handleGenerateMissingSessions = async (period) => {
-    const scheduleRules = Array.isArray(period?.scheduleRules) ? period.scheduleRules : [];
-    if (scheduleRules.length === 0) {
-      setMessage({ type: 'error', text: 'Periode ini belum punya hari terapi dan jam mulai. Hapus/buat ulang periode dengan pola jadwal agar sesi bisa dibuat otomatis.' });
-      return;
-    }
-
-    setGeneratingScheduleId(period.id);
-    setMessage(null);
-    try {
-      const res = await therapyPeriodsApi.generateSessions(period.id, { scheduleRules });
-      if (!res.ok) throw new Error(res.data?.error || 'Gagal membuat jadwal sesi periode.');
-      const result = res.data?.data || {};
-      const createdCount = Array.isArray(result.created) ? result.created.length : 0;
-      const skippedCount = Array.isArray(result.skipped) ? result.skipped.length : 0;
-      const remaining = getMissingSessionCount(result.period || period);
-      setMessage({
-        type: createdCount > 0 && remaining === 0 ? 'success' : createdCount > 0 ? 'warning' : 'error',
-        text: createdCount > 0
-          ? `Jadwal otomatis dibuat: ${createdCount} sesi baru. ${remaining > 0 ? `${remaining} sesi masih belum terbentuk karena konflik/rentang.` : 'Target periode sudah terpenuhi.'}${skippedCount ? ` ${skippedCount} slot dilewati.` : ''}`
-          : `Belum ada sesi baru yang bisa dibuat. Periksa hari terapi, jam mulai, terapis, ruang, jam operasional, atau rentang periode.${skippedCount ? ` ${skippedCount} slot dilewati.` : ''}`,
-      });
-      const refreshed = await childrenApi.getAll();
-      if (refreshed.ok) setChildren(refreshed.data?.data || []);
-      window.dispatchEvent(new Event('childUpdated'));
-      window.dispatchEvent(new Event('sessionUpdated'));
-      window.dispatchEvent(new Event('notificationsUpdated'));
-      window.dispatchEvent(new Event('programsUpdated'));
-    } catch (e) {
-      setMessage({ type: 'error', text: e.message || 'Gagal membuat jadwal sesi periode.' });
-    } finally {
-      setGeneratingScheduleId('');
-    }
-  };
-
   return (
     <div className="min-h-full min-w-0 overflow-x-hidden bg-background-light dark:bg-background-dark">
       <main className="mx-auto flex w-full max-w-[1280px] min-w-0 flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
@@ -457,24 +426,11 @@ export default function ProgramEnrollmentPage() {
                     <p className="mt-1 font-semibold text-slate-600 dark:text-slate-300">{period.programName || period.type}</p>
                     <p className="mt-1 text-slate-500">{period.startDate} - {period.endDate || 'selesai sesi'}</p>
                     <p className="mt-1 text-slate-500">{period.sessionLabel} - {formatCurrency(period.totalPrice)}</p>
-                    {isActiveSchedulePeriod(period) && getMissingSessionCount(period) > 0 && (() => {
-                      const scheduleRules = Array.isArray(period.scheduleRules) ? period.scheduleRules : [];
-                      return scheduleRules.length > 0 ? (
-                        <button
-                          type="button"
-                          onClick={() => handleGenerateMissingSessions(period)}
-                          disabled={generatingScheduleId === period.id}
-                          className="mt-3 inline-flex w-full items-center justify-center gap-1 rounded-lg border border-sky-200 bg-white px-3 py-2 text-[11px] font-black text-sky-700 hover:bg-sky-50 disabled:opacity-50 dark:border-sky-900/60 dark:bg-slate-950 dark:text-sky-300 dark:hover:bg-sky-950/30"
-                        >
-                          <span className="material-symbols-outlined text-[15px]">event_repeat</span>
-                          {generatingScheduleId === period.id ? 'Membuat jadwal...' : `Buat ${getMissingSessionCount(period)} jadwal otomatis`}
-                        </button>
-                      ) : (
-                        <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-2 font-semibold text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
-                          Periode ini belum punya pola hari/jam. Hapus dan buat ulang dengan Hari Terapi agar jadwal otomatis terbentuk.
-                        </p>
-                      );
-                    })()}
+                    {isActiveSchedulePeriod(period) && getMissingSessionCount(period) > 0 && (
+                      <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-2 font-semibold text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+                        Jadwal periode ini belum lengkap. Mulai sekarang periode baru wajib membuat sesi otomatis saat disimpan; jika ini data lama, periksa pola hari/jam lalu buat ulang periode.
+                      </p>
+                    )}
                     {deletionRequestsByPeriod.has(period.id) && (() => {
                       const request = deletionRequestsByPeriod.get(period.id);
                       return (

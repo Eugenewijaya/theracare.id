@@ -289,6 +289,7 @@ export const sessionsApi = {
   create: (data) => api.post('/sessions', data),
   createOneTimeVisit: (data) => api.post('/sessions/one-time-visits', data),
   createBulk: (sessions) => api.post('/sessions/bulk', { sessions }),
+  cancelWithPolicy: (id, data = {}) => api.post(`/sessions/${id}/cancel-policy`, data),
   updateStatus: (id, status, cancelReason) => api.patch(`/sessions/${id}/status`, { status, cancelReason }),
   saveNotes: (id, notes) => api.patch(`/sessions/${id}/notes`, { notes }),
   getRating: (id) => api.get(`/sessions/${id}/rating`),
