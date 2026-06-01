@@ -323,7 +323,9 @@ const ProgramForm = ({ data, onChange, errors }) => {
             </div>
 
             <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
-                <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3 block">Hari Terapi</label>
+                <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3 block">
+                    Hari Terapi <span className="text-red-500">*</span>
+                </label>
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                     {DAY_OPTIONS.map(day => (
                         <button
@@ -336,15 +338,19 @@ const ProgramForm = ({ data, onChange, errors }) => {
                         </button>
                     ))}
                 </div>
+                {errors?.therapyDays && <p className="text-xs text-red-500 mt-2">{errors.therapyDays}</p>}
                 <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div>
-                        <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">Jam Mulai Default</label>
+                        <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">
+                            Jam Mulai Default <span className="text-red-500">*</span>
+                        </label>
                         <input
                             type="time"
                             value={data.sessionStartTime || '09:00'}
                             onChange={(e) => onChange({ ...data, sessionStartTime: e.target.value })}
-                            className="w-full h-11 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-opacity-50 focus:border-primary"
+                            className={`w-full h-11 px-3 rounded-lg border ${errors?.sessionStartTime ? 'border-red-500 focus:ring-red-500' : 'border-slate-300 dark:border-slate-700 focus:ring-primary focus:border-primary'} bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-opacity-50`}
                         />
+                        {errors?.sessionStartTime && <p className="text-xs text-red-500 mt-1">{errors.sessionStartTime}</p>}
                     </div>
                     <div>
                         <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">Durasi Default</label>
@@ -360,7 +366,7 @@ const ProgramForm = ({ data, onChange, errors }) => {
                         </select>
                     </div>
                 </div>
-                <p className="mt-2 text-xs text-slate-500">Jika hari terapi dipilih, sistem akan membuat jadwal sesi dari periode ini secara otomatis.</p>
+                <p className="mt-2 text-xs text-slate-500">Sistem akan membuat jadwal sesi periode ini dari hari, jam, durasi, dan terapis utama yang dipilih.</p>
             </div>
 
             <div className="pt-1">

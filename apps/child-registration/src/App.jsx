@@ -91,6 +91,13 @@ function App() {
             }
             if (!currentChild.periodStartDate) e.periodStartDate = 'Tanggal mulai periode wajib diisi.';
             if (!Number(currentChild.totalSessions || 0)) e.totalSessions = 'Jumlah sesi wajib diisi.';
+            if (currentChild.periodStartDate && currentChild.periodEndDate && currentChild.periodEndDate < currentChild.periodStartDate) {
+                e.periodEndDate = 'Tanggal selesai tidak boleh lebih awal dari tanggal mulai.';
+            }
+            if (!Array.isArray(currentChild.therapyDays) || currentChild.therapyDays.length === 0) {
+                e.therapyDays = 'Pilih minimal satu hari terapi agar jadwal otomatis dibuat.';
+            }
+            if (!currentChild.sessionStartTime) e.sessionStartTime = 'Jam mulai terapi wajib diisi.';
             setErrors(e);
             return !Object.keys(e).length;
         },
@@ -196,7 +203,7 @@ function App() {
                     billingMode: child.billingMode || 'per_session',
                     scheduleRules,
                     assistantTherapistIds: child.assistantTherapistId ? [child.assistantTherapistId] : [],
-                    generateSessions: scheduleRules.length > 0,
+                    generateSessions: true,
                 }] : [];
                 const childRes = await childrenApi.create({ ...child, parentId, therapyProgramsList });
                 if (!childRes.ok || !childRes.data?.data) {
@@ -296,7 +303,16 @@ function App() {
         if (step === 0) return regMode !== null;
         if (step === 1) return !!parentData.name?.trim() && !!parentData.phone?.trim() && !!parentData.address?.trim();
         if (step === 2) return !!currentChild.firstName?.trim() && !!currentChild.dob;
-        if (step === 3) return !!currentChild.program && !!currentChild.therapistId && !!currentChild.periodStartDate && Number(currentChild.totalSessions || 0) > 0;
+        if (step === 3) {
+            return !!currentChild.program
+                && !!currentChild.therapistId
+                && !!currentChild.periodStartDate
+                && Number(currentChild.totalSessions || 0) > 0
+                && Array.isArray(currentChild.therapyDays)
+                && currentChild.therapyDays.length > 0
+                && !!currentChild.sessionStartTime
+                && !(currentChild.periodStartDate && currentChild.periodEndDate && currentChild.periodEndDate < currentChild.periodStartDate);
+        }
         return true;
     })();
 
@@ -317,6 +333,9 @@ function App() {
             if (!Number(currentChild.totalSessions || 0)) issues.push('Jumlah sesi wajib lebih dari 0.');
             if (!currentChild.therapistId) issues.push('Terapis utama wajib dipilih.');
             if (currentChild.assistantTherapistId && currentChild.assistantTherapistId === currentChild.therapistId) issues.push('Terapis pendamping harus berbeda dari terapis utama.');
+            if (!Array.isArray(currentChild.therapyDays) || currentChild.therapyDays.length === 0) issues.push('Pilih minimal satu hari terapi agar jadwal otomatis dibuat.');
+            if (!currentChild.sessionStartTime) issues.push('Jam mulai terapi wajib diisi.');
+            if (currentChild.periodStartDate && currentChild.periodEndDate && currentChild.periodEndDate < currentChild.periodStartDate) issues.push('Tanggal selesai periode tidak boleh lebih awal dari tanggal mulai.');
         }
         return issues;
     })();

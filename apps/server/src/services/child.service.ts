@@ -482,42 +482,54 @@ export const childService = {
       diagnosis: data.diagnosis,
     }).returning();
 
-    // Insert therapy programs if provided
-    if (data.therapyProgramsList && data.therapyProgramsList.length > 0) {
-      const insertedPrograms = await db.insert(therapyPrograms).values(
-        data.therapyProgramsList.map((tp) => ({
-          childId: nita,
-          programId: tp.programId || null,
-          type: tp.type,
-          totalSessions: tp.totalSessions,
-          goal: tp.goal || "",
-          icon: tp.icon,
-          colorClass: tp.colorClass,
-          colorHex: tp.colorHex,
-        }))
-      ).returning();
+    try {
+      // Insert therapy programs if provided
+      if (data.therapyProgramsList && data.therapyProgramsList.length > 0) {
+        const insertedPrograms = await db.insert(therapyPrograms).values(
+          data.therapyProgramsList.map((tp) => ({
+            childId: nita,
+            programId: tp.programId || null,
+            type: tp.type,
+            totalSessions: tp.totalSessions,
+            goal: tp.goal || "",
+            icon: tp.icon,
+            colorClass: tp.colorClass,
+            colorHex: tp.colorHex,
+          }))
+        ).returning();
 
-      for (let i = 0; i < insertedPrograms.length; i += 1) {
-        const source = data.therapyProgramsList[i];
-        if (source?.createInitialPeriod === false) continue;
-        await therapyPeriodService.create({
-          childId: nita,
-          therapyProgramId: insertedPrograms[i].id,
-          programId: insertedPrograms[i].programId,
-          type: insertedPrograms[i].type,
-          totalSessions: source?.totalSessions || insertedPrograms[i].totalSessions,
-          goal: source?.goal || insertedPrograms[i].goal || "",
-          startDate: source?.startDate,
-          endDate: source?.endDate,
-          pricePerSession: source?.pricePerSession,
-          pricePerMonth: source?.pricePerMonth,
-          totalPrice: source?.totalPrice,
-          billingMode: source?.billingMode,
-          scheduleRules: source?.scheduleRules,
-          assistantTherapistIds: source?.assistantTherapistIds,
-          generateSessions: source?.generateSessions,
-        });
+        for (let i = 0; i < insertedPrograms.length; i += 1) {
+          const source = data.therapyProgramsList[i];
+          if (source?.createInitialPeriod === false) continue;
+          await therapyPeriodService.create({
+            childId: nita,
+            therapyProgramId: insertedPrograms[i].id,
+            programId: insertedPrograms[i].programId,
+            type: insertedPrograms[i].type,
+            totalSessions: source?.totalSessions || insertedPrograms[i].totalSessions,
+            goal: source?.goal || insertedPrograms[i].goal || "",
+            startDate: source?.startDate,
+            endDate: source?.endDate,
+            pricePerSession: source?.pricePerSession,
+            pricePerMonth: source?.pricePerMonth,
+            totalPrice: source?.totalPrice,
+            billingMode: source?.billingMode,
+            scheduleRules: source?.scheduleRules,
+            assistantTherapistIds: source?.assistantTherapistIds,
+            generateSessions: source?.generateSessions,
+          });
+        }
       }
+    } catch (error) {
+      await db.transaction(async (tx) => {
+        await tx.delete(therapySessions).where(eq(therapySessions.childId, nita));
+        await tx.delete(historicalSessionSummaries).where(eq(historicalSessionSummaries.childId, nita));
+        await tx.update(migrationRecords).set({ childId: null, therapyPeriodId: null }).where(eq(migrationRecords.childId, nita));
+        await tx.delete(therapyPeriods).where(eq(therapyPeriods.childId, nita));
+        await tx.delete(therapyPrograms).where(eq(therapyPrograms.childId, nita));
+        await tx.delete(children).where(eq(children.id, nita));
+      });
+      throw error;
     }
 
     return child;

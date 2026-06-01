@@ -86,6 +86,12 @@ const getApprovalLabel = (approval) => {
 
 const isCompletedPeriod = (period) => String(period?.status || '').toLowerCase() === 'completed';
 const isCancelledPeriod = (period) => String(period?.status || '').toLowerCase() === 'cancelled';
+const isActiveSchedulePeriod = (period) => ['active', 'planned'].includes(String(period?.status || '').toLowerCase());
+const countScheduledSessions = (period) => {
+  const sessions = Array.isArray(period?.sessions) ? period.sessions : [];
+  return sessions.filter(session => !['cancelled', 'canceled'].includes(String(session?.status || '').toLowerCase())).length;
+};
+const getMissingSessionCount = (period) => Math.max(0, Number(period?.totalSessions || 0) - countScheduledSessions(period));
 
 export default function ProgramEnrollmentPage() {
   const navigate = useNavigate();
@@ -101,6 +107,7 @@ export default function ProgramEnrollmentPage() {
   const [deletionRequests, setDeletionRequests] = useState([]);
   const [deletionReasonByPeriod, setDeletionReasonByPeriod] = useState({});
   const [requestingDeletionId, setRequestingDeletionId] = useState('');
+  const [generatingScheduleId, setGeneratingScheduleId] = useState('');
 
   useEffect(() => {
     const load = async () => {
@@ -183,9 +190,10 @@ export default function ProgramEnrollmentPage() {
     if (form.periodStartDate && form.periodEndDate && form.periodEndDate < form.periodStartDate) {
       next.periodEndDate = 'Tanggal selesai tidak boleh lebih awal dari tanggal mulai.';
     }
-    if (Array.isArray(form.therapyDays) && form.therapyDays.length > 0 && !form.sessionStartTime) {
-      next.sessionStartTime = 'Jam mulai wajib diisi jika hari terapi dipilih.';
+    if (!Array.isArray(form.therapyDays) || form.therapyDays.length === 0) {
+      next.therapyDays = 'Pilih minimal satu hari terapi agar jadwal otomatis dibuat.';
     }
+    if (!form.sessionStartTime) next.sessionStartTime = 'Jam mulai terapi wajib diisi.';
     if (mode === 'renew' && !latestMatchingPeriod) next.mode = 'Pilih program yang punya periode sebelumnya untuk dilanjutkan.';
     setErrors(next);
     return Object.keys(next).length === 0;
@@ -216,7 +224,7 @@ export default function ProgramEnrollmentPage() {
       billingMode: form.billingMode || 'per_session',
       scheduleRules,
       assistantTherapistIds: form.assistantTherapistId ? [form.assistantTherapistId] : [],
-      generateSessions: scheduleRules.length > 0,
+      generateSessions: true,
     };
   };
 
@@ -344,6 +352,41 @@ export default function ProgramEnrollmentPage() {
     }
   };
 
+  const handleGenerateMissingSessions = async (period) => {
+    const scheduleRules = Array.isArray(period?.scheduleRules) ? period.scheduleRules : [];
+    if (scheduleRules.length === 0) {
+      setMessage({ type: 'error', text: 'Periode ini belum punya hari terapi dan jam mulai. Hapus/buat ulang periode dengan pola jadwal agar sesi bisa dibuat otomatis.' });
+      return;
+    }
+
+    setGeneratingScheduleId(period.id);
+    setMessage(null);
+    try {
+      const res = await therapyPeriodsApi.generateSessions(period.id, { scheduleRules });
+      if (!res.ok) throw new Error(res.data?.error || 'Gagal membuat jadwal sesi periode.');
+      const result = res.data?.data || {};
+      const createdCount = Array.isArray(result.created) ? result.created.length : 0;
+      const skippedCount = Array.isArray(result.skipped) ? result.skipped.length : 0;
+      const remaining = getMissingSessionCount(result.period || period);
+      setMessage({
+        type: createdCount > 0 && remaining === 0 ? 'success' : createdCount > 0 ? 'warning' : 'error',
+        text: createdCount > 0
+          ? `Jadwal otomatis dibuat: ${createdCount} sesi baru. ${remaining > 0 ? `${remaining} sesi masih belum terbentuk karena konflik/rentang.` : 'Target periode sudah terpenuhi.'}${skippedCount ? ` ${skippedCount} slot dilewati.` : ''}`
+          : `Belum ada sesi baru yang bisa dibuat. Periksa hari terapi, jam mulai, terapis, ruang, jam operasional, atau rentang periode.${skippedCount ? ` ${skippedCount} slot dilewati.` : ''}`,
+      });
+      const refreshed = await childrenApi.getAll();
+      if (refreshed.ok) setChildren(refreshed.data?.data || []);
+      window.dispatchEvent(new Event('childUpdated'));
+      window.dispatchEvent(new Event('sessionUpdated'));
+      window.dispatchEvent(new Event('notificationsUpdated'));
+      window.dispatchEvent(new Event('programsUpdated'));
+    } catch (e) {
+      setMessage({ type: 'error', text: e.message || 'Gagal membuat jadwal sesi periode.' });
+    } finally {
+      setGeneratingScheduleId('');
+    }
+  };
+
   return (
     <div className="min-h-full min-w-0 overflow-x-hidden bg-background-light dark:bg-background-dark">
       <main className="mx-auto flex w-full max-w-[1280px] min-w-0 flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
@@ -352,7 +395,7 @@ export default function ProgramEnrollmentPage() {
             <p className="text-xs font-black uppercase tracking-widest text-primary">Program Anak</p>
             <h1 className="mt-1 text-2xl font-black tracking-tight text-slate-900 dark:text-white">Pendaftaran Program / Periode</h1>
             <p className="mt-1 max-w-2xl text-sm text-slate-500 dark:text-slate-400">
-              Alur ini dipakai setelah biodata anak tersimpan. Pilih anak, pilih program layanan, atur periode, lalu sistem membuat jadwal sesi jika pola hari diisi.
+              Alur ini dipakai setelah biodata anak tersimpan. Pilih anak, pilih program layanan, atur periode, lalu sistem membuat jadwal sesi otomatis dari pola hari.
             </p>
           </div>
           <button
@@ -407,6 +450,24 @@ export default function ProgramEnrollmentPage() {
                     <p className="mt-1 font-semibold text-slate-600 dark:text-slate-300">{period.programName || period.type}</p>
                     <p className="mt-1 text-slate-500">{period.startDate} - {period.endDate || 'selesai sesi'}</p>
                     <p className="mt-1 text-slate-500">{period.sessionLabel} - {formatCurrency(period.totalPrice)}</p>
+                    {isActiveSchedulePeriod(period) && getMissingSessionCount(period) > 0 && (() => {
+                      const scheduleRules = Array.isArray(period.scheduleRules) ? period.scheduleRules : [];
+                      return scheduleRules.length > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => handleGenerateMissingSessions(period)}
+                          disabled={generatingScheduleId === period.id}
+                          className="mt-3 inline-flex w-full items-center justify-center gap-1 rounded-lg border border-sky-200 bg-white px-3 py-2 text-[11px] font-black text-sky-700 hover:bg-sky-50 disabled:opacity-50 dark:border-sky-900/60 dark:bg-slate-950 dark:text-sky-300 dark:hover:bg-sky-950/30"
+                        >
+                          <span className="material-symbols-outlined text-[15px]">event_repeat</span>
+                          {generatingScheduleId === period.id ? 'Membuat jadwal...' : `Buat ${getMissingSessionCount(period)} jadwal otomatis`}
+                        </button>
+                      ) : (
+                        <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-2 font-semibold text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+                          Periode ini belum punya pola hari/jam. Hapus dan buat ulang dengan Hari Terapi agar jadwal otomatis terbentuk.
+                        </p>
+                      );
+                    })()}
                     {deletionRequestsByPeriod.has(period.id) && (() => {
                       const request = deletionRequestsByPeriod.get(period.id);
                       return (
@@ -482,7 +543,6 @@ export default function ProgramEnrollmentPage() {
 
             <ProgramForm data={form} onChange={setForm} errors={errors} />
             {errors.periodEndDate && <p className="mt-2 text-xs font-bold text-red-600">{errors.periodEndDate}</p>}
-            {errors.sessionStartTime && <p className="mt-2 text-xs font-bold text-red-600">{errors.sessionStartTime}</p>}
 
             <div className="mt-4 grid grid-cols-1 gap-3 rounded-xl border border-primary/20 bg-primary/5 p-4 text-sm dark:border-primary/30 sm:grid-cols-2 lg:grid-cols-4">
               <div>

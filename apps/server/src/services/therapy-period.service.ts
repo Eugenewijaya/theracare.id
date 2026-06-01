@@ -77,6 +77,11 @@ function normalizeGoals(input: unknown) {
   return input.filter((goal): goal is string => typeof goal === "string" && !!goal.trim()).map((goal) => goal.trim());
 }
 
+function todayAtMidnight() {
+  const today = new Date();
+  return new Date(today.getFullYear(), today.getMonth(), today.getDate());
+}
+
 function normalizeTherapistIds(input: unknown, primaryTherapistId?: string) {
   if (!Array.isArray(input)) return [];
   return Array.from(new Set(input
@@ -281,7 +286,7 @@ async function notifyPeriodCreated(periodId: string, generation?: { created?: un
 async function findOrCreateTherapyProgram(data: any) {
   if (Number.isFinite(Number(data.therapyProgramId))) {
     const existing = await db.query.therapyPrograms.findFirst({ where: eq(therapyPrograms.id, Number(data.therapyProgramId)) });
-    if (existing) return existing;
+    if (existing) return { ...existing, __created: false };
   }
 
   const childId = String(data.childId || "");
@@ -292,12 +297,12 @@ async function findOrCreateTherapyProgram(data: any) {
     const existing = await db.query.therapyPrograms.findFirst({
       where: and(eq(therapyPrograms.childId, childId), eq(therapyPrograms.programId, programId)),
     });
-    if (existing) return existing;
+    if (existing) return { ...existing, __created: false };
   } else if (type) {
     const existing = await db.query.therapyPrograms.findFirst({
       where: and(eq(therapyPrograms.childId, childId), eq(therapyPrograms.type, type)),
     });
-    if (existing) return existing;
+    if (existing) return { ...existing, __created: false };
   }
 
   const linkedProgram = programId
@@ -312,7 +317,35 @@ async function findOrCreateTherapyProgram(data: any) {
     goal: typeof data.goal === "string" ? data.goal : "",
     colorClass: typeof data.colorClass === "string" ? data.colorClass : "emerald",
   }).returning();
-  return created;
+  return { ...created, __created: true };
+}
+
+async function rollbackCreatedPeriod(
+  period: any,
+  therapyProgramWasCreated: boolean,
+  therapyProgramSnapshot?: { totalSessions?: number | null; goal?: string | null },
+) {
+  if (!period?.id) return;
+  await db.transaction(async (tx) => {
+    await tx.delete(therapySessions).where(eq(therapySessions.therapyPeriodId, period.id));
+    await tx.delete(therapyPeriods).where(eq(therapyPeriods.id, period.id));
+    if (therapyProgramWasCreated && period.therapyProgramId) {
+      await tx.delete(therapyPrograms).where(eq(therapyPrograms.id, period.therapyProgramId));
+    } else if (period.therapyProgramId && therapyProgramSnapshot) {
+      await tx.update(therapyPrograms)
+        .set({
+          totalSessions: Number(therapyProgramSnapshot.totalSessions || 0),
+          goal: therapyProgramSnapshot.goal || "",
+        })
+        .where(eq(therapyPrograms.id, period.therapyProgramId));
+    }
+  });
+}
+
+function buildGenerationFailureMessage(createdCount: number, targetCount: number, skipped: Array<{ reason?: string }> = []) {
+  const reasons = Array.from(new Set(skipped.map((item) => item.reason).filter((reason): reason is string => !!reason))).slice(0, 3);
+  const reasonText = reasons.length ? ` Alasan slot terlewati: ${reasons.join("; ")}.` : "";
+  return `Jadwal otomatis hanya membuat ${createdCount}/${targetCount} sesi. Periksa hari terapi, jam mulai, jadwal terapis, jam operasional, atau rentang tanggal.${reasonText}`;
 }
 
 export const therapyPeriodService = {
@@ -365,6 +398,10 @@ export const therapyPeriodService = {
     }
 
     const therapyProgram = await findOrCreateTherapyProgram({ ...data, childId });
+    const therapyProgramWasCreated = Boolean((therapyProgram as any).__created);
+    const therapyProgramSnapshot = therapyProgramWasCreated
+      ? undefined
+      : { totalSessions: therapyProgram.totalSessions, goal: therapyProgram.goal };
     const requestedPeriodNumber = Number(data.periodNumber);
     const periodNumber = Number.isFinite(requestedPeriodNumber) && requestedPeriodNumber > 0
       ? requestedPeriodNumber
@@ -407,9 +444,22 @@ export const therapyPeriodService = {
       })
       .where(eq(therapyPrograms.id, therapyProgram.id));
 
-    const generation = data.generateSessions
-      ? await this.generateSessions(period.id, { scheduleRules: generationRules })
-      : null;
+    let generation = null;
+    try {
+      generation = data.generateSessions
+        ? await this.generateSessions(period.id, { scheduleRules: generationRules })
+        : null;
+      if (data.generateSessions) {
+        const targetCount = Math.max(0, Number(period.totalSessions || 0));
+        const createdCount = Array.isArray(generation?.created) ? generation.created.length : 0;
+        if (targetCount > 0 && createdCount < targetCount) {
+          throw new Error(buildGenerationFailureMessage(createdCount, targetCount, generation?.skipped || []));
+        }
+      }
+    } catch (error) {
+      await rollbackCreatedPeriod(period, therapyProgramWasCreated, therapyProgramSnapshot);
+      throw error;
+    }
 
     await notifyPeriodCreated(period.id, generation || undefined);
 
@@ -521,20 +571,26 @@ export const therapyPeriodService = {
       throw new Error("Setiap aturan jadwal wajib memiliki therapistId.");
     }
 
-    const start = new Date(`${period.startDate}T00:00:00`);
+    const periodStart = new Date(`${period.startDate}T00:00:00`);
+    const start = periodStart < todayAtMidnight() ? todayAtMidnight() : periodStart;
+    const limit = Math.max(0, Number(period.totalSessions || 0));
+    const searchDays = Math.max(366, limit * 14);
     const hardEnd = period.endDate
       ? new Date(`${period.endDate}T00:00:00`)
-      : new Date(start.getFullYear() + 1, start.getMonth(), start.getDate());
-    const limit = Math.max(0, Number(period.totalSessions || 0));
+      : new Date(start.getFullYear(), start.getMonth(), start.getDate() + searchDays);
     const existing = Array.isArray(period.sessions) ? period.sessions : [];
-    const existingKeys = new Set(existing.map((session: any) => `${session.date}|${session.startTime}|${session.therapistId}`));
+    const countedExisting = existing.filter((session: any) => {
+      const status = String(session.status || "").toLowerCase();
+      return status !== "cancelled" && status !== "canceled";
+    });
+    const existingKeys = new Set(countedExisting.map((session: any) => `${session.date}|${session.startTime}|${session.therapistId}`));
     const values: TherapySessionInsert[] = [];
     const skipped: Array<{ date: string; startTime: string; therapistId: string; reason?: string }> = [];
 
-    for (let cursor = new Date(start); cursor <= hardEnd && (limit === 0 || existing.length + values.length < limit); cursor.setDate(cursor.getDate() + 1)) {
+    for (let cursor = new Date(start); cursor <= hardEnd && (limit === 0 || countedExisting.length + values.length < limit); cursor.setDate(cursor.getDate() + 1)) {
       const dayRules = rules.filter((rule) => rule.dayOfWeek === cursor.getDay());
       for (const rule of dayRules) {
-        if (limit > 0 && existing.length + values.length >= limit) break;
+        if (limit > 0 && countedExisting.length + values.length >= limit) break;
         const date = toDateString(cursor);
         const key = `${date}|${rule.startTime}|${rule.therapistId}`;
         if (existingKeys.has(key)) continue;
