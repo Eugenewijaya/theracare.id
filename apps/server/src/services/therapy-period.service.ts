@@ -84,6 +84,47 @@ function normalizeTherapistIds(input: unknown, primaryTherapistId?: string) {
     .filter((id) => id !== primaryTherapistId)));
 }
 
+function normalizeComparableText(value: unknown) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function getSequenceProgramId(scope: any) {
+  return typeof scope?.programId === "string" && scope.programId
+    ? scope.programId
+    : typeof scope?.therapyProgram?.programId === "string" && scope.therapyProgram.programId
+      ? scope.therapyProgram.programId
+      : "";
+}
+
+function getSequenceProgramName(scope: any) {
+  return normalizeComparableText(
+    scope?.type
+      || scope?.programName
+      || scope?.program?.name
+      || scope?.therapyProgram?.type
+  );
+}
+
+function matchesSequenceScope(row: any, scope: any = {}) {
+  const programId = getSequenceProgramId(scope);
+  const programName = getSequenceProgramName(scope);
+
+  if (programId) {
+    const rowProgramId = getSequenceProgramId(row);
+    if (rowProgramId === programId) return true;
+    return Boolean(programName && getSequenceProgramName(row) === programName);
+  }
+
+  const therapyProgramId = Number(scope?.therapyProgramId);
+  if (Number.isFinite(therapyProgramId) && therapyProgramId > 0) {
+    return Number(row?.therapyProgramId) === therapyProgramId;
+  }
+
+  if (programName) return getSequenceProgramName(row) === programName;
+
+  return true;
+}
+
 function calculateTotalPrice(data: {
   billingMode?: string;
   pricePerSession?: number;
@@ -163,9 +204,14 @@ function normalizePeriod(period: any) {
   };
 }
 
-async function getNextPeriodNumber(childId: string) {
-  const rows = await db.query.therapyPeriods.findMany({ where: eq(therapyPeriods.childId, childId) });
-  const sequenceRows = rows.filter((row) => !RESET_SEQUENCE_PERIOD_STATUSES.has(String(row.status || "").toLowerCase()));
+async function getNextPeriodNumber(childId: string, scope: any = {}) {
+  const rows = await db.query.therapyPeriods.findMany({
+    where: eq(therapyPeriods.childId, childId),
+    with: { program: true, therapyProgram: true },
+  });
+  const sequenceRows = rows
+    .filter((row) => !RESET_SEQUENCE_PERIOD_STATUSES.has(String(row.status || "").toLowerCase()))
+    .filter((row) => matchesSequenceScope(row, scope));
   return sequenceRows.reduce((max, row) => Math.max(max, Number(row.periodNumber || 0)), 0) + 1;
 }
 
@@ -246,6 +292,11 @@ async function findOrCreateTherapyProgram(data: any) {
       where: and(eq(therapyPrograms.childId, childId), eq(therapyPrograms.programId, programId)),
     });
     if (existing) return existing;
+  } else if (type) {
+    const existing = await db.query.therapyPrograms.findFirst({
+      where: and(eq(therapyPrograms.childId, childId), eq(therapyPrograms.type, type)),
+    });
+    if (existing) return existing;
   }
 
   const linkedProgram = programId
@@ -313,7 +364,15 @@ export const therapyPeriodService = {
     }
 
     const therapyProgram = await findOrCreateTherapyProgram({ ...data, childId });
-    const periodNumber = Number(data.periodNumber || await getNextPeriodNumber(childId));
+    const requestedPeriodNumber = Number(data.periodNumber);
+    const periodNumber = Number.isFinite(requestedPeriodNumber) && requestedPeriodNumber > 0
+      ? requestedPeriodNumber
+      : await getNextPeriodNumber(childId, {
+        ...data,
+        therapyProgramId: therapyProgram.id,
+        programId: data.programId || therapyProgram.programId,
+        type: data.type || therapyProgram.type,
+      });
     const startDate = typeof data.startDate === "string" && data.startDate ? data.startDate : new Date().toISOString().split("T")[0];
     const values = pickPeriodValues({
       ...data,
@@ -396,7 +455,7 @@ export const therapyPeriodService = {
     if (String(source.status || "").toLowerCase() !== "completed") {
       throw new Error("Periode hanya bisa dilanjutkan jika periode sebelumnya sudah selesai. Periode yang dibatalkan harus dibuat ulang dari Periode 1.");
     }
-    const nextPeriodNumber = await getNextPeriodNumber(source.childId);
+    const nextPeriodNumber = await getNextPeriodNumber(source.childId, source);
     return this.create({
       ...source,
       ...data,
