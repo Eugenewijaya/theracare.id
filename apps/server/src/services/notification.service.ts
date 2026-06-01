@@ -139,7 +139,7 @@ async function enrichNotificationActors(rows: Array<typeof notifications.$inferS
 }
 
 export const notificationService = {
-  async getForUser(role: string, userId: string) {
+  async getVisibleNotifications(role: string, userId: string) {
     const all = await db.query.notifications.findMany({
       where: and(
         or(eq(notifications.targetRole, role), eq(notifications.targetRole, "all")),
@@ -151,9 +151,13 @@ export const notificationService = {
     const [account] = await db.select({ createdAt: userTable.createdAt }).from(userTable).where(eq(userTable.id, userId)).limit(1);
     const accountCreatedAt = account?.createdAt || null;
     const activeFutureClosureIds = await getActiveFutureClosureIds();
-    const visibleNotifications = all.filter((notification) => (
+    return all.filter((notification) => (
       shouldShowNotificationForUser(notification, userId, accountCreatedAt, activeFutureClosureIds)
     ));
+  },
+
+  async getForUser(role: string, userId: string) {
+    const visibleNotifications = await this.getVisibleNotifications(role, userId);
     const reads = await db.select({ notificationId: notificationReads.notificationId })
       .from(notificationReads).where(eq(notificationReads.userId, userId));
     const readIds = new Set(reads.map((r) => r.notificationId));
@@ -162,8 +166,13 @@ export const notificationService = {
   },
 
   async getUnreadCount(role: string, userId: string) {
-    const notifs = await this.getForUser(role, userId);
-    return notifs.filter((n) => !n.isRead).length;
+    const visibleNotifications = await this.getVisibleNotifications(role, userId);
+    if (visibleNotifications.length === 0) return 0;
+
+    const reads = await db.select({ notificationId: notificationReads.notificationId })
+      .from(notificationReads).where(eq(notificationReads.userId, userId));
+    const readIds = new Set(reads.map((r) => r.notificationId));
+    return visibleNotifications.filter((notification) => !readIds.has(notification.id)).length;
   },
 
   async markRead(notifId: string, role: string, userId: string) {

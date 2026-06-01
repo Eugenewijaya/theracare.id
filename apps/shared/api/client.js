@@ -418,6 +418,8 @@ export const adminApi = {
   getPublicSettings: () => api.get('/admin/public-settings'),
   updateSettings: (data) => api.patch('/admin/settings', data),
   uploadBrandAsset: (data) => api.post('/admin/uploads/branding', data),
+  getDatabaseUsage: () => api.get('/admin/database/usage'),
+  createDatabaseBackup: (data = {}) => api.post('/admin/database/backups', data),
   getCenterClosures: () => api.get('/admin/center-closures'),
   getIndonesianHolidays: (year) => api.get(`/admin/center-closures/indonesia-holidays?year=${encodeURIComponent(year)}`),
   applyCenterHolidays: (data) => api.post('/admin/center-closures/apply-holidays', data),

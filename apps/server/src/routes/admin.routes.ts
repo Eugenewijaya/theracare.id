@@ -6,6 +6,7 @@ import { centerClosureService } from "../services/center-closure.service.js";
 import { storageService } from "../services/storage.service.js";
 import { auditLogService } from "../services/audit-log.service.js";
 import { notificationService } from "../services/notification.service.js";
+import { DatabaseOperationsError, databaseOperationsService } from "../services/database-operations.service.js";
 import { ok, created, notFound, badRequest, conflict } from "../utils/response.js";
 
 const router = Router();
@@ -237,6 +238,45 @@ router.post("/uploads/branding", requireAuth, requireRole("admin"), async (req, 
 });
 router.get("/stats", requireAuth, requireRole("admin"), async (req, res, next) => {
   try { ok(res, await adminService.getDashboardStats()); } catch (e) { next(e); }
+});
+
+// ── Database operations guard ──
+router.get("/database/usage", requireAuth, requireRole("admin"), async (_req, res, next) => {
+  try { ok(res, await databaseOperationsService.getUsage()); } catch (e) { next(e); }
+});
+router.post("/database/backups", requireAuth, requireRole("admin"), async (req, res, next) => {
+  try {
+    const backup = await databaseOperationsService.createBackupBranch({
+      name: typeof req.body?.name === "string" ? req.body.name : undefined,
+    });
+    await auditLogService.create({
+      actor: req.user,
+      action: "database.backup_branch.create",
+      entityType: "neon_branch",
+      entityId: backup.branchId || backup.branchName,
+      summary: `Backup branch Neon ${backup.branchName} dibuat`,
+      metadata: {
+        projectId: backup.projectId,
+        branchId: backup.branchId,
+        parentBranchId: backup.parentBranchId,
+        operationIds: backup.operationIds,
+      },
+    });
+    await notificationService.create({
+      type: "database_backup",
+      icon: "database",
+      title: "Backup database dibuat",
+      message: `Backup branch Neon ${backup.branchName} berhasil dibuat.`,
+      targetRole: "admin",
+      relatedId: backup.branchId || backup.branchName,
+    });
+    created(res, backup, "Backup branch Neon berhasil dibuat");
+  } catch (e) {
+    if (e instanceof DatabaseOperationsError) {
+      return res.status(e.statusCode).json({ success: false, error: e.message });
+    }
+    next(e);
+  }
 });
 
 // ── Center operational closures ──

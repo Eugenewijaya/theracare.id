@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useAdmin } from '../context/AdminContext';
 import { meetingsApi, rescheduleApi, notificationsApi, leaveRequestsApi } from '../../../shared/api/client';
 import ClinicLogoMark from '../../../shared/ui/ClinicLogoMark';
+import { BADGE_POLL_INTERVAL_MS, shouldPollNow } from '../../../shared/polling';
 
 const navGroups = [
   {
@@ -39,6 +40,7 @@ const navGroups = [
     label: 'Sistem',
     items: [
       { path: '/notifications', icon: 'campaign', label: 'Pengumuman & Notifikasi', badgeKey: 'notifications' },
+      { path: '/database-guard', icon: 'database', label: 'Database Guard' },
       { path: '/users', icon: 'manage_accounts', label: 'Manajemen Pengguna' },
       { path: '/settings/branding', icon: 'palette', label: 'Pengaturan & Tampilan' },
     ],
@@ -54,7 +56,8 @@ export default function Sidebar({ isOpen, onClose }) {
 
   // Compute notification badges from API
   useEffect(() => {
-    const computeBadges = async () => {
+    const computeBadges = async ({ force = false } = {}) => {
+      if (!shouldPollNow({ force })) return;
       try {
         const [reqResult, meetingResult, unreadResult, leaveResult] = await Promise.allSettled([
           rescheduleApi.getAll(),
@@ -74,14 +77,15 @@ export default function Sidebar({ isOpen, onClose }) {
         setBadgeCounts({ requests: pendingCount, notifications: unreadNotifs, leaveRequests: pendingLeave });
       } catch {}
     };
-    computeBadges();
-    window.addEventListener('notificationsUpdated', computeBadges);
-    window.addEventListener('leaveRequestsUpdated', computeBadges);
-    const interval = setInterval(computeBadges, 30000); // Poll every 30s
+    computeBadges({ force: true });
+    const handleBadgeUpdate = () => computeBadges({ force: true });
+    window.addEventListener('notificationsUpdated', handleBadgeUpdate);
+    window.addEventListener('leaveRequestsUpdated', handleBadgeUpdate);
+    const interval = setInterval(() => computeBadges(), BADGE_POLL_INTERVAL_MS);
     return () => {
       clearInterval(interval);
-      window.removeEventListener('notificationsUpdated', computeBadges);
-      window.removeEventListener('leaveRequestsUpdated', computeBadges);
+      window.removeEventListener('notificationsUpdated', handleBadgeUpdate);
+      window.removeEventListener('leaveRequestsUpdated', handleBadgeUpdate);
     };
   }, []);
 

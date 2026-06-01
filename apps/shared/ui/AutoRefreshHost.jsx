@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { syncApi } from '../api/client';
 import { emitTheraCareUpdate, THERACARE_UPDATE_STORAGE_KEY } from '../autoRefresh';
+import { SYNC_POLL_INTERVAL_MS } from '../polling';
 
-const DEFAULT_POLL_INTERVAL_MS = 8000;
+const DEFAULT_POLL_INTERVAL_MS = SYNC_POLL_INTERVAL_MS;
 const DRAFT_GRACE_MS = 120000;
 const FOCUS_GRACE_MS = 30000;
 

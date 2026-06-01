@@ -8,9 +8,9 @@ import {
   isNotificationRead,
   sortNotifications,
 } from '../notifications';
+import { NOTIFICATION_POLL_INTERVAL_MS, shouldPollNow } from '../polling';
 
 const MAX_VISIBLE_TOASTS = 3;
-const POLL_INTERVAL_MS = 30000;
 const TOAST_AUTO_DISMISS_MS = 5000;
 
 function readSeenIds(key) {
@@ -65,8 +65,9 @@ export default function NotificationToastHost({ enabled = true, role = 'user', u
     if (typeof onOpenNotifications === 'function') onOpenNotifications(toast);
   }, [markRead, onOpenNotifications]);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async ({ force = false } = {}) => {
     if (!enabled || !userKey || userKey === 'anonymous') return;
+    if (!shouldPollNow({ force })) return;
     try {
       const res = await notificationsApi.getAll();
       if (!res.ok) return;
@@ -102,12 +103,13 @@ export default function NotificationToastHost({ enabled = true, role = 'user', u
     bootstrappedRef.current = false;
     knownIdsRef.current = new Set();
     setToasts([]);
-    refresh();
-    const interval = window.setInterval(refresh, POLL_INTERVAL_MS);
-    window.addEventListener('notificationsUpdated', refresh);
+    refresh({ force: true });
+    const interval = window.setInterval(() => refresh(), NOTIFICATION_POLL_INTERVAL_MS);
+    const handleUpdate = () => refresh({ force: true });
+    window.addEventListener('notificationsUpdated', handleUpdate);
     return () => {
       window.clearInterval(interval);
-      window.removeEventListener('notificationsUpdated', refresh);
+      window.removeEventListener('notificationsUpdated', handleUpdate);
       dismissTimersRef.current.forEach((timer) => window.clearTimeout(timer));
       dismissTimersRef.current.clear();
     };

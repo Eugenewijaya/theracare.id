@@ -42,6 +42,14 @@ const actions = [
         bg: 'bg-amber-50 hover:bg-amber-100 border-amber-100',
         iconBg: 'bg-amber-500',
     },
+    {
+        label: 'Database Guard',
+        description: 'Monitor usage & backup',
+        icon: 'database',
+        path: '/database-guard',
+        bg: 'bg-rose-50 hover:bg-rose-100 border-rose-100',
+        iconBg: 'bg-rose-600',
+    },
 ];
 
 const QuickActions = () => {

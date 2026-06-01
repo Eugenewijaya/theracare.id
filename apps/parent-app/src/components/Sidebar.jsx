@@ -5,6 +5,7 @@ import { notificationsApi } from '../../../shared/api/client';
 import { isNotificationRead } from '../../../shared/notifications';
 import { useClinicSettings } from '../../../shared/clinicSettings';
 import ClinicLogoMark from '../../../shared/ui/ClinicLogoMark';
+import { BADGE_POLL_INTERVAL_MS, shouldPollNow } from '../../../shared/polling';
 
 const navItems = [
   { path: '/', icon: 'dashboard', label: 'Dasbor', end: true, guideId: 'dashboard' },
@@ -47,7 +48,8 @@ export default function Sidebar({ isOpen, onClose }) {
 
   // Compute notification badges
   useEffect(() => {
-    const computeBadges = async () => {
+    const computeBadges = async ({ force = false } = {}) => {
+      if (!shouldPollNow({ force })) return;
       if (!user?.parentId && !user?.id && !user?.userId) return;
       try {
         const res = await notificationsApi.getAll();
@@ -65,12 +67,13 @@ export default function Sidebar({ isOpen, onClose }) {
         console.warn('[ParentSidebar] notifications unavailable', e);
       }
     };
-    computeBadges();
-    window.addEventListener('notificationsUpdated', computeBadges);
-    const interval = window.setInterval(computeBadges, 30000);
+    computeBadges({ force: true });
+    const handleBadgeUpdate = () => computeBadges({ force: true });
+    window.addEventListener('notificationsUpdated', handleBadgeUpdate);
+    const interval = window.setInterval(() => computeBadges(), BADGE_POLL_INTERVAL_MS);
     return () => {
       window.clearInterval(interval);
-      window.removeEventListener('notificationsUpdated', computeBadges);
+      window.removeEventListener('notificationsUpdated', handleBadgeUpdate);
     };
   }, [user]);
 
