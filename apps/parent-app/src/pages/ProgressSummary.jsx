@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { childrenApi, reportsApi, sessionsApi } from '../../../shared/api/client';
 import { normalizeChildrenList, readParentUser } from '../../../shared/sessionIdentity';
+import { getCurrentTherapyPrograms, hasTherapyPeriodRecords } from '../../../shared/therapyPeriods';
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
 const PARENT_VISIBLE_REPORT_STATUSES = new Set(['approved', 'published', 'ready_for_parent']);
@@ -48,17 +49,7 @@ function getProgramName(program) {
 }
 
 function getChildPrograms(child, sessions = []) {
-    const periods = Array.isArray(child?.periods) && child.periods.length > 0
-        ? child.periods
-        : Array.isArray(child?.therapyPeriods)
-            ? child.therapyPeriods
-            : [];
-    const legacyPrograms = Array.isArray(child?.therapyPrograms)
-        ? child.therapyPrograms
-        : Array.isArray(child?.programs)
-            ? child.programs
-            : [];
-    const source = periods.length > 0 ? periods : legacyPrograms;
+    const source = getCurrentTherapyPrograms(child);
 
     if (source.length > 0) {
         return source.map((program) => {
@@ -91,6 +82,8 @@ function getChildPrograms(child, sessions = []) {
             };
         });
     }
+
+    if (hasTherapyPeriodRecords(child)) return [];
 
     const completed = sessions.filter(isDone).length;
     const total = sessions.length;

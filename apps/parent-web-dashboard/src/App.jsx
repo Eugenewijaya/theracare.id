@@ -4,6 +4,7 @@ import Header from './components/Header';
 import { sessionsApi, childrenApi, adminApi } from '../../shared/api/client';
 import { normalizeChildrenList, readParentUser } from '../../shared/sessionIdentity';
 import { formatSessionClock, getLiveSessionState } from '../../shared/sessionLiveState';
+import { getCurrentTherapyPrograms } from '../../shared/therapyPeriods';
 
 // ── Helpers ────────────────────────────────────────────────────────
 const formatDate = (dateStr) => {
@@ -184,7 +185,7 @@ function App({ onLogout }) {
     const nextSession    = upcomingSessions[0] || null;
     const parentName     = parentUser?.name     || 'Parent';
     const childName      = parentUser?.childName || child?.name || 'your child';
-    const therapyPrograms = child?.periods?.length ? child.periods : child?.therapyPrograms || [];
+    const therapyPrograms = getCurrentTherapyPrograms(child);
     const recentNotes    = completedSessions.slice(0, 2);
     const liveSession = upcomingSessions.find(session => {
         const live = getLiveSessionState(session, nowTick);

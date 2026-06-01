@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import Header from './components/Header';
 import { childrenApi, reportsApi, sessionsApi } from '../../shared/api/client';
 import { readTherapistUser } from '../../shared/sessionIdentity';
+import { getCurrentTherapyPrograms, hasTherapyPeriodRecords } from '../../shared/therapyPeriods';
 
 // ── Helpers ──────────────────────────────────────────────────────────
 const guessTherapyType = (focus = '') => {
@@ -43,17 +44,7 @@ function getProgramName(program) {
 }
 
 function buildMilestones(child, childSessions = []) {
-    const periods = Array.isArray(child?.periods) && child.periods.length > 0
-        ? child.periods
-        : Array.isArray(child?.therapyPeriods)
-            ? child.therapyPeriods
-            : [];
-    const legacyPrograms = Array.isArray(child?.therapyPrograms)
-        ? child.therapyPrograms
-        : Array.isArray(child?.programs)
-            ? child.programs
-            : [];
-    const source = periods.length > 0 ? periods : legacyPrograms;
+    const source = getCurrentTherapyPrograms(child);
 
     if (source.length > 0) {
         return source.map((program, index) => {
@@ -74,6 +65,8 @@ function buildMilestones(child, childSessions = []) {
             };
         });
     }
+
+    if (hasTherapyPeriodRecords(child)) return [];
 
     const completed = childSessions.filter(isDone).length;
     const total = childSessions.length;

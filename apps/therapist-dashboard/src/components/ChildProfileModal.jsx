@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { childrenApi } from '../../../shared/api/client';
 import { uploadImageFile } from '../../../shared/uploadImage';
+import { getCurrentTherapyPrograms } from '../../../shared/therapyPeriods';
 
 const ChildProfileModal = ({ session, onClose }) => {
     const sourceChild = session?.child || null;
@@ -18,6 +19,7 @@ const ChildProfileModal = ({ session, onClose }) => {
 
     const { parent } = session;
     const child = { ...session.child, photoUrl };
+    const activePrograms = getCurrentTherapyPrograms(child);
 
     const handlePhotoChange = async (event) => {
         const file = event.target.files?.[0];
@@ -97,9 +99,9 @@ const ChildProfileModal = ({ session, onClose }) => {
                             <div className="col-span-2">
                                 <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mb-1">Active Programs</p>
                                 <div className="flex flex-wrap gap-2 mt-1">
-                                    {(child.therapyPeriods || child.periods || child.programs || []).length > 0 ? (
-                                        (child.therapyPeriods || child.periods || child.programs || []).map((p, idx) => (
-                                            <span key={idx} className="bg-teal-100/50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 px-2.5 py-1 rounded-lg text-xs font-bold border border-teal-200/50 dark:border-teal-800/50">
+                                    {activePrograms.length > 0 ? (
+                                        activePrograms.map((p, idx) => (
+                                            <span key={p.id || idx} className="bg-teal-100/50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 px-2.5 py-1 rounded-lg text-xs font-bold border border-teal-200/50 dark:border-teal-800/50">
                                                 {p.program?.name || p.programName || p.name || p.type || p}
                                             </span>
                                         ))

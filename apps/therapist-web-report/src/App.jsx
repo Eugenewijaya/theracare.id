@@ -4,6 +4,7 @@ import { sessionsApi, reportsApi, adminApi } from '../../shared/api/client';
 import { useClinicSettings } from '../../shared/clinicSettings';
 import { openReportPdf } from '../../shared/reportPdf';
 import { readTherapistUser } from '../../shared/sessionIdentity';
+import { getCurrentTherapyPeriods } from '../../shared/therapyPeriods';
 import {
     buildDailyReportQueue,
     getReportEditWindow,
@@ -15,8 +16,10 @@ import {
 // ── Shared data store helpers ──────────
 
 const isTherapistAssignedToPeriod = (period, therapistId) => {
-    if (!therapistId || !period || !Array.isArray(period.scheduleRules)) return false;
-    return period.scheduleRules.some(rule => rule?.therapistId === therapistId);
+    if (!therapistId || !period) return false;
+    const scheduleRules = Array.isArray(period.scheduleRules) ? period.scheduleRules : [];
+    return scheduleRules.some(rule => rule?.therapistId === therapistId)
+        || (Array.isArray(period.assistantTherapistIds) && period.assistantTherapistIds.includes(therapistId));
 };
 
 const getChildrenFromSessions = (sessions, options = {}) => {
@@ -27,7 +30,8 @@ const getChildrenFromSessions = (sessions, options = {}) => {
         sessions.forEach(s => {
             if (s.child && !childMap.has(s.child.id)) {
                 const childSessions = sessions.filter(sess => sess.childId === s.child.id);
-                const activePeriod = (s.child.therapyPeriods || []).find(period => period.status === 'active') || (s.child.therapyPeriods || [])[0] || null;
+                const currentPeriods = getCurrentTherapyPeriods(s.child);
+                const activePeriod = currentPeriods.find(period => String(period.status || '').toLowerCase() === 'active') || currentPeriods[0] || null;
                 if (programOnly && !isTherapistAssignedToPeriod(activePeriod, therapistId)) return;
                 const periodSessions = activePeriod?.id
                     ? childSessions.filter(sess => sess.therapyPeriodId === activePeriod.id)

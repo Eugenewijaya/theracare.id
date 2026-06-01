@@ -4,6 +4,7 @@ import { children, historicalSessionSummaries, migrationRecords, programs, repor
 import { generateId } from "../utils/id-generators.js";
 import { evaluateSessionSlot } from "./scheduling-availability.service.js";
 import { notificationService } from "./notification.service.js";
+import { periodDeletionRequestService } from "./period-deletion-request.service.js";
 
 type TherapyPeriodInsert = typeof therapyPeriods.$inferInsert;
 type TherapySessionInsert = typeof therapySessions.$inferInsert;
@@ -502,6 +503,7 @@ export const therapyPeriodService = {
         }
       }
     });
+    await periodDeletionRequestService.purgeForPeriod(id);
 
     return { deleted: true, id, childId: period.childId, name: period.name };
   },

@@ -2,6 +2,7 @@ import React, { useCallback, useState, useEffect, useRef } from 'react';
 import { childrenApi, sessionsApi } from '../../../shared/api/client';
 import { uploadImageFile } from '../../../shared/uploadImage';
 import { normalizeChildrenList, readParentUser } from '../../../shared/sessionIdentity';
+import { getCurrentTherapyPrograms } from '../../../shared/therapyPeriods';
 
 export default function ChildProfile() {
     const [child, setChild] = useState(null);
@@ -122,6 +123,8 @@ export default function ChildProfile() {
         }
     };
 
+    const activePrograms = getCurrentTherapyPrograms(child);
+
     return (
         <div className="flex min-h-full flex-col bg-slate-50/50 dark:bg-slate-900">
             {/* Minimal Header */}
@@ -223,14 +226,14 @@ export default function ChildProfile() {
                                 Active Programs
                             </h3>
                             
-                            {(child.periods?.length || child.therapyPrograms?.length) ? (
+                            {activePrograms.length ? (
                                 <div className="space-y-6 flex-1">
-                                    {(child.periods?.length ? child.periods : child.therapyPrograms).map((prog, i) => {
+                                    {activePrograms.map((prog, i) => {
                                         const completed = prog.completedSessions ?? prog.sessionsCompleted ?? 0;
                                         const totalSessions = Number(prog.totalSessions || 0);
                                         const pct = prog.progress ?? (totalSessions > 0 ? Math.min(100, Math.round((completed / totalSessions) * 100)) : 0);
                                         return (
-                                            <div key={i} className="bg-slate-50 dark:bg-slate-900/50 rounded-2xl p-5 border border-slate-100 dark:border-slate-700/50">
+                                            <div key={prog.id || i} className="bg-slate-50 dark:bg-slate-900/50 rounded-2xl p-5 border border-slate-100 dark:border-slate-700/50">
                                                 <div className="flex justify-between items-start mb-3">
                                                     <div className="flex items-center gap-3">
                                                         <div className={`size-10 rounded-xl bg-sky-100 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400 flex items-center justify-center`}>
@@ -256,7 +259,7 @@ export default function ChildProfile() {
                             ) : (
                                 <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
                                     <span className="material-symbols-outlined text-4xl text-slate-300 dark:text-slate-600 mb-2">menu_book</span>
-                                    <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">Belum ada program terapi terdaftar.</p>
+                                    <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">Belum ada program terapi aktif.</p>
                                 </div>
                             )}
                         </div>
@@ -283,7 +286,7 @@ export default function ChildProfile() {
                                     <div className="w-12 h-12 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-full flex items-center justify-center mb-1">
                                         <span className="material-symbols-outlined text-[24px]">workspace_premium</span>
                                     </div>
-                                    <span className="text-3xl font-extrabold text-slate-900 dark:text-white">{child.periods?.length || child.therapyPrograms?.length || 0}</span>
+                                    <span className="text-3xl font-extrabold text-slate-900 dark:text-white">{activePrograms.length}</span>
                                     <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Active Programs</span>
                                 </div>
                             </div>
@@ -291,14 +294,14 @@ export default function ChildProfile() {
                             <div className="mt-6 pt-6 border-t border-slate-100 dark:border-slate-700/50 flex flex-col gap-3">
                                 <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">Milestone Summary:</p>
                                 <ul className="space-y-2">
-                                    {(child.periods?.length ? child.periods : child.therapyPrograms || []).slice(0,2).map((p, idx) => (
-                                        <li key={idx} className="flex gap-2 items-start text-sm text-slate-600 dark:text-slate-400">
+                                    {activePrograms.slice(0,2).map((p, idx) => (
+                                        <li key={p.id || idx} className="flex gap-2 items-start text-sm text-slate-600 dark:text-slate-400">
                                             <span className="material-symbols-outlined text-[18px] text-sky-500 shrink-0">check_circle</span>
                                             <span>Focus on {p.goal || p.programName || p.type} ({p.completedSessions ?? p.sessionsCompleted ?? 0} sessions tracked)</span>
                                         </li>
                                     ))}
-                                    {(!child.periods?.length && (!child.therapyPrograms || child.therapyPrograms.length === 0)) && (
-                                        <p className="text-xs italic text-slate-400">Detail milestones akan dihitung berdasarkan program yang sedang dijalani.</p>
+                                    {activePrograms.length === 0 && (
+                                        <p className="text-xs italic text-slate-400">Detail milestones akan muncul saat ada periode terapi aktif.</p>
                                     )}
                                 </ul>
                             </div>

@@ -211,6 +211,8 @@ function formatChildRecord(child: any, therapistLookup = new Map<string, any>())
     age: calculateAge(child.dob),
     programs: displayPrograms,
     periods: childPeriods,
+    activePeriods: currentPeriods,
+    currentPeriods,
     activePeriod,
     periodLabel: activePeriod ? `${activePeriod.name} - ${activePeriod.programName}` : "Belum ada periode aktif",
     financialLabel: activePeriod?.totalPrice
