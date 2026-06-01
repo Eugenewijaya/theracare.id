@@ -1,6 +1,55 @@
 import { pool } from "./index.js";
 import { hasDatabaseUrl } from "../config/database.js";
 
+async function repairTherapyPeriodSequences() {
+  const result = await pool.query(`
+    WITH scoped AS (
+      SELECT
+        tp.id,
+        row_number() OVER (
+          PARTITION BY
+            tp.child_id,
+            COALESCE(
+              NULLIF(tp.program_id, ''),
+              NULLIF(tpg.program_id, ''),
+              'legacy:' || COALESCE(NULLIF(lower(trim(tpg.type)), ''), tp.therapy_program_id::text, tp.id)
+            )
+          ORDER BY tp.start_date ASC, tp.created_at ASC, tp.id ASC
+        )::integer AS next_period_number
+      FROM therapy_periods tp
+      LEFT JOIN therapy_programs tpg ON tpg.id = tp.therapy_program_id
+      WHERE lower(coalesce(tp.status, '')) NOT IN ('cancelled', 'deleted', 'rejected')
+    ),
+    repaired AS (
+      UPDATE therapy_periods tp
+      SET
+        period_number = scoped.next_period_number,
+        name = CASE
+          WHEN tp.name ~* '^[[:space:]]*Periode[[:space:]]+[0-9]+[[:space:]]*$'
+            THEN 'Periode ' || scoped.next_period_number::text
+          ELSE tp.name
+        END,
+        updated_at = now()
+      FROM scoped
+      WHERE tp.id = scoped.id
+        AND (
+          tp.period_number IS DISTINCT FROM scoped.next_period_number
+          OR (
+            tp.name ~* '^[[:space:]]*Periode[[:space:]]+[0-9]+[[:space:]]*$'
+            AND tp.name IS DISTINCT FROM ('Periode ' || scoped.next_period_number::text)
+          )
+        )
+      RETURNING tp.id
+    )
+    SELECT count(*)::integer AS repaired_count FROM repaired;
+  `);
+
+  const repairedCount = Number(result.rows?.[0]?.repaired_count || 0);
+  if (repairedCount > 0) {
+    console.log(`[schema] Repaired ${repairedCount} therapy period sequence record(s).`);
+  }
+}
+
 export async function ensureProductionSchema() {
   if (!hasDatabaseUrl()) return;
   await pool.query(`
@@ -217,4 +266,5 @@ export async function ensureProductionSchema() {
       END IF;
     END $$;
   `);
+  await repairTherapyPeriodSequences();
 }
