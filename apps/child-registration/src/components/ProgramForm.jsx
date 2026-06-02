@@ -67,6 +67,7 @@ const calculateTotalForMode = ({ billingMode, totalSessions, pricePerSession, pr
 };
 
 const FALLBACK_OPERATING_WINDOW = { start: 8 * 60, end: 17 * 60 };
+const CLOCK_MINUTE_OPTIONS = [0, 15, 30, 45];
 
 const parseClockMinutes = (value) => {
     const match = String(value || '').trim().match(/^(\d{1,2})[:.](\d{2})$/);
@@ -103,7 +104,15 @@ const normalizeClockDraft = (value) => {
         return `${hour.slice(0, 2)}:${minute.slice(0, 2)}`;
     }
     const digits = raw.replace(/\D/g, '').slice(0, 4);
-    if (digits.length > 2) return `${digits.slice(0, 2)}:${digits.slice(2)}`;
+    if (digits.length === 2) {
+        const twoDigitHour = Number(digits);
+        return twoDigitHour <= 23 ? `${digits}:` : `0${digits.slice(0, 1)}:${digits.slice(1)}`;
+    }
+    if (digits.length === 3) {
+        const twoDigitHour = Number(digits.slice(0, 2));
+        return twoDigitHour <= 23 ? `${digits.slice(0, 2)}:${digits.slice(2)}` : `0${digits.slice(0, 1)}:${digits.slice(1)}`;
+    }
+    if (digits.length > 3) return `${digits.slice(0, 2)}:${digits.slice(2)}`;
     return digits;
 };
 
@@ -131,12 +140,25 @@ const normalizeClockOnBlur = (value) => {
     return parsed === null ? raw : formatClock(parsed);
 };
 
+const buildClockHourOptions = (window, durationValue = 60) => {
+    const duration = Math.max(1, Number(durationValue || 60));
+    const firstHour = Math.ceil(window.start / 60);
+    const lastHour = Math.floor((window.end - duration) / 60);
+    const options = [];
+    for (let hour = firstHour; hour <= lastHour; hour += 1) {
+        const minutes = hour * 60;
+        if (minutes >= window.start && minutes + duration <= window.end) options.push(hour);
+    }
+    return options.length ? options : Array.from({ length: 24 }, (_, hour) => hour);
+};
+
 const ProgramForm = ({ data, onChange, errors }) => {
     const selected = data.program || '';
     const [therapists, setTherapists] = useState([]);
     const [programsList, setProgramsList] = useState([]);
     const [programPricing, setProgramPricing] = useState({});
     const [clinicSettings, setClinicSettings] = useState({});
+    const [isClockPickerOpen, setIsClockPickerOpen] = useState(false);
     const [isLoadingResources, setIsLoadingResources] = useState(true);
     const [resourceError, setResourceError] = useState('');
     
@@ -175,6 +197,13 @@ const ProgramForm = ({ data, onChange, errors }) => {
     );
     const sessionStartMinutes = parseClockMinutes(data.sessionStartTime);
     const sessionDurationMinutes = Math.max(1, Number(data.sessionDuration || 60));
+    const clockHourOptions = useMemo(
+        () => buildClockHourOptions(operatingWindow, sessionDurationMinutes),
+        [operatingWindow, sessionDurationMinutes]
+    );
+    const selectedMinutes = sessionStartMinutes ?? operatingWindow.start;
+    const selectedHour = Math.floor(selectedMinutes / 60);
+    const selectedMinute = selectedMinutes % 60;
     const sessionTimeIssue = !data.sessionStartTime
         ? ''
         : sessionStartMinutes === null
@@ -187,6 +216,13 @@ const ProgramForm = ({ data, onChange, errors }) => {
         const current = Array.isArray(data.therapyDays) ? data.therapyDays : [];
         const next = current.includes(day) ? current.filter(item => item !== day) : [...current, day];
         onChange({ ...data, therapyDays: next });
+    };
+
+    const updateClockPart = (part, value) => {
+        const base = sessionStartMinutes ?? operatingWindow.start;
+        const hour = part === 'hour' ? value : Math.floor(base / 60);
+        const minute = part === 'minute' ? value : base % 60;
+        onChange({ ...data, sessionStartTime: formatClock((hour * 60) + minute) });
     };
 
     return (
@@ -434,17 +470,81 @@ const ProgramForm = ({ data, onChange, errors }) => {
                         <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">
                             Jam Mulai Default <span className="text-red-500">*</span>
                         </label>
-                        <input
-                            type="text"
-                            inputMode="numeric"
-                            maxLength={5}
-                            pattern="^([01][0-9]|2[0-3]):[0-5][0-9]$"
-                            placeholder="12:30"
-                            value={data.sessionStartTime || ''}
-                            onChange={(e) => onChange({ ...data, sessionStartTime: normalizeClockDraft(e.target.value) })}
-                            onBlur={(e) => onChange({ ...data, sessionStartTime: normalizeClockOnBlur(e.target.value) })}
-                            className={`w-full h-11 px-3 rounded-lg border ${errors?.sessionStartTime ? 'border-red-500 focus:ring-red-500' : 'border-slate-300 dark:border-slate-700 focus:ring-primary focus:border-primary'} bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-opacity-50`}
-                        />
+                        <div className="relative">
+                            <input
+                                type="text"
+                                inputMode="numeric"
+                                maxLength={5}
+                                pattern="^([01][0-9]|2[0-3]):[0-5][0-9]$"
+                                placeholder="12:30"
+                                value={data.sessionStartTime || ''}
+                                onChange={(e) => onChange({ ...data, sessionStartTime: normalizeClockDraft(e.target.value) })}
+                                onBlur={(e) => onChange({ ...data, sessionStartTime: normalizeClockOnBlur(e.target.value) })}
+                                className={`w-full h-11 rounded-lg border py-2 pl-3 pr-12 ${errors?.sessionStartTime ? 'border-red-500 focus:ring-red-500' : 'border-slate-300 dark:border-slate-700 focus:ring-primary focus:border-primary'} bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-opacity-50`}
+                            />
+                            <button
+                                type="button"
+                                onClick={() => setIsClockPickerOpen(open => !open)}
+                                className="absolute right-1.5 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-primary dark:text-slate-300 dark:hover:bg-slate-800"
+                                aria-label="Pilih jam dari clock picker"
+                            >
+                                <span className="material-symbols-outlined text-[20px]">schedule</span>
+                            </button>
+                            {isClockPickerOpen && (
+                                <div className="absolute left-0 top-12 z-40 w-[min(320px,calc(100vw-3rem))] rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl shadow-slate-900/15 dark:border-slate-700 dark:bg-slate-900">
+                                    <div className="mb-3 flex items-center justify-between gap-3">
+                                        <div>
+                                            <p className="text-xs font-black uppercase text-slate-500">Clock picker 24 jam</p>
+                                            <p className="text-sm font-black text-slate-900 dark:text-white">{formatClock(selectedMinutes)}</p>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsClockPickerOpen(false)}
+                                            className="flex h-8 w-8 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                                            aria-label="Tutup clock picker"
+                                        >
+                                            <span className="material-symbols-outlined text-[18px]">close</span>
+                                        </button>
+                                    </div>
+                                    <div className="relative mx-auto h-44 w-44 rounded-full border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-950">
+                                        <div className="absolute left-1/2 top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary" />
+                                        {clockHourOptions.map((hour, index) => {
+                                            const angle = ((index / clockHourOptions.length) * 360) - 90;
+                                            const radius = 72;
+                                            const x = Math.cos((angle * Math.PI) / 180) * radius;
+                                            const y = Math.sin((angle * Math.PI) / 180) * radius;
+                                            const active = hour === selectedHour;
+                                            return (
+                                                <button
+                                                    type="button"
+                                                    key={hour}
+                                                    onClick={() => updateClockPart('hour', hour)}
+                                                    className={`absolute left-1/2 top-1/2 flex h-8 w-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-xs font-black transition-colors ${active ? 'bg-primary text-white shadow-lg shadow-primary/25' : 'bg-white text-slate-700 hover:bg-primary/10 hover:text-primary dark:bg-slate-800 dark:text-slate-200'}`}
+                                                    style={{ transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))` }}
+                                                >
+                                                    {String(hour).padStart(2, '0')}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    <div className="mt-3 grid grid-cols-4 gap-2">
+                                        {CLOCK_MINUTE_OPTIONS.map((minute) => {
+                                            const active = minute === selectedMinute;
+                                            return (
+                                                <button
+                                                    type="button"
+                                                    key={minute}
+                                                    onClick={() => updateClockPart('minute', minute)}
+                                                    className={`h-9 rounded-lg border text-sm font-black transition-colors ${active ? 'border-primary bg-primary text-white' : 'border-slate-200 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800'}`}
+                                                >
+                                                    :{String(minute).padStart(2, '0')}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                         {errors?.sessionStartTime && <p className="text-xs text-red-500 mt-1">{errors.sessionStartTime}</p>}
                         {sessionTimeIssue && (
                             <p className="text-xs text-red-500 mt-1">
