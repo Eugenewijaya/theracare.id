@@ -12,6 +12,7 @@ const toDateKey = (date = new Date()) => {
 };
 
 const todayString = () => toDateKey();
+const isValidClock24 = (value) => /^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(String(value || '').trim());
 const DAY_LABELS = {
   Monday: 'Senin',
   Tuesday: 'Selasa',
@@ -205,6 +206,7 @@ export default function ProgramEnrollmentPage() {
       next.therapyDays = 'Pilih minimal satu hari terapi agar jadwal otomatis dibuat.';
     }
     if (!form.sessionStartTime) next.sessionStartTime = 'Jam mulai terapi wajib diisi.';
+    else if (!isValidClock24(form.sessionStartTime)) next.sessionStartTime = 'Gunakan format jam 24 jam HH:mm, contoh 12:30.';
     if (mode === 'renew' && !latestMatchingPeriod) next.mode = 'Pilih program yang punya periode sebelumnya untuk dilanjutkan.';
     setErrors(next);
     return Object.keys(next).length === 0;

@@ -96,22 +96,39 @@ const parseOperatingWindow = (value) => {
     return { start, end };
 };
 
-const buildSessionTimeOptions = (settings = {}, durationValue = 60) => {
-    const duration = Math.max(1, Number(durationValue || 60));
-    const window = parseOperatingWindow(settings.operatingHoursWeekday) || FALLBACK_OPERATING_WINDOW;
-    const options = [];
-    for (let minutes = window.start; minutes + duration <= window.end; minutes += 15) {
-        const value = formatClock(minutes);
-        options.push({ value, label: `${value} (24 jam)` });
+const normalizeClockDraft = (value) => {
+    const raw = String(value || '').replace(/[^\d:]/g, '').slice(0, 5);
+    if (raw.includes(':')) {
+        const [hour = '', minute = ''] = raw.split(':');
+        return `${hour.slice(0, 2)}:${minute.slice(0, 2)}`;
     }
-    return options;
+    const digits = raw.replace(/\D/g, '').slice(0, 4);
+    if (digits.length > 2) return `${digits.slice(0, 2)}:${digits.slice(2)}`;
+    return digits;
 };
 
-const getNoonEquivalent = (value, options) => {
-    const minutes = parseClockMinutes(value);
-    if (minutes === null || minutes >= 6 * 60) return '';
-    const candidate = formatClock(minutes + 12 * 60);
-    return options.some(option => option.value === candidate) ? candidate : '';
+const normalizeClockOnBlur = (value) => {
+    const raw = String(value || '').trim();
+    const direct = raw.match(/^(\d{1,2})[:.](\d{1,2})$/);
+    const digits = raw.replace(/\D/g, '');
+    let hour = '';
+    let minute = '';
+    if (direct) {
+        hour = direct[1];
+        minute = direct[2];
+    } else if (digits.length === 3) {
+        hour = digits.slice(0, 1);
+        minute = digits.slice(1);
+    } else if (digits.length >= 4) {
+        hour = digits.slice(0, 2);
+        minute = digits.slice(2, 4);
+    } else if (digits.length > 0) {
+        hour = digits;
+        minute = '00';
+    }
+    if (!hour || !minute) return raw;
+    const parsed = parseClockMinutes(`${hour}:${minute}`);
+    return parsed === null ? raw : formatClock(parsed);
 };
 
 const ProgramForm = ({ data, onChange, errors }) => {
@@ -152,24 +169,19 @@ const ProgramForm = ({ data, onChange, errors }) => {
         load();
     }, []);
 
-    const sessionTimeOptions = useMemo(
-        () => buildSessionTimeOptions(clinicSettings, data.sessionDuration || 60),
-        [clinicSettings, data.sessionDuration]
+    const operatingWindow = useMemo(
+        () => parseOperatingWindow(clinicSettings.operatingHoursWeekday) || FALLBACK_OPERATING_WINDOW,
+        [clinicSettings.operatingHoursWeekday]
     );
-    const hasValidSessionStartTime = sessionTimeOptions.some(option => option.value === data.sessionStartTime);
-
-    useEffect(() => {
-        if (isLoadingResources || resourceError || sessionTimeOptions.length === 0) return;
-        const current = data.sessionStartTime || '';
-        if (!current) {
-            onChange({ ...data, sessionStartTime: sessionTimeOptions[0].value });
-            return;
-        }
-        if (sessionTimeOptions.some(option => option.value === current)) return;
-        const noonEquivalent = getNoonEquivalent(current, sessionTimeOptions);
-        if (noonEquivalent) onChange({ ...data, sessionStartTime: noonEquivalent });
-        else onChange({ ...data, sessionStartTime: sessionTimeOptions[0].value });
-    }, [isLoadingResources, resourceError, sessionTimeOptions, data.sessionStartTime]);
+    const sessionStartMinutes = parseClockMinutes(data.sessionStartTime);
+    const sessionDurationMinutes = Math.max(1, Number(data.sessionDuration || 60));
+    const sessionTimeIssue = !data.sessionStartTime
+        ? ''
+        : sessionStartMinutes === null
+            ? 'Gunakan format 24 jam HH:mm, contoh 12:30.'
+            : sessionStartMinutes < operatingWindow.start || sessionStartMinutes + sessionDurationMinutes > operatingWindow.end
+                ? `Jam ${formatClock(sessionStartMinutes)} berada di luar jam operasional center (${formatClock(operatingWindow.start)}-${formatClock(operatingWindow.end)}).`
+                : '';
 
     const toggleDay = (day) => {
         const current = Array.isArray(data.therapyDays) ? data.therapyDays : [];
@@ -422,22 +434,24 @@ const ProgramForm = ({ data, onChange, errors }) => {
                         <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">
                             Jam Mulai Default <span className="text-red-500">*</span>
                         </label>
-                        <select
-                            value={hasValidSessionStartTime ? data.sessionStartTime : ''}
-                            onChange={(e) => onChange({ ...data, sessionStartTime: e.target.value })}
+                        <input
+                            type="text"
+                            inputMode="numeric"
+                            maxLength={5}
+                            pattern="^([01][0-9]|2[0-3]):[0-5][0-9]$"
+                            placeholder="12:30"
+                            value={data.sessionStartTime || ''}
+                            onChange={(e) => onChange({ ...data, sessionStartTime: normalizeClockDraft(e.target.value) })}
+                            onBlur={(e) => onChange({ ...data, sessionStartTime: normalizeClockOnBlur(e.target.value) })}
                             className={`w-full h-11 px-3 rounded-lg border ${errors?.sessionStartTime ? 'border-red-500 focus:ring-red-500' : 'border-slate-300 dark:border-slate-700 focus:ring-primary focus:border-primary'} bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-opacity-50`}
-                        >
-                            <option value="" disabled>{sessionTimeOptions.length ? 'Pilih jam 24 jam' : 'Jam operasional belum tersedia'}</option>
-                            {sessionTimeOptions.map(option => (
-                                <option key={option.value} value={option.value}>{option.label}</option>
-                            ))}
-                        </select>
+                        />
                         {errors?.sessionStartTime && <p className="text-xs text-red-500 mt-1">{errors.sessionStartTime}</p>}
-                        {!hasValidSessionStartTime && data.sessionStartTime && (
+                        {sessionTimeIssue && (
                             <p className="text-xs text-red-500 mt-1">
-                                Jam {data.sessionStartTime} berada di luar jam operasional center. Pilih jam dari daftar 24 jam.
+                                {sessionTimeIssue}
                             </p>
                         )}
+                        <p className="mt-1 text-xs text-slate-500">Ketik manual format 24 jam, contoh 09:00 atau 12:30. Jangan gunakan AM/PM.</p>
                     </div>
                     <div>
                         <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">Durasi Default</label>
@@ -453,7 +467,7 @@ const ProgramForm = ({ data, onChange, errors }) => {
                         </select>
                     </div>
                 </div>
-                <p className="mt-2 text-xs text-slate-500">Sistem akan membuat jadwal sesi periode ini dari hari, jam 24 jam, durasi, dan terapis utama yang dipilih. Pilihan jam mengikuti jam operasional center.</p>
+                <p className="mt-2 text-xs text-slate-500">Sistem akan membuat jadwal sesi periode ini dari hari, jam manual 24 jam, durasi, dan terapis utama yang dipilih.</p>
             </div>
 
             <div className="pt-1">

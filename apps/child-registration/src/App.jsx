@@ -50,6 +50,8 @@ const normalizePhone = (phone = '') => {
     return digits;
 };
 
+const isValidClock24 = (value) => /^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(String(value || '').trim());
+
 const STEP_META = {
     0: { title: 'Jenis Pendaftaran',   subtitle: 'Pilih mode registrasi pasien baru.',                      icon: 'select_all'    },
     1: { title: 'Parent Information',   subtitle: 'Enter the parent or guardian contact details.',            icon: 'person'        },
@@ -106,6 +108,7 @@ function App() {
                 e.therapyDays = 'Pilih minimal satu hari terapi agar jadwal otomatis dibuat.';
             }
             if (!currentChild.sessionStartTime) e.sessionStartTime = 'Jam mulai terapi wajib diisi.';
+            else if (!isValidClock24(currentChild.sessionStartTime)) e.sessionStartTime = 'Gunakan format jam 24 jam HH:mm, contoh 12:30.';
             setErrors(e);
             return !Object.keys(e).length;
         },
