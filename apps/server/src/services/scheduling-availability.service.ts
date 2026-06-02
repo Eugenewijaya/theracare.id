@@ -120,6 +120,13 @@ function parseMinutes(value?: string | null) {
   return hour * 60 + minute;
 }
 
+function formatMinutes(minutes: number) {
+  const normalized = ((minutes % 1440) + 1440) % 1440;
+  const hour = Math.floor(normalized / 60);
+  const minute = normalized % 60;
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
 function parseDurationMinutes(value?: string | null) {
   return parseScheduleDurationMinutes(value);
 }
@@ -172,8 +179,9 @@ function operationalConflict(settings: Record<string, string | null>, date: stri
 
   const minutes = parseMinutes(time);
   const durationMinutes = parseDurationMinutes(duration);
-  if (minutes === null || minutes < window.start || minutes >= window.end || minutes + durationMinutes > window.end) {
-    return "Slot berada di luar jam operasional center.";
+  if (minutes === null) return "Jam mulai slot tidak valid.";
+  if (minutes < window.start || minutes >= window.end || minutes + durationMinutes > window.end) {
+    return `Slot ${formatMinutes(minutes)}-${formatMinutes(minutes + durationMinutes)} berada di luar jam operasional center (${formatMinutes(window.start)}-${formatMinutes(window.end)}).`;
   }
 
   return "";

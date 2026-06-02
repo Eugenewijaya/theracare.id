@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { therapistsApi, adminApi } from '../../../shared/api/client';
 
 const colors = {
@@ -66,11 +66,60 @@ const calculateTotalForMode = ({ billingMode, totalSessions, pricePerSession, pr
     return Number(pricePerSession || 0) * Number(totalSessions || 0);
 };
 
+const FALLBACK_OPERATING_WINDOW = { start: 8 * 60, end: 17 * 60 };
+
+const parseClockMinutes = (value) => {
+    const match = String(value || '').trim().match(/^(\d{1,2})[:.](\d{2})$/);
+    if (!match) return null;
+    const hour = Number(match[1]);
+    const minute = Number(match[2]);
+    if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+    return hour * 60 + minute;
+};
+
+const formatClock = (minutes) => {
+    const normalized = ((Number(minutes) % 1440) + 1440) % 1440;
+    const hour = Math.floor(normalized / 60);
+    const minute = normalized % 60;
+    return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+};
+
+const parseOperatingWindow = (value) => {
+    const raw = String(value || '').trim();
+    if (!raw) return FALLBACK_OPERATING_WINDOW;
+    if (/tutup|closed|libur|off/i.test(raw)) return null;
+    const match = raw.match(/(\d{1,2}[:.]\d{2}).*?(\d{1,2}[:.]\d{2})/);
+    if (!match) return FALLBACK_OPERATING_WINDOW;
+    const start = parseClockMinutes(match[1]);
+    const end = parseClockMinutes(match[2]);
+    if (start === null || end === null || end <= start) return FALLBACK_OPERATING_WINDOW;
+    return { start, end };
+};
+
+const buildSessionTimeOptions = (settings = {}, durationValue = 60) => {
+    const duration = Math.max(1, Number(durationValue || 60));
+    const window = parseOperatingWindow(settings.operatingHoursWeekday) || FALLBACK_OPERATING_WINDOW;
+    const options = [];
+    for (let minutes = window.start; minutes + duration <= window.end; minutes += 15) {
+        const value = formatClock(minutes);
+        options.push({ value, label: `${value} (24 jam)` });
+    }
+    return options;
+};
+
+const getNoonEquivalent = (value, options) => {
+    const minutes = parseClockMinutes(value);
+    if (minutes === null || minutes >= 6 * 60) return '';
+    const candidate = formatClock(minutes + 12 * 60);
+    return options.some(option => option.value === candidate) ? candidate : '';
+};
+
 const ProgramForm = ({ data, onChange, errors }) => {
     const selected = data.program || '';
     const [therapists, setTherapists] = useState([]);
     const [programsList, setProgramsList] = useState([]);
     const [programPricing, setProgramPricing] = useState({});
+    const [clinicSettings, setClinicSettings] = useState({});
     const [isLoadingResources, setIsLoadingResources] = useState(true);
     const [resourceError, setResourceError] = useState('');
     
@@ -88,7 +137,11 @@ const ProgramForm = ({ data, onChange, errors }) => {
                 if (pRes.ok === false) throw new Error(pRes.data?.error || pRes.data?.message || 'Gagal memuat Program Layanan.');
                 setTherapists(tRes.data?.data || []);
                 setProgramsList(pRes.data?.data || []);
-                if (settingsRes.ok) setProgramPricing(parsePricing(settingsRes.data?.data));
+                if (settingsRes.ok) {
+                    const settings = settingsRes.data?.data || {};
+                    setClinicSettings(settings);
+                    setProgramPricing(parsePricing(settings));
+                }
             } catch (e) {
                 console.error(e);
                 setResourceError(e.message || 'Gagal memuat Program Layanan dan data terapis.');
@@ -98,6 +151,25 @@ const ProgramForm = ({ data, onChange, errors }) => {
         };
         load();
     }, []);
+
+    const sessionTimeOptions = useMemo(
+        () => buildSessionTimeOptions(clinicSettings, data.sessionDuration || 60),
+        [clinicSettings, data.sessionDuration]
+    );
+    const hasValidSessionStartTime = sessionTimeOptions.some(option => option.value === data.sessionStartTime);
+
+    useEffect(() => {
+        if (isLoadingResources || resourceError || sessionTimeOptions.length === 0) return;
+        const current = data.sessionStartTime || '';
+        if (!current) {
+            onChange({ ...data, sessionStartTime: sessionTimeOptions[0].value });
+            return;
+        }
+        if (sessionTimeOptions.some(option => option.value === current)) return;
+        const noonEquivalent = getNoonEquivalent(current, sessionTimeOptions);
+        if (noonEquivalent) onChange({ ...data, sessionStartTime: noonEquivalent });
+        else onChange({ ...data, sessionStartTime: sessionTimeOptions[0].value });
+    }, [isLoadingResources, resourceError, sessionTimeOptions, data.sessionStartTime]);
 
     const toggleDay = (day) => {
         const current = Array.isArray(data.therapyDays) ? data.therapyDays : [];
@@ -350,13 +422,22 @@ const ProgramForm = ({ data, onChange, errors }) => {
                         <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">
                             Jam Mulai Default <span className="text-red-500">*</span>
                         </label>
-                        <input
-                            type="time"
-                            value={data.sessionStartTime || '09:00'}
+                        <select
+                            value={hasValidSessionStartTime ? data.sessionStartTime : ''}
                             onChange={(e) => onChange({ ...data, sessionStartTime: e.target.value })}
                             className={`w-full h-11 px-3 rounded-lg border ${errors?.sessionStartTime ? 'border-red-500 focus:ring-red-500' : 'border-slate-300 dark:border-slate-700 focus:ring-primary focus:border-primary'} bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-opacity-50`}
-                        />
+                        >
+                            <option value="" disabled>{sessionTimeOptions.length ? 'Pilih jam 24 jam' : 'Jam operasional belum tersedia'}</option>
+                            {sessionTimeOptions.map(option => (
+                                <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                        </select>
                         {errors?.sessionStartTime && <p className="text-xs text-red-500 mt-1">{errors.sessionStartTime}</p>}
+                        {!hasValidSessionStartTime && data.sessionStartTime && (
+                            <p className="text-xs text-red-500 mt-1">
+                                Jam {data.sessionStartTime} berada di luar jam operasional center. Pilih jam dari daftar 24 jam.
+                            </p>
+                        )}
                     </div>
                     <div>
                         <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">Durasi Default</label>
@@ -372,7 +453,7 @@ const ProgramForm = ({ data, onChange, errors }) => {
                         </select>
                     </div>
                 </div>
-                <p className="mt-2 text-xs text-slate-500">Sistem akan membuat jadwal sesi periode ini dari hari, jam, durasi, dan terapis utama yang dipilih.</p>
+                <p className="mt-2 text-xs text-slate-500">Sistem akan membuat jadwal sesi periode ini dari hari, jam 24 jam, durasi, dan terapis utama yang dipilih. Pilihan jam mengikuti jam operasional center.</p>
             </div>
 
             <div className="pt-1">
