@@ -1,6 +1,6 @@
 import { db } from "../db/index.js";
 import { clinicSettings, historicalSessionSummaries, reports, rescheduleRequests, sessionRatings, therapists, therapyPeriods, therapySessions } from "../db/schema.js";
-import { eq, and, gte, inArray, sql } from "drizzle-orm";
+import { eq, and, gte, inArray, lte, sql } from "drizzle-orm";
 import { generateId } from "../utils/id-generators.js";
 import { httpError } from "../utils/http-error.js";
 import { attachChildPhotoUrl, getChildPhotoUrlMap } from "./child.service.js";
@@ -12,6 +12,15 @@ import { isValidSessionStatus } from "../domain/workflow-status.js";
 
 type TherapySessionInsert = typeof therapySessions.$inferInsert;
 type DbClient = typeof db | any;
+type SessionListFilters = {
+  from?: string;
+  to?: string;
+  status?: string;
+  limit?: number;
+};
+type TherapistSessionFilters = SessionListFilters & {
+  date?: string;
+};
 const ONE_TIME_VISIT_LOG_KEY = "oneTimeVisitLog";
 const APP_TIME_ZONE_OFFSET = "+07:00";
 const AUTO_LIFECYCLE_STATUSES = new Set(["active", "confirmed", "checked_in", "present"]);
@@ -83,6 +92,46 @@ function normalizeClock(value?: string | null) {
   const h = Math.max(0, Math.min(23, Number.parseInt(match[1], 10)));
   const m = Math.max(0, Math.min(59, Number.parseInt(match[2], 10)));
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+function normalizeListLimit(value: unknown) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return undefined;
+  return Math.min(1000, Math.floor(parsed));
+}
+
+function normalizeSessionStatusFilter(value: unknown) {
+  const status = String(value || "").trim().toLowerCase();
+  return status && isValidSessionStatus(status) ? status : "";
+}
+
+function buildSessionListConditions(filters: SessionListFilters = {}) {
+  const conditions = [];
+  const from = normalizeDateKey(filters.from);
+  const to = normalizeDateKey(filters.to);
+  const status = normalizeSessionStatusFilter(filters.status);
+  if (from) conditions.push(gte(therapySessions.date, from));
+  if (to) conditions.push(lte(therapySessions.date, to));
+  if (status) conditions.push(eq(therapySessions.status, status));
+  return conditions;
+}
+
+function buildSessionListWhere(filters: SessionListFilters = {}) {
+  const conditions = buildSessionListConditions(filters);
+  return conditions.length > 0 ? and(...conditions) : undefined;
+}
+
+function filterOneTimeVisitsBySessionFilters(visits: any[], filters: SessionListFilters = {}) {
+  const from = normalizeDateKey(filters.from);
+  const to = normalizeDateKey(filters.to);
+  const status = normalizeSessionStatusFilter(filters.status);
+  return visits.filter((visit) => {
+    const normalized = normalizeOneTimeVisit(visit);
+    if (from && normalized.date < from) return false;
+    if (to && normalized.date > to) return false;
+    if (status && normalized.status !== status) return false;
+    return true;
+  });
 }
 
 function getSessionStartAt(session: Pick<TherapySessionInsert, "date" | "startTime">) {
@@ -460,20 +509,36 @@ async function assertSessionAvailable(
 }
 
 export const sessionService = {
-  async getAllWithDetails() {
+  async getAllWithDetails(filters: SessionListFilters = {}) {
     await autoCompleteExpiredActiveSessions();
+    const where = buildSessionListWhere(filters);
+    const limit = normalizeListLimit(filters.limit);
     const [sessions, oneTimeVisits] = await Promise.all([
       db.query.therapySessions.findMany({
-      with: { therapist: { with: { user: true } }, child: { with: { parent: true, therapyPeriods: { with: { program: true, therapyProgram: true, sessions: true, historicalSummaries: true } } } }, room: true, therapyPeriod: { with: { program: true, historicalSummaries: true } } },
-      orderBy: (s, { desc }) => [desc(s.date), desc(s.startTime)],
+        ...(where ? { where } : {}),
+        with: {
+          therapist: { with: { user: true } },
+          child: {
+            with: {
+              parent: { columns: { id: true, userId: true } },
+              therapyPeriods: { with: { program: true, therapyProgram: true, historicalSummaries: true } },
+            },
+          },
+          room: true,
+          therapyPeriod: { with: { program: true, historicalSummaries: true } },
+        },
+        orderBy: (s, { desc }) => [desc(s.date), desc(s.startTime)],
+        ...(limit ? { limit } : {}),
       }),
       readOneTimeVisits(),
     ]);
+    const filteredOneTimeVisits = filterOneTimeVisitsBySessionFilters(oneTimeVisits, filters);
     const [regular, oneTime] = await Promise.all([
       enrichSessionDetails(sessions),
-      enrichOneTimeVisits(oneTimeVisits),
+      enrichOneTimeVisits(filteredOneTimeVisits),
     ]);
-    return [...regular, ...oneTime].sort(sessionSortDesc);
+    const merged = [...regular, ...oneTime].sort(sessionSortDesc);
+    return limit ? merged.slice(0, limit) : merged;
   },
 
   async getById(id: string) {
@@ -481,35 +546,67 @@ export const sessionService = {
     if (id.startsWith("OTV-")) return getOneTimeVisitById(id);
     const session = await db.query.therapySessions.findFirst({
       where: eq(therapySessions.id, id),
-      with: { therapist: { with: { user: true } }, child: { with: { parent: true, therapyPeriods: { with: { program: true, therapyProgram: true, sessions: true, historicalSummaries: true } } } }, room: true, therapyPeriod: { with: { program: true, historicalSummaries: true } } },
+      with: {
+        therapist: { with: { user: true } },
+        child: {
+          with: {
+            parent: { columns: { id: true, userId: true } },
+            therapyPeriods: { with: { program: true, therapyProgram: true, historicalSummaries: true } },
+          },
+        },
+        room: true,
+        therapyPeriod: { with: { program: true, historicalSummaries: true } },
+      },
     });
     if (!session) return null;
     const [enriched] = await enrichSessionDetails([session]);
     return enriched;
   },
 
-  async getForTherapist(therapistId: string, dateStr?: string) {
+  async getForTherapist(therapistId: string, filters: string | TherapistSessionFilters = {}) {
     await autoCompleteExpiredActiveSessions();
+    const filterOptions: TherapistSessionFilters = typeof filters === "string" ? { date: filters } : (filters || {});
+    const dateStr = normalizeDateKey(filterOptions.date);
+    const limit = normalizeListLimit(filterOptions.limit);
     const conditions = [eq(therapySessions.therapistId, therapistId)];
-    if (dateStr) conditions.push(eq(therapySessions.date, dateStr));
+    if (dateStr) {
+      conditions.push(eq(therapySessions.date, dateStr));
+    } else {
+      conditions.push(...buildSessionListConditions(filterOptions));
+    }
 
     const [sessions, oneTimeVisits] = await Promise.all([
       db.query.therapySessions.findMany({
-      where: and(...conditions),
-      with: { child: { with: { parent: true, therapyPeriods: { with: { program: true, therapyProgram: true, sessions: true, historicalSummaries: true } } } }, room: true, therapyPeriod: { with: { program: true, historicalSummaries: true } } },
-      orderBy: (s, { asc }) => [asc(s.date), asc(s.startTime)],
+        where: and(...conditions),
+        with: {
+          child: {
+            with: {
+              parent: { columns: { id: true, userId: true } },
+              therapyPeriods: { with: { program: true, therapyProgram: true, historicalSummaries: true } },
+            },
+          },
+          room: true,
+          therapyPeriod: { with: { program: true, historicalSummaries: true } },
+        },
+        orderBy: (s, { asc }) => [asc(s.date), asc(s.startTime)],
+        ...(limit ? { limit } : {}),
       }),
       readOneTimeVisits(),
     ]);
     const matchingVisits = oneTimeVisits.filter((visit: any) => (
       visit?.therapistId === therapistId
-      && (!dateStr || visit?.date === dateStr)
+      && (
+        dateStr
+          ? normalizeOneTimeVisit(visit).date === dateStr
+          : filterOneTimeVisitsBySessionFilters([visit], filterOptions).length > 0
+      )
     ));
     const [regular, oneTime] = await Promise.all([
       enrichSessionDetails(sessions),
       enrichOneTimeVisits(matchingVisits),
     ]);
-    return [...regular, ...oneTime].sort(sessionSortAsc);
+    const merged = [...regular, ...oneTime].sort(sessionSortAsc);
+    return limit ? merged.slice(0, limit) : merged;
   },
 
   async getUpcomingForChild(childId: string) {
@@ -527,27 +624,36 @@ export const sessionService = {
     return enrichSessionDetails(sessions);
   },
 
-  async getCompletedForChild(childId: string) {
+  async getCompletedForChild(childId: string, filters: SessionListFilters = {}) {
     await autoCompleteExpiredActiveSessions();
+    const limit = normalizeListLimit(filters.limit);
     const sessions = await db.query.therapySessions.findMany({
-      where: and(eq(therapySessions.childId, childId), inArray(therapySessions.status, ["done", "completed"])),
+      where: and(
+        eq(therapySessions.childId, childId),
+        inArray(therapySessions.status, ["done", "completed"]),
+        ...buildSessionListConditions({ from: filters.from, to: filters.to }),
+      ),
       with: { therapist: { with: { user: true } }, therapyPeriod: { with: { program: true, historicalSummaries: true } } },
       orderBy: (s, { desc }) => [desc(s.date), desc(s.startTime)],
+      ...(limit ? { limit } : {}),
     });
     return enrichSessionDetails(sessions);
   },
 
-  async getAttendanceHistoryForChild(childId: string) {
+  async getAttendanceHistoryForChild(childId: string, filters: SessionListFilters = {}) {
     await autoCompleteExpiredActiveSessions();
     const today = todayDateKey();
+    const limit = normalizeListLimit(filters.limit);
     const sessions = await db.query.therapySessions.findMany({
       where: and(
         eq(therapySessions.childId, childId),
         sql`${therapySessions.date} <= ${today}`,
         inArray(therapySessions.status, ["confirmed", "active", "done", "completed", "cancelled"]),
+        ...buildSessionListConditions({ from: filters.from, to: filters.to }),
       ),
       with: { therapist: { with: { user: true } }, therapyPeriod: { with: { program: true, historicalSummaries: true } } },
       orderBy: (s, { desc }) => [desc(s.date), desc(s.startTime)],
+      ...(limit ? { limit } : {}),
     });
     return enrichSessionDetails(sessions);
   },

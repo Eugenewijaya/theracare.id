@@ -188,7 +188,15 @@ export const adminService = {
       .from(therapists)
       .innerJoin(user, eq(therapists.userId, user.id))
       .where(and(eq(user.status, "active"), sql`${user.banned} is not true`));
-    const allSessions = await db.select().from(therapySessions).where(eq(therapySessions.date, today));
+    const [totalSessionsToday] = await db.select({ count: sql<number>`count(*)` })
+      .from(therapySessions)
+      .where(eq(therapySessions.date, today));
+    const [completedSessionsToday] = await db.select({ count: sql<number>`count(*)` })
+      .from(therapySessions)
+      .where(and(eq(therapySessions.date, today), eq(therapySessions.status, "done")));
+    const [pendingSessionsToday] = await db.select({ count: sql<number>`count(*)` })
+      .from(therapySessions)
+      .where(and(eq(therapySessions.date, today), eq(therapySessions.status, "upcoming")));
     const settings = await this.getSettings();
     const oneTimeVisits = parseJsonArray(settings.oneTimeVisitLog)
       .filter((visit: any) => visit?.date === today && String(visit?.status || "upcoming").toLowerCase() !== "cancelled");
@@ -198,9 +206,9 @@ export const adminService = {
       activeChildren: Number(childCount.count),
       totalTherapists: Number(therapistCount.count),
       activeTherapists: Number(activeTherapistCount.count),
-      totalSessionsToday: allSessions.length + oneTimeVisits.length,
-      completedSessionsToday: allSessions.filter((s) => s.status === "done").length + completedOneTimeVisits.length,
-      pendingSessionsToday: allSessions.filter((s) => s.status === "upcoming").length + pendingOneTimeVisits.length,
+      totalSessionsToday: Number(totalSessionsToday.count || 0) + oneTimeVisits.length,
+      completedSessionsToday: Number(completedSessionsToday.count || 0) + completedOneTimeVisits.length,
+      pendingSessionsToday: Number(pendingSessionsToday.count || 0) + pendingOneTimeVisits.length,
     };
   },
 };

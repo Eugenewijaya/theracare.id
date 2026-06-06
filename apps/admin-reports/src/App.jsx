@@ -142,7 +142,7 @@ function App() {
         try {
             const requests = [
                 ['statistik', adminApi.getStats()],
-                ['jadwal', sessionsApi.getAll()],
+                ['jadwal', sessionsApi.getAll({ from: selectedRange.startValue, to: selectedRange.endValue })],
                 ['data anak', childrenApi.getAll()],
                 ['terapis', therapistsApi.getAll()],
                 ['program', adminApi.getPrograms()],

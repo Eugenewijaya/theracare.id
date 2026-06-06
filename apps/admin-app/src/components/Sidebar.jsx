@@ -60,7 +60,7 @@ export default function Sidebar({ isOpen, onClose }) {
       if (!shouldPollNow({ force })) return;
       try {
         const [reqResult, meetingResult, unreadResult, leaveResult] = await Promise.allSettled([
-          rescheduleApi.getAll(),
+          rescheduleApi.getAll({ status: 'pending' }),
           meetingsApi.getAll(),
           notificationsApi.getUnreadCount(),
           leaveRequestsApi.getAll(),

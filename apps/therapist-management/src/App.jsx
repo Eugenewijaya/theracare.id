@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from './components/Header';
 import TherapistCard from './components/TherapistCard';
-import { therapistsApi, adminApi, reportsApi, sessionsApi } from '../../shared/api/client';
+import { therapistsApi, adminApi, getRoleHistoryFilters, reportsApi, sessionsApi } from '../../shared/api/client';
 import { useClinicSettings } from '../../shared/clinicSettings';
 import {
     buildTherapistRegistrationWhatsAppUrl,
@@ -452,10 +452,11 @@ function App() {
 
     const loadData = async () => {
         try {
+            const historyFilters = getRoleHistoryFilters();
             const [tRes, pRes, sRes] = await Promise.all([
                 therapistsApi.getAll(),
                 adminApi.getPrograms(),
-                sessionsApi.getAll().catch(() => ({ data: { data: [] } }))
+                sessionsApi.getAll(historyFilters).catch(() => ({ data: { data: [] } }))
             ]);
             
             const raw = tRes.data?.data || [];
@@ -566,7 +567,7 @@ function App() {
         try {
             const [sessionRows, reportsRes] = await Promise.all([
                 Promise.resolve(sessions.filter(session => session.therapistId === id)),
-                reportsApi.getForTherapist(id).catch(() => ({ data: { data: [] } })),
+                reportsApi.getForTherapist(id, getRoleHistoryFilters({ futureMonths: 0 })).catch(() => ({ data: { data: [] } })),
             ]);
             const reports = reportsRes.data?.data || [];
             const doneSessions = sessionRows.filter(session => ['done', 'completed'].includes(session.status)).length;

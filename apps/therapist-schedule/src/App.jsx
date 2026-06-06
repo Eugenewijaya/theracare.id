@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { adminApi, authApi, leaveRequestsApi, sessionsApi, therapistsApi } from '../../shared/api/client';
+import { adminApi, authApi, getRoleHistoryFilters, leaveRequestsApi, sessionsApi, therapistsApi } from '../../shared/api/client';
 import PortalProfileMenu from '../../shared/ui/PortalProfileMenu';
 import TherapistWeeklyScheduleTable from '../../shared/ui/TherapistWeeklyScheduleTable';
 import { clearTherapistUser, readTherapistUser } from '../../shared/sessionIdentity';
@@ -100,7 +100,7 @@ function App({ onLogout }) {
         try {
             const [res, allRes, profileRes, leaveRes, closureRes] = await Promise.all([
                 sessionsApi.getForTherapist(currentUser.id, dateKey),
-                sessionsApi.getForTherapist(currentUser.id),
+                sessionsApi.getForTherapist(currentUser.id, getRoleHistoryFilters()),
                 therapistsApi.getMe().catch(() => ({ data: { data: null } })),
                 leaveRequestsApi.getMine().catch(() => ({ data: { data: [] } })),
                 adminApi.getCenterClosures().catch(() => ({ data: { data: { closures: [] } } })),

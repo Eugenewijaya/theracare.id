@@ -1,5 +1,5 @@
 import React, { useCallback, useState, useEffect, useRef } from 'react';
-import { childrenApi, sessionsApi } from '../../../shared/api/client';
+import { childrenApi, getRoleHistoryFilters, sessionsApi } from '../../../shared/api/client';
 import { uploadImageFile } from '../../../shared/uploadImage';
 import { normalizeChildrenList, readParentUser } from '../../../shared/sessionIdentity';
 import { getCurrentTherapyPrograms } from '../../../shared/therapyPeriods';
@@ -42,7 +42,7 @@ export default function ChildProfile() {
             if (!nextChild) throw new Error('Profil anak belum ditemukan.');
             setChild(nextChild);
 
-            const sessRes = await sessionsApi.getCompletedForChild(targetChildId);
+            const sessRes = await sessionsApi.getCompletedForChild(targetChildId, getRoleHistoryFilters({ futureMonths: 0 }));
             if (!sessRes.ok) {
                 setCompletedSessions([]);
                 setLoadError(sessRes.data?.error || 'Riwayat sesi belum bisa dimuat.');

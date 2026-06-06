@@ -1,6 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { sessionsApi } from '../../../shared/api/client';
 
+const todayString = () => {
+    const date = new Date();
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+};
+
 function parseDurationMinutes(value) {
     const raw = String(value || '').toLowerCase();
     const hourMatch = raw.match(/(\d+(?:\.\d+)?)\s*(h|hour|hours|jam)/);
@@ -65,7 +70,8 @@ export default function LiveSessionMonitor() {
         let mounted = true;
         const load = async () => {
             try {
-                const res = await sessionsApi.getAll();
+                const today = todayString();
+                const res = await sessionsApi.getAll({ from: today, to: today });
                 if (mounted) setSessions(res.data?.data || []);
             } catch (error) {
                 console.error('Failed to load live sessions', error);

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Header from './components/Header';
 import TherapistProfile from './components/TherapistProfile';
-import { sessionsApi, reportsApi, therapistsApi } from '../../shared/api/client';
+import { getRoleHistoryFilters, sessionsApi, reportsApi, therapistsApi } from '../../shared/api/client';
 import { uploadImageFile } from '../../shared/uploadImage';
 import { isPortalUserRemembered, readTherapistUser, storeTherapistUser } from '../../shared/sessionIdentity';
 
@@ -106,9 +106,10 @@ function App({ onLogout }) {
         const updateStats = async () => {
             try {
                 setStatsError('');
+                const historyFilters = getRoleHistoryFilters({ futureMonths: 0 });
                 const [sessionsRes, reportsRes] = await Promise.all([
-                    sessionsApi.getForTherapist(currentUser.id),
-                    reportsApi.getForTherapist(currentUser.id, 'harian')
+                    sessionsApi.getForTherapist(currentUser.id, historyFilters),
+                    reportsApi.getForTherapist(currentUser.id, 'harian', historyFilters)
                 ]);
                 if (sessionsRes?.ok === false) throw new Error(sessionsRes.data?.error || sessionsRes.data?.message || 'Data sesi belum bisa dimuat.');
                 if (reportsRes?.ok === false) throw new Error(reportsRes.data?.error || reportsRes.data?.message || 'Data laporan belum bisa dimuat.');

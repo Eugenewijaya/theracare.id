@@ -29,6 +29,17 @@ const formatDateTime = () => new Date().toLocaleString('id-ID', {
     timeStyle: 'short',
 });
 
+const toDateKey = (date) =>
+    `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+const getMonitoringSessionWindow = () => {
+    const to = new Date();
+    const from = new Date();
+    from.setMonth(from.getMonth() - 12);
+    from.setDate(from.getDate() + 1);
+    return { from: toDateKey(from), to: toDateKey(to) };
+};
+
 function buildMonitoringReportHtml(store) {
     const settings = getCachedClinicSettings();
     const children = store?.children || [];
@@ -138,7 +149,7 @@ function App() {
         try {
             const requests = [
                 ['data anak', childrenApi.getAll()],
-                ['jadwal sesi', sessionsApi.getAll()],
+                ['jadwal sesi', sessionsApi.getAll(getMonitoringSessionWindow())],
                 ['program layanan', adminApi.getPrograms()],
                 ['statistik dashboard', adminApi.getStats()],
                 ['permintaan reschedule', rescheduleApi.getAll()],

@@ -1,5 +1,5 @@
 import React, { useCallback, useState, useEffect } from 'react';
-import { rescheduleApi, notificationsApi, sessionsApi, substituteRequestsApi } from '../../../shared/api/client';
+import { getRoleHistoryFilters, rescheduleApi, notificationsApi, sessionsApi, substituteRequestsApi } from '../../../shared/api/client';
 import { readTherapistUser } from '../../../shared/sessionIdentity';
 import { confirmAction, notifyDialog } from '../../../shared/ui/confirmDialog';
 
@@ -248,9 +248,9 @@ export default function ScheduleUpdates() {
                 setLoading(true);
                 setLoadError('');
                 const [reqRes, notifRes, sessRes, substituteRes] = await Promise.all([
-                    rescheduleApi.getForTherapist(user.id),
+                    rescheduleApi.getForTherapist(user.id, { status: 'pending' }),
                     notificationsApi.getAll(),
-                    sessionsApi.getForTherapist(user.id),
+                    sessionsApi.getForTherapist(user.id, getRoleHistoryFilters()),
                     substituteRequestsApi.getMine(),
                 ]);
                 assertApiOk(reqRes, 'Request reschedule belum bisa dimuat.');

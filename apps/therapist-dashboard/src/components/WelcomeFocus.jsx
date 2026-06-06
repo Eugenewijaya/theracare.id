@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { reportsApi, sessionsApi } from '../../../shared/api/client';
+import { getRoleHistoryFilters, reportsApi, sessionsApi } from '../../../shared/api/client';
 import { readTherapistUser } from '../../../shared/sessionIdentity';
 import { buildDailyReportQueue, findOldestMissingDailyReportSession, isOneTimeVisitSession } from '../../../shared/reportRules';
 import { formatSessionClock, getLiveSessionState } from '../../../shared/sessionLiveState';
@@ -50,9 +50,10 @@ const WelcomeFocus = () => {
         }
 
         try {
+            const historyFilters = getRoleHistoryFilters();
             const [res, reportRes] = await Promise.all([
-                sessionsApi.getForTherapist(user.id),
-                reportsApi.getForTherapist(user.id, 'harian'),
+                sessionsApi.getForTherapist(user.id, historyFilters),
+                reportsApi.getForTherapist(user.id, 'harian', historyFilters),
             ]);
             assertApiOk(res, 'Ringkasan sesi belum bisa dimuat.');
             assertApiOk(reportRes, 'Ringkasan laporan belum bisa dimuat.');

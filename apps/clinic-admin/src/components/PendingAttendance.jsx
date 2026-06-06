@@ -19,12 +19,12 @@ const PendingAttendance = () => {
     const loadSessions = async () => {
         setLoading(true);
         try {
-            const res = await sessionsApi.getAll();
+            const today = todayString();
+            const res = await sessionsApi.getAll({ from: today, to: today, status: 'upcoming' });
             if (!res.ok) {
                 throw new Error(res.data?.error || 'Data sesi belum bisa dimuat.');
             }
             const allSessions = res.data?.data || [];
-            const today = todayString();
             const pending = allSessions
                 .filter(s => s.status === 'upcoming' && s.date === today)
                 .sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));

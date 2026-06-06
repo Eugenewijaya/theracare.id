@@ -12,6 +12,12 @@ import LiveSessionMonitor from './components/LiveSessionMonitor';
 import { adminApi, childrenApi, leaveRequestsApi, sessionsApi, therapistsApi } from '../../shared/api/client';
 import TherapistWeeklyScheduleTable from '../../shared/ui/TherapistWeeklyScheduleTable';
 
+const dateKeyFromOffset = (offsetDays = 0) => {
+    const date = new Date();
+    date.setDate(date.getDate() + offsetDays);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+};
+
 function App() {
     const [showWeeklySchedule, setShowWeeklySchedule] = useState(false);
     const [scheduleData, setScheduleData] = useState({
@@ -25,7 +31,7 @@ function App() {
     const loadScheduleSummary = useCallback(async () => {
         try {
             const [sessionsRes, therapistsRes, childrenRes, leaveRes, closureRes] = await Promise.all([
-                sessionsApi.getAll(),
+                sessionsApi.getAll({ from: dateKeyFromOffset(-7), to: dateKeyFromOffset(21) }),
                 therapistsApi.getAll(),
                 childrenApi.getAll(),
                 leaveRequestsApi.getAll().catch(() => ({ data: { data: [] } })),

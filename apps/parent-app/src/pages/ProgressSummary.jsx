@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { childrenApi, reportsApi, sessionsApi } from '../../../shared/api/client';
+import { childrenApi, getRoleHistoryFilters, reportsApi, sessionsApi } from '../../../shared/api/client';
 import { normalizeChildrenList, readParentUser } from '../../../shared/sessionIdentity';
 import { getCurrentTherapyPrograms, hasTherapyPeriodRecords } from '../../../shared/therapyPeriods';
 
@@ -332,13 +332,14 @@ export default function ProgressSummary() {
             ));
 
             const warningMessages = [];
+            const historyFilters = getRoleHistoryFilters({ futureMonths: 0 });
             const dataEntries = await Promise.all(list.map(async (child) => {
                 const childId = child.id || child.nita;
                 if (!childId) return { childId: '', sessions: [], reports: [] };
                 try {
                     const [sessionRes, reportRes] = await Promise.all([
-                        sessionsApi.getCompletedForChild(childId),
-                        reportsApi.getForChild(childId),
+                        sessionsApi.getCompletedForChild(childId, historyFilters),
+                        reportsApi.getForChild(childId, historyFilters),
                     ]);
                     if (!sessionRes.ok) {
                         warningMessages.push(sessionRes.data?.error || `Riwayat sesi ${child.name || childId} belum bisa dimuat.`);

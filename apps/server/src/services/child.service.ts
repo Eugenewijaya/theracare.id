@@ -15,6 +15,19 @@ const CHILD_PHOTO_SETTINGS_KEY = "childPhotoUrls";
 type DbClient = typeof db | any;
 type AuditActor = { id?: string; role?: string; name?: string; email?: string } | null | undefined;
 
+const CHILD_SESSION_SUMMARY_COLUMNS = {
+  id: true,
+  therapyPeriodId: true,
+  therapistId: true,
+  childId: true,
+  roomId: true,
+  date: true,
+  startTime: true,
+  duration: true,
+  focus: true,
+  status: true,
+} as const;
+
 function parseChildPhotoMap(value?: string | null): Record<string, string> {
   if (!value) return {};
   try {
@@ -470,8 +483,15 @@ export const childService = {
       with: {
         parent: { with: { user: true } },
         therapyPrograms: { with: { program: true } },
-        therapyPeriods: { with: { program: true, therapyProgram: true, sessions: true, historicalSummaries: true } },
-        sessions: { with: { therapist: { with: { user: true } } } },
+        therapyPeriods: {
+          with: {
+            program: true,
+            therapyProgram: true,
+            sessions: { columns: CHILD_SESSION_SUMMARY_COLUMNS },
+            historicalSummaries: true,
+          },
+        },
+        sessions: { columns: CHILD_SESSION_SUMMARY_COLUMNS },
       },
     });
     return enrichChildList(rows);
@@ -497,8 +517,15 @@ export const childService = {
       where: eq(children.parentId, parentId),
       with: {
         therapyPrograms: { with: { program: true } },
-        therapyPeriods: { with: { program: true, therapyProgram: true, sessions: true, historicalSummaries: true } },
-        sessions: { with: { therapist: { with: { user: true } } } },
+        therapyPeriods: {
+          with: {
+            program: true,
+            therapyProgram: true,
+            sessions: { columns: CHILD_SESSION_SUMMARY_COLUMNS },
+            historicalSummaries: true,
+          },
+        },
+        sessions: { columns: CHILD_SESSION_SUMMARY_COLUMNS },
       },
     });
     return enrichChildList(rows);

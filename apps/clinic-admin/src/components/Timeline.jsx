@@ -17,9 +17,9 @@ const Timeline = () => {
     useEffect(() => {
         const load = async () => {
             try {
-                const res = await sessionsApi.getAll();
-                const allSessions = res.data?.data || [];
                 const today = todayString();
+                const res = await sessionsApi.getAll({ from: today, to: today });
+                const allSessions = res.data?.data || [];
                 setSessions(allSessions.filter(s => s.date === today && s.status !== 'cancelled').sort((a, b) => (a.startTime || '').localeCompare(b.startTime || '')));
             } catch {}
             setLoading(false);

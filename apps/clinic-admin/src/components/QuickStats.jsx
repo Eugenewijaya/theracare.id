@@ -13,7 +13,7 @@ const QuickStats = () => {
             try {
                 const [statsRes, reqRes] = await Promise.all([
                     adminApi.getStats(),
-                    rescheduleApi.getAll(),
+                    rescheduleApi.getAll({ status: 'pending' }),
                 ]);
                 const s = statsRes.data?.data || {};
                 const pendingCount = (reqRes.data?.data || []).filter(r => r.status === 'pending').length;

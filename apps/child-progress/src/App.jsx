@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Header from './components/Header';
-import { childrenApi, reportsApi, sessionsApi } from '../../shared/api/client';
+import { childrenApi, getRoleHistoryFilters, reportsApi, sessionsApi } from '../../shared/api/client';
 import { readTherapistUser } from '../../shared/sessionIdentity';
 import { getCurrentTherapyPrograms, hasTherapyPeriodRecords } from '../../shared/therapyPeriods';
 
@@ -122,7 +122,7 @@ function App() {
             try {
                 const therapist = readStoredTherapist();
                 if (therapist?.id) {
-                    const res = await sessionsApi.getForTherapist(therapist.id);
+                    const res = await sessionsApi.getForTherapist(therapist.id, getRoleHistoryFilters({ futureMonths: 0 }));
                     if (res?.ok === false) throw new Error(res.data?.error || res.data?.message || 'Gagal memuat sesi terapis.');
                     const therapistSessions = res.data?.data || [];
                     const childMap = new Map();
@@ -197,7 +197,7 @@ function App() {
         if (!selectedId) return;
         const loadSessions = async () => {
             try {
-                const rawRes = await sessionsApi.getCompletedForChild(selectedId);
+                const rawRes = await sessionsApi.getCompletedForChild(selectedId, getRoleHistoryFilters({ futureMonths: 0 }));
                 if (rawRes?.ok === false) throw new Error(rawRes.data?.error || rawRes.data?.message || 'Gagal memuat riwayat sesi anak.');
                 const fallbackRaw = rawSessions.filter(s => (s.childId === selectedId || s.child?.id === selectedId) && isDone(s));
                 const raw = rawRes.data?.data || fallbackRaw;

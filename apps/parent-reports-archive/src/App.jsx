@@ -631,11 +631,6 @@ function App({ onLogout }) {
             const therapistReports = rRes.data?.data || [];
             const visibleReports = therapistReports.filter(isParentVisibleReport);
 
-            const sRes = await sessionsApi.getCompletedForChild(childId);
-            if (!sRes.ok) throw new Error(sRes.data?.error || 'Gagal memuat sesi selesai anak.');
-            const sessions = sRes.data?.data || [];
-            const sessionMap = new Map(sessions.map(session => [session.id, session]));
-            
             const pRes = await adminApi.getPrograms();
             if (!pRes.ok) throw new Error(pRes.data?.error || 'Gagal memuat program laporan.');
             const allProg = pRes.data?.data || [];
@@ -644,7 +639,7 @@ function App({ onLogout }) {
                 (Array.isArray(user?.children) ? user.children : []).find(c => c.id === childId || c.nita === childId);
 
             const mappedReports = await Promise.all(visibleReports.map(async savedReport => {
-                const s = savedReport.sessionId ? sessionMap.get(savedReport.sessionId) : null;
+                const s = savedReport.session || null;
                 let rating = null;
                 if (savedReport.sessionId) {
                     try {

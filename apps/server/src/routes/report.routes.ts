@@ -37,6 +37,17 @@ function reportResponseForRole(req: Request, report: any) {
   return req.user?.role === "parent" ? toParentSafeReport(report) : report;
 }
 
+function parseReportQueryOptions(req: Request) {
+  const from = typeof req.query.from === "string" ? req.query.from : "";
+  const to = typeof req.query.to === "string" ? req.query.to : "";
+  const limit = Number(req.query.limit);
+  return {
+    ...(from ? { from } : {}),
+    ...(to ? { to } : {}),
+    ...(Number.isFinite(limit) && limit > 0 ? { limit } : {}),
+  };
+}
+
 router.get("/therapist/:id", requireAuth, async (req, res, next) => {
   try {
     if (req.user?.role !== "admin") {
@@ -45,13 +56,13 @@ router.get("/therapist/:id", requireAuth, async (req, res, next) => {
         return res.status(403).json({ error: "Akses laporan terapis ditolak" });
       }
     }
-    ok(res, await reportService.getForTherapist(req.params.id as string, req.query.type as string as string));
+    ok(res, await reportService.getForTherapist(req.params.id as string, req.query.type as string as string, parseReportQueryOptions(req)));
   } catch (e) { next(e); }
 });
 
 router.get("/child/:id", requireAuth, async (req, res, next) => {
   try {
-    const options: { visibleToParentOnly?: boolean; therapistId?: string } = {};
+    const options: { visibleToParentOnly?: boolean; therapistId?: string; from?: string; to?: string; limit?: number } = parseReportQueryOptions(req);
     if (req.user?.role === "parent") {
       const allowed = await reportService.canParentAccessChild(req.user.id, req.params.id as string);
       if (!allowed) return res.status(403).json({ error: "Akses laporan anak ditolak" });

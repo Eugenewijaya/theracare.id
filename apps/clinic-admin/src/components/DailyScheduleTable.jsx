@@ -35,7 +35,7 @@ export default function DailyScheduleTable() {
     useEffect(() => {
         const load = async () => {
             try {
-                const res = await sessionsApi.getAll();
+                const res = await sessionsApi.getAll({ from: selectedDate, to: selectedDate });
                 setSessions(res.data?.data || []);
             } catch (e) {
                 console.error(e);
@@ -58,7 +58,7 @@ export default function DailyScheduleTable() {
             clearInterval(interval);
             events.forEach((eventName) => window.removeEventListener(eventName, load));
         };
-    }, []);
+    }, [selectedDate]);
 
     const rows = useMemo(() => {
         return sessions

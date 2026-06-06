@@ -10,7 +10,7 @@ const ScheduleRequests = () => {
     useEffect(() => {
         const load = async () => {
             try {
-                const res = await rescheduleApi.getAll();
+                const res = await rescheduleApi.getAll({ status: 'pending' });
                 const all = res.data?.data || [];
                 const pending = all.filter(r => r.status === 'pending').slice(0, 3);
                 setItems(pending.map(r => ({

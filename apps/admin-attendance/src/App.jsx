@@ -20,6 +20,30 @@ function getTherapistName(session) {
 const CONFIRMED_ATTENDANCE_STATUSES = new Set(['confirmed', 'active', 'done']);
 const FINAL_ATTENDANCE_STATUSES = new Set(['confirmed', 'active', 'done', 'cancelled']);
 
+const toDateKey = (date) =>
+    `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+function getAttendanceFetchFilters(activeTab, historyFilter) {
+    const now = new Date();
+    if (activeTab === 'today') {
+        const today = toDateKey(now);
+        return { from: today, to: today };
+    }
+    if (historyFilter === 'weekly') {
+        const from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        return { from: toDateKey(from), to: toDateKey(now) };
+    }
+    if (historyFilter === 'monthly') {
+        const from = new Date(now.getFullYear(), now.getMonth(), 1);
+        return { from: toDateKey(from), to: toDateKey(now) };
+    }
+    if (historyFilter === 'yearly') {
+        const from = new Date(now.getFullYear(), 0, 1);
+        return { from: toDateKey(from), to: toDateKey(now) };
+    }
+    return {};
+}
+
 function App() {
     const [attendanceData, setAttendanceData] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
@@ -33,7 +57,7 @@ function App() {
         setLoading(true);
         if (!preserveNotice) setNotice(null);
         try {
-            const res = await sessionsApi.getAll();
+            const res = await sessionsApi.getAll(getAttendanceFetchFilters(activeTab, historyFilter));
             if (!res.ok) throw new Error(res.data?.error || 'Data kehadiran gagal dimuat.');
             setAttendanceData(res.data?.data || []);
         } catch (e) {
@@ -47,7 +71,7 @@ function App() {
 
     useEffect(() => {
         load();
-    }, []);
+    }, [activeTab, historyFilter]);
 
     const handleApprove = async (id) => {
         try {

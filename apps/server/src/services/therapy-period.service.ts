@@ -13,6 +13,20 @@ import { httpError } from "../utils/http-error.js";
 type TherapyPeriodInsert = typeof therapyPeriods.$inferInsert;
 type TherapySessionInsert = typeof therapySessions.$inferInsert;
 
+const PERIOD_SESSION_SUMMARY_COLUMNS = {
+  id: true,
+  therapyPeriodId: true,
+  therapistId: true,
+  childId: true,
+  roomId: true,
+  date: true,
+  startTime: true,
+  duration: true,
+  focus: true,
+  status: true,
+  cancelReason: true,
+} as const;
+
 type ScheduleRule = {
   day?: string;
   dayOfWeek?: number;
@@ -386,8 +400,7 @@ export const therapyPeriodService = {
         child: { with: { parent: { with: { user: true } } } },
         program: true,
         therapyProgram: true,
-        sessions: true,
-        reports: true,
+        sessions: { columns: PERIOD_SESSION_SUMMARY_COLUMNS },
         historicalSummaries: true,
       },
       orderBy: (p, { desc }) => [desc(p.startDate), desc(p.createdAt)],

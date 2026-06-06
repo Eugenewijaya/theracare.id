@@ -104,8 +104,29 @@ async function canAccessSession(req: any, session: any) {
   return false;
 }
 
+function parseSessionListFilters(req: any) {
+  const from = typeof req.query.from === "string" ? req.query.from : "";
+  const to = typeof req.query.to === "string" ? req.query.to : "";
+  const status = typeof req.query.status === "string" ? req.query.status : "";
+  const limit = Number(req.query.limit);
+  return {
+    ...(from ? { from } : {}),
+    ...(to ? { to } : {}),
+    ...(status ? { status } : {}),
+    ...(Number.isFinite(limit) && limit > 0 ? { limit } : {}),
+  };
+}
+
+function parseTherapistSessionFilters(req: any) {
+  const date = typeof req.query.date === "string" ? req.query.date : "";
+  return {
+    ...parseSessionListFilters(req),
+    ...(date ? { date } : {}),
+  };
+}
+
 router.get("/", requireAuth, requireRole("admin"), async (req, res, next) => {
-  try { ok(res, await sessionService.getAllWithDetails()); } catch (e) { next(e); }
+  try { ok(res, await sessionService.getAllWithDetails(parseSessionListFilters(req))); } catch (e) { next(e); }
 });
 
 router.get("/therapist/:id", requireAuth, async (req, res, next) => {
@@ -113,7 +134,7 @@ router.get("/therapist/:id", requireAuth, async (req, res, next) => {
     if (!(await canAccessTherapistSchedule(req, req.params.id as string))) {
       return res.status(403).json({ success: false, error: "Akses ditolak" });
     }
-    ok(res, await sessionService.getForTherapist(req.params.id as string, req.query.date as string as string));
+    ok(res, await sessionService.getForTherapist(req.params.id as string, parseTherapistSessionFilters(req)));
   } catch (e) { next(e); }
 });
 
@@ -131,7 +152,7 @@ router.get("/child/:id/completed", requireAuth, async (req, res, next) => {
     if (!(await canAccessChildSchedule(req, req.params.id as string))) {
       return res.status(403).json({ success: false, error: "Akses ditolak" });
     }
-    ok(res, await sessionService.getCompletedForChild(req.params.id as string));
+    ok(res, await sessionService.getCompletedForChild(req.params.id as string, parseSessionListFilters(req)));
   } catch (e) { next(e); }
 });
 
@@ -140,7 +161,7 @@ router.get("/child/:id/attendance-history", requireAuth, async (req, res, next) 
     if (!(await canAccessChildSchedule(req, req.params.id as string))) {
       return res.status(403).json({ success: false, error: "Akses ditolak" });
     }
-    ok(res, await sessionService.getAttendanceHistoryForChild(req.params.id as string));
+    ok(res, await sessionService.getAttendanceHistoryForChild(req.params.id as string, parseSessionListFilters(req)));
   } catch (e) { next(e); }
 });
 

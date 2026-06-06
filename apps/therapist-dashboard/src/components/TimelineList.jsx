@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { reportsApi, sessionsApi } from '../../../shared/api/client';
+import { getRoleHistoryFilters, reportsApi, sessionsApi } from '../../../shared/api/client';
 import ChildProfileModal from './ChildProfileModal';
 import { readTherapistUser } from '../../../shared/sessionIdentity';
 import { findOldestMissingDailyReportSession, hasPriorMissingDailyReport, isOneTimeVisitSession } from '../../../shared/reportRules';
@@ -58,10 +58,11 @@ const TimelineList = () => {
         
         try {
             setActionError('');
+            const historyFilters = getRoleHistoryFilters();
             const [res, allRes, reportRes] = await Promise.all([
                 sessionsApi.getForTherapist(user.id, todayKey()),
-                sessionsApi.getForTherapist(user.id),
-                reportsApi.getForTherapist(user.id, 'harian'),
+                sessionsApi.getForTherapist(user.id, historyFilters),
+                reportsApi.getForTherapist(user.id, 'harian', historyFilters),
             ]);
             assertApiOk(res, 'Timeline hari ini belum bisa dimuat.');
             assertApiOk(allRes, 'Riwayat sesi belum bisa dimuat.');

@@ -85,7 +85,7 @@ export default function Announcements() {
 
             const user = readTherapistUser();
             if (user) {
-                const resRes = await rescheduleApi.getForTherapist(user.id);
+                const resRes = await rescheduleApi.getForTherapist(user.id, { limit: 200 });
                 if (resRes?.ok === false) throw new Error(resRes.data?.error || resRes.data?.message || 'Request reschedule belum bisa dimuat.');
                 setReschedules(resRes.data?.data || []);
             }

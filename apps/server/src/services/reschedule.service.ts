@@ -1,6 +1,6 @@
 import { db } from "../db/index.js";
 import { parents, rescheduleRequests, therapists, therapySessions } from "../db/schema.js";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { generateId } from "../utils/id-generators.js";
 import { notificationService } from "./notification.service.js";
 import { auditLogService } from "./audit-log.service.js";
@@ -12,6 +12,7 @@ import { normalizeDateKey as normalizeCalendarDateKey, todayDateKey } from "../u
 
 type ProposedSlot = { date: string; time: string; status?: string; reason?: string; kind?: string };
 type AuditActor = { id?: string; role?: string; name?: string; email?: string } | null | undefined;
+type RescheduleListFilters = { status?: string; limit?: number };
 
 const sessionTrackingDetails = {
   therapist: { with: { user: true } },
@@ -53,6 +54,12 @@ function normalizeProposedSlots(slots?: Array<{ date: string; time: string }> | 
 
 function isClosedSessionStatus(status?: string | null) {
   return ["confirmed", "active", "checked_in", "present", "done", "completed", "selesai", "cancelled", "canceled"].includes(String(status || "").toLowerCase());
+}
+
+function normalizeListLimit(value: unknown) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return undefined;
+  return Math.min(1000, Math.floor(parsed));
 }
 
 function assertFutureSession(session: { date?: string | Date | null; status?: string | null }) {
@@ -126,8 +133,10 @@ async function enrichRequests<T extends { id?: string; session?: any; sessionId:
 }
 
 export const rescheduleService = {
-  async getAll() {
+  async getAll(filters: { status?: string } = {}) {
+    const status = String(filters.status || "").trim();
     const requests = await db.query.rescheduleRequests.findMany({
+      ...(status ? { where: eq(rescheduleRequests.status, status) } : {}),
       with: { parent: { with: { user: true } }, child: true, session: { with: sessionTrackingDetails } },
       orderBy: (r, { desc }) => [desc(r.createdAt)],
     });
@@ -143,18 +152,24 @@ export const rescheduleService = {
     return enrichRequests(requests);
   },
 
-  async getForTherapist(therapistId: string) {
+  async getForTherapist(therapistId: string, filters: RescheduleListFilters = {}) {
     const sessions = await db.query.therapySessions.findMany({
       where: eq(therapySessions.therapistId, therapistId),
+      columns: { id: true },
     });
     const sessionIds = sessions.map((s) => s.id);
     if (sessionIds.length === 0) return [];
 
-    const allReqs = await db.query.rescheduleRequests.findMany({
+    const conditions = [inArray(rescheduleRequests.sessionId, sessionIds)];
+    if (filters.status) conditions.push(eq(rescheduleRequests.status, filters.status));
+    const limit = normalizeListLimit(filters.limit);
+    const requests = await db.query.rescheduleRequests.findMany({
+      where: and(...conditions),
       with: { parent: { with: { user: true } }, child: true, session: { with: sessionTrackingDetails } },
       orderBy: (r, { desc }) => [desc(r.createdAt)],
+      ...(limit ? { limit } : {}),
     });
-    return enrichRequests(allReqs.filter((r) => sessionIds.includes(r.sessionId)));
+    return enrichRequests(requests);
   },
 
   async previewSlotsForSession(data: {

@@ -23,7 +23,11 @@ async function canAccessTherapistRequests(req: any, therapistId: string) {
 }
 
 router.get("/", requireAuth, requireRole("admin"), async (req, res, next) => {
-  try { ok(res, await rescheduleService.getAll()); } catch (e) { next(e); }
+  try {
+    ok(res, await rescheduleService.getAll({
+      status: typeof req.query.status === "string" ? req.query.status : "",
+    }));
+  } catch (e) { next(e); }
 });
 
 router.get("/parent/:id", requireAuth, async (req, res, next) => {
@@ -40,7 +44,12 @@ router.get("/therapist/:id", requireAuth, async (req, res, next) => {
     if (!(await canAccessTherapistRequests(req, req.params.id as string))) {
       return res.status(403).json({ success: false, error: "Akses permintaan reschedule ditolak" });
     }
-    ok(res, await rescheduleService.getForTherapist(req.params.id as string));
+    const status = typeof req.query.status === "string" ? req.query.status : "";
+    const limit = Number(req.query.limit);
+    ok(res, await rescheduleService.getForTherapist(req.params.id as string, {
+      ...(status ? { status } : {}),
+      ...(Number.isFinite(limit) && limit > 0 ? { limit } : {}),
+    }));
   } catch (e) { next(e); }
 });
 

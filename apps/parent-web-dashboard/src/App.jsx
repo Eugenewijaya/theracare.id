@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from './components/Header';
-import { sessionsApi, childrenApi, adminApi } from '../../shared/api/client';
+import { sessionsApi, childrenApi, adminApi, getRoleHistoryFilters } from '../../shared/api/client';
 import { normalizeChildrenList, readParentUser } from '../../shared/sessionIdentity';
 import { formatSessionClock, getLiveSessionState } from '../../shared/sessionLiveState';
 import { getCurrentTherapyPrograms } from '../../shared/therapyPeriods';
@@ -154,7 +154,7 @@ function App({ onLogout }) {
             if (targetChildId) {
                 const [upRes, compRes] = await Promise.all([
                     sessionsApi.getUpcomingForChild(targetChildId),
-                    sessionsApi.getCompletedForChild(targetChildId),
+                    sessionsApi.getCompletedForChild(targetChildId, getRoleHistoryFilters({ futureMonths: 0 })),
                 ]);
                 if (!upRes.ok) throw new Error(upRes.data?.error || 'Jadwal berikutnya belum bisa dimuat.');
                 if (!compRes.ok) throw new Error(compRes.data?.error || 'Riwayat sesi belum bisa dimuat.');

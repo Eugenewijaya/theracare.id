@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { childrenApi, meetingsApi, sessionsApi, therapistsApi } from '../../shared/api/client';
+import { childrenApi, getRoleHistoryFilters, meetingsApi, sessionsApi, therapistsApi } from '../../shared/api/client';
 import { readTherapistUser } from '../../shared/sessionIdentity';
 
 const MEETING_TYPES = ['In-person', 'Video Call', 'Phone Call'];
@@ -123,7 +123,7 @@ export default function App({ mode = 'therapist' }) {
                 const therapist = readStoredTherapist();
                 const [meetRes, sessionRes] = await Promise.all([
                     meetingsApi.getForTherapist(),
-                    therapist?.id ? sessionsApi.getForTherapist(therapist.id) : Promise.resolve({ data: { data: [] } }),
+                    therapist?.id ? sessionsApi.getForTherapist(therapist.id, getRoleHistoryFilters({ futureMonths: 0 })) : Promise.resolve({ data: { data: [] } }),
                 ]);
                 assertApiOk(meetRes, 'Gagal memuat parent meeting.');
                 assertApiOk(sessionRes, 'Gagal memuat daftar anak dari sesi terapis.');

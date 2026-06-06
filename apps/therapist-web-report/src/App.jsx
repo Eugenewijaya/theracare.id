@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Header from './components/Header';
-import { sessionsApi, reportsApi, adminApi } from '../../shared/api/client';
+import { getRoleHistoryFilters, sessionsApi, reportsApi, adminApi } from '../../shared/api/client';
 import { useClinicSettings } from '../../shared/clinicSettings';
 import { openReportPdf } from '../../shared/reportPdf';
 import { readTherapistUser } from '../../shared/sessionIdentity';
@@ -1442,9 +1442,10 @@ function App() {
         if (!currentUser?.id) { setLoadingData(false); return; }
         try {
             setDataError('');
+            const historyFilters = getRoleHistoryFilters({ futureMonths: 0 });
             const [sessRes, repRes] = await Promise.all([
-                sessionsApi.getForTherapist(currentUser.id),
-                reportsApi.getForTherapist(currentUser.id)
+                sessionsApi.getForTherapist(currentUser.id, historyFilters),
+                reportsApi.getForTherapist(currentUser.id, historyFilters)
             ]);
             if (sessRes?.ok === false) throw new Error(sessRes.data?.error || sessRes.data?.message || 'Sesi terapi belum bisa dimuat.');
             if (repRes?.ok === false) throw new Error(repRes.data?.error || repRes.data?.message || 'Riwayat laporan belum bisa dimuat.');

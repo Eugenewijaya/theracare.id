@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Header from './components/Header';
-import { sessionsApi, therapistsApi } from '../../shared/api/client';
+import { getRoleHistoryFilters, sessionsApi, therapistsApi } from '../../shared/api/client';
 import { readTherapistUser } from '../../shared/sessionIdentity';
 import { getTherapistSlotAvailability } from '../../shared/therapistSchedule';
 
@@ -113,7 +113,7 @@ function App() {
             try {
                 setLoadError('');
                 const [res, profileRes] = await Promise.all([
-                    sessionsApi.getForTherapist(currentUser.id),
+                    sessionsApi.getForTherapist(currentUser.id, getRoleHistoryFilters()),
                     therapistsApi.getMe().catch(() => ({ data: { data: currentUser } })),
                 ]);
                 if (res?.ok === false) {

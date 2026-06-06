@@ -13,7 +13,13 @@ import {
 } from "../domain/workflow-status.js";
 
 type ReportInsert = typeof reports.$inferInsert;
-type ReportQueryOptions = { visibleToParentOnly?: boolean; therapistId?: string };
+type ReportQueryOptions = {
+  visibleToParentOnly?: boolean;
+  therapistId?: string;
+  from?: string;
+  to?: string;
+  limit?: number;
+};
 type ReportUpdateOptions = { allowStatus?: boolean; actor?: AuditActor | null };
 type DbClient = typeof db | any;
 type AuditActor = { id?: string; role?: string } | null | undefined;
@@ -59,6 +65,21 @@ function normalizeDateValue(value: unknown) {
   if (!value) return "";
   if (value instanceof Date) return value.toISOString().split("T")[0];
   return String(value).split("T")[0];
+}
+
+function normalizeListLimit(value: unknown) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return undefined;
+  return Math.min(1000, Math.floor(parsed));
+}
+
+function buildReportDateConditions(options: ReportQueryOptions = {}) {
+  const from = normalizeDateValue(options.from);
+  const to = normalizeDateValue(options.to);
+  const conditions = [];
+  if (from) conditions.push(sql`coalesce(${reports.date}, ${reports.dateTo}, ${reports.dateFrom}) >= ${from}`);
+  if (to) conditions.push(sql`coalesce(${reports.date}, ${reports.dateTo}, ${reports.dateFrom}) <= ${to}`);
+  return conditions;
 }
 
 function sessionSortKey(session: { date?: unknown; startTime?: string | null }) {
@@ -224,10 +245,10 @@ async function canTherapistWriteProgramReport(childId: string, therapistId: stri
 }
 
 async function getLastReportSeq(client: DbClient = db) {
-  const all = await client.select({ id: reports.id }).from(reports);
-  if (all.length === 0) return 0;
-  const nums = all.map((r: { id: string }) => parseInt(r.id.replace("REP-", ""), 10)).filter((n: number) => !Number.isNaN(n));
-  return nums.length > 0 ? Math.max(...nums) : 0;
+  const [row] = await client
+    .select({ lastSeq: sql<number>`coalesce(max((substring(${reports.id} from '^REP-([0-9]+)$'))::integer), 0)` })
+    .from(reports);
+  return Number(row?.lastSeq || 0);
 }
 
 async function writeReportAudit(
@@ -286,6 +307,41 @@ function formatReport(report: any) {
   };
 }
 
+function truncateListText(value: unknown, maxLength = 360) {
+  const text = String(value || "").trim();
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength - 1).trimEnd()}...`;
+}
+
+function formatReportListItem(report: any) {
+  if (!report) return null;
+  const editWindow = getReportEditWindow(report);
+  return {
+    id: report.id,
+    type: report.type,
+    status: report.status,
+    therapyPeriodId: report.therapyPeriodId,
+    childId: report.childId,
+    therapistId: report.therapistId,
+    sessionId: report.sessionId,
+    date: report.date,
+    dateFrom: report.dateFrom,
+    dateTo: report.dateTo,
+    sessionFocus: report.sessionFocus,
+    sessionType: report.sessionType,
+    sessionScore: report.sessionScore,
+    description: truncateListText(report.description || report.summary || report.parentNotes),
+    summary: truncateListText(report.summary),
+    parentNotes: truncateListText(report.parentNotes),
+    reviewLog: Array.isArray(report.reviewLog) ? report.reviewLog.slice(-2) : [],
+    createdAt: report.createdAt,
+    updatedAt: report.updatedAt,
+    childName: report.child?.name || "",
+    therapistName: report.therapist?.user?.name || "",
+    ...editWindow,
+  };
+}
+
 function pickReportValues(data: any, options: ReportUpdateOptions = { allowStatus: true }): Partial<ReportInsert> {
   return {
     ...(typeof data.type === "string" ? { type: data.type } : {}),
@@ -335,13 +391,16 @@ export const reportService = {
     return formatReport(report);
   },
 
-  async getForTherapist(therapistId: string, type?: string) {
+  async getForTherapist(therapistId: string, type?: string, options: ReportQueryOptions = {}) {
     const conditions = [eq(reports.therapistId, therapistId)];
     if (type) conditions.push(eq(reports.type, type));
+    conditions.push(...buildReportDateConditions(options));
+    const limit = normalizeListLimit(options.limit);
     const rows = await db.query.reports.findMany({
       where: and(...conditions),
       with: { child: true, session: true, therapyPeriod: { with: { program: true, historicalSummaries: true } } },
       orderBy: (r, { desc }) => [desc(r.createdAt)],
+      ...(limit ? { limit } : {}),
     });
     return rows.map(formatReport);
   },
@@ -355,10 +414,13 @@ export const reportService = {
     if (options.therapistId) {
       conditions.push(eq(reports.therapistId, options.therapistId));
     }
+    conditions.push(...buildReportDateConditions(options));
+    const limit = normalizeListLimit(options.limit);
     const rows = await db.query.reports.findMany({
       where: and(...conditions),
       with: { therapist: { with: { user: true } }, session: true, therapyPeriod: { with: { program: true, historicalSummaries: true } } },
       orderBy: (r, { desc }) => [desc(r.createdAt)],
+      ...(limit ? { limit } : {}),
     });
     return rows.map(formatReport);
   },
@@ -368,10 +430,37 @@ export const reportService = {
     if (status) conditions.push(eq(reports.status, status));
     const rows = await db.query.reports.findMany({
       where: conditions.length ? and(...conditions) : undefined,
-      with: { child: true, therapist: { with: { user: true } }, session: true, therapyPeriod: { with: { program: true, historicalSummaries: true } } },
+      columns: {
+        id: true,
+        type: true,
+        status: true,
+        therapyPeriodId: true,
+        childId: true,
+        therapistId: true,
+        sessionId: true,
+        date: true,
+        dateFrom: true,
+        dateTo: true,
+        sessionFocus: true,
+        sessionType: true,
+        sessionScore: true,
+        description: true,
+        summary: true,
+        parentNotes: true,
+        reviewLog: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+      with: {
+        child: { columns: { id: true, name: true } },
+        therapist: {
+          columns: { id: true, userId: true, nit: true },
+          with: { user: { columns: { id: true, name: true, email: true } } },
+        },
+      },
       orderBy: (r, { desc }) => [desc(r.createdAt)],
     });
-    return rows.map(formatReport);
+    return rows.map(formatReportListItem);
   },
 
   async getSessionReport(sessionId: string) {

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { childrenApi, reportsApi, sessionsApi } from '../../../shared/api/client';
+import { childrenApi, getRoleHistoryFilters, reportsApi, sessionsApi } from '../../../shared/api/client';
 import { readTherapistUser } from '../../../shared/sessionIdentity';
 import { uploadImageFile } from '../../../shared/uploadImage';
 
@@ -70,7 +70,7 @@ const ReportForm = () => {
             try {
                 let therapistSessions = [];
                 if (currentUser?.id) {
-                    const sessionRes = await sessionsApi.getForTherapist(currentUser.id);
+                    const sessionRes = await sessionsApi.getForTherapist(currentUser.id, getRoleHistoryFilters({ futureMonths: 0 }));
                     if (!sessionRes.ok) throw new Error(getApiError(sessionRes, 'Jadwal terapis belum bisa dimuat.'));
                     therapistSessions = sessionRes.data?.data || [];
                     setSessions(therapistSessions);

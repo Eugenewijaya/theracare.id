@@ -208,6 +208,45 @@ export const api = {
   delete: (path) => request('DELETE', path),
 };
 
+function buildQueryString(filters = {}) {
+  const params = new URLSearchParams();
+  Object.entries(filters || {}).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') params.set(key, String(value));
+  });
+  const query = params.toString();
+  return query ? `?${query}` : '';
+}
+
+function toDateKey(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+export function getRoleHistoryFilters({ pastMonths = 12, futureMonths = 3, limit } = {}) {
+  const now = new Date();
+  const from = new Date(now);
+  from.setMonth(from.getMonth() - pastMonths);
+  const to = new Date(now);
+  to.setMonth(to.getMonth() + futureMonths);
+  return {
+    from: toDateKey(from),
+    to: toDateKey(to),
+    ...(limit ? { limit } : {}),
+  };
+}
+
+function normalizeSessionTherapistFilters(dateOrFilters) {
+  if (typeof dateOrFilters === 'string') return { date: dateOrFilters };
+  return dateOrFilters || {};
+}
+
+function normalizeReportFilters(typeOrFilters, maybeFilters = {}) {
+  if (typeof typeOrFilters === 'string') return { type: typeOrFilters, ...(maybeFilters || {}) };
+  return typeOrFilters || {};
+}
+
 // ── Auth API ─────────────────────────────────────────────────────
 export const authApi = {
   /** Login with email + password */
@@ -280,12 +319,12 @@ export const therapistsApi = {
 
 // ── Sessions API ─────────────────────────────────────────────────
 export const sessionsApi = {
-  getAll: () => api.get('/sessions'),
+  getAll: (filters = {}) => api.get(`/sessions${buildQueryString(filters)}`),
   getById: (id) => api.get(`/sessions/${id}`),
-  getForTherapist: (id, date) => api.get(`/sessions/therapist/${id}${date ? `?date=${date}` : ''}`),
+  getForTherapist: (id, dateOrFilters) => api.get(`/sessions/therapist/${id}${buildQueryString(normalizeSessionTherapistFilters(dateOrFilters))}`),
   getUpcomingForChild: (id) => api.get(`/sessions/child/${id}/upcoming`),
-  getCompletedForChild: (id) => api.get(`/sessions/child/${id}/completed`),
-  getAttendanceHistoryForChild: (id) => api.get(`/sessions/child/${id}/attendance-history`),
+  getCompletedForChild: (id, filters = {}) => api.get(`/sessions/child/${id}/completed${buildQueryString(filters)}`),
+  getAttendanceHistoryForChild: (id, filters = {}) => api.get(`/sessions/child/${id}/attendance-history${buildQueryString(filters)}`),
   create: (data) => api.post('/sessions', data),
   createOneTimeVisit: (data) => api.post('/sessions/one-time-visits', data),
   createBulk: (sessions) => api.post('/sessions/bulk', { sessions }),
@@ -323,8 +362,8 @@ export const therapyPeriodsApi = {
 export const reportsApi = {
   getById: (id) => api.get(`/reports/${id}`),
   getAll: (status) => api.get(`/reports${status ? `?status=${encodeURIComponent(status)}` : ''}`),
-  getForTherapist: (id, type) => api.get(`/reports/therapist/${id}${type ? `?type=${type}` : ''}`),
-  getForChild: (id, type) => api.get(`/reports/child/${id}${type ? `?type=${type}` : ''}`),
+  getForTherapist: (id, typeOrFilters, maybeFilters) => api.get(`/reports/therapist/${id}${buildQueryString(normalizeReportFilters(typeOrFilters, maybeFilters))}`),
+  getForChild: (id, typeOrFilters, maybeFilters) => api.get(`/reports/child/${id}${buildQueryString(normalizeReportFilters(typeOrFilters, maybeFilters))}`),
   getSessionReport: (sessionId) => api.get(`/reports/session/${sessionId}`),
   save: (data) => api.post('/reports', data),
   update: (id, data) => api.patch(`/reports/${id}`, data),
@@ -338,9 +377,9 @@ export const syncApi = {
 };
 
 export const rescheduleApi = {
-  getAll: () => api.get('/reschedule'),
+  getAll: (filters = {}) => api.get(`/reschedule${buildQueryString(filters)}`),
   getByParent: (id) => api.get(`/reschedule/parent/${id}`),
-  getForTherapist: (id) => api.get(`/reschedule/therapist/${id}`),
+  getForTherapist: (id, filters = {}) => api.get(`/reschedule/therapist/${id}${buildQueryString(filters)}`),
   previewSlots: (data) => api.post('/reschedule/preview-slots', data),
   create: (data) => api.post('/reschedule', data),
   updateStatus: (id, status, updates) => api.patch(`/reschedule/${id}`, { status, ...updates }),

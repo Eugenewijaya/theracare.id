@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { childrenApi, sessionsApi } from '../../../shared/api/client';
+import { childrenApi, getRoleHistoryFilters, sessionsApi } from '../../../shared/api/client';
 import { normalizeChildrenList, readParentUser } from '../../../shared/sessionIdentity';
 
 // Calculate end time from startTime + duration string (e.g. "09:00" + "60 mins")
@@ -64,7 +64,7 @@ export default function AttendanceLog() {
             if (!nextChild) throw new Error('Profil anak belum ditemukan.');
             setChild(nextChild);
 
-            const sessionsRes = await sessionsApi.getAttendanceHistoryForChild(targetChildId);
+            const sessionsRes = await sessionsApi.getAttendanceHistoryForChild(targetChildId, getRoleHistoryFilters({ futureMonths: 0 }));
             if (!sessionsRes.ok) throw new Error(sessionsRes.data?.error || 'Riwayat kehadiran belum bisa dimuat.');
             const childSessions = sessionsRes.data?.data || [];
 

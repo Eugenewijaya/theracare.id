@@ -25,6 +25,17 @@ const getChildName = (childrenList, childId) =>
 const getApiError = (res, fallback) =>
     res?.data?.error || res?.data?.message || fallback;
 
+const toMonthWindowDateKey = (date) =>
+    `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+const getMonthWindow = (year, monthIndex) => {
+    const from = new Date(year, monthIndex, 1);
+    from.setDate(from.getDate() - 7);
+    const to = new Date(year, monthIndex + 1, 0);
+    to.setDate(to.getDate() + 7);
+    return { from: toMonthWindowDateKey(from), to: toMonthWindowDateKey(to) };
+};
+
 const parseTimeToMinutes = (value = '') => {
     const [h = '0', m = '0'] = String(value).split(':');
     return Number(h) * 60 + Number(m);
@@ -724,8 +735,9 @@ function App() {
 
     const loadDb = useCallback(async () => {
         try {
+            const monthWindow = getMonthWindow(currentYear, currentMonth);
             const [sessRes, childRes, therRes, progRes] = await Promise.all([
-                sessionsApi.getAll(),
+                sessionsApi.getAll(monthWindow),
                 childrenApi.getAll(),
                 therapistsApi.getAll(),
                 adminApi.getPrograms(),
@@ -737,7 +749,7 @@ function App() {
         } catch (e) {
             console.error(e);
         }
-    }, []);
+    }, [currentMonth, currentYear]);
 
     useEffect(() => {
         loadDb();
