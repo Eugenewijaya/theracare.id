@@ -63,6 +63,15 @@ async function notifyImpactedSession(
   }
 }
 
+export async function notifyCenterClosureSessionConflict(sessionId: string, reason: string) {
+  const session = await db.query.therapySessions.findFirst({
+    where: eq(therapySessions.id, sessionId),
+  });
+  if (!session) return null;
+  await notifyImpactedSession(session, reason);
+  return session;
+}
+
 export async function notifyTherapistScheduleConflicts(therapistId: string) {
   const today = todayDateKey();
   const sessions = await db.query.therapySessions.findMany({
@@ -94,6 +103,6 @@ export async function notifyCenterClosureSessionConflicts(startDate: string, end
   });
 
   for (const session of sessions) {
-    await notifyImpactedSession(session, reason);
+    await notifyCenterClosureSessionConflict(session.id, reason);
   }
 }

@@ -107,6 +107,151 @@ function formatRange(item) {
     return `${formatDate(item.startDate)} - ${formatDate(item.endDate)}`;
 }
 
+const HALF_HOUR_OPTIONS = Array.from({ length: 48 }, (_, index) => {
+    const hour = String(Math.floor(index / 2)).padStart(2, '0');
+    const minute = index % 2 === 0 ? '00' : '30';
+    return `${hour}:${minute}`;
+});
+
+const IMPACT_STATUS_META = {
+    awaiting_contact: { label: 'Menunggu kontak', className: 'bg-amber-50 text-amber-700' },
+    contacted: { label: 'Sudah dihubungi', className: 'bg-blue-50 text-blue-700' },
+    manual_processing: { label: 'Sedang dipindahkan', className: 'bg-blue-50 text-blue-700' },
+    auto_processing: { label: 'Diproses otomatis', className: 'bg-blue-50 text-blue-700' },
+    rescheduled_manual: { label: 'Dipindahkan admin', className: 'bg-emerald-50 text-emerald-700' },
+    rescheduled_auto: { label: 'Dipindahkan otomatis', className: 'bg-emerald-50 text-emerald-700' },
+    auto_failed: { label: 'Otomatis gagal', className: 'bg-red-50 text-red-700' },
+    not_applicable: { label: 'Tidak perlu ditangani', className: 'bg-slate-100 text-slate-500' },
+};
+
+const RESOLVED_IMPACT_STATUSES = new Set(['rescheduled_manual', 'rescheduled_auto', 'not_applicable']);
+
+function whatsappUrl(phone, childName) {
+    const normalized = String(phone || '').replace(/\D/g, '').replace(/^0/, '62');
+    if (!normalized) return '';
+    const message = encodeURIComponent(`Halo, kami ingin mengonfirmasi jadwal pengganti sesi terapi ${childName || 'anak'} karena center libur.`);
+    return `https://wa.me/${normalized}?text=${message}`;
+}
+
+function ClosureImpactCase({ impact, draft, busy, onDraftChange, onRecordContact, onReschedule }) {
+    const meta = IMPACT_STATUS_META[impact.status] || IMPACT_STATUS_META.awaiting_contact;
+    const resolved = RESOLVED_IMPACT_STATUSES.has(impact.status);
+    const processing = impact.status === 'manual_processing' || impact.status === 'auto_processing';
+    const waUrl = whatsappUrl(impact.parentPhone, impact.childName);
+
+    return (
+        <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-black text-slate-900 dark:text-white">{impact.childName}</p>
+                        <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${meta.className}`}>{meta.label}</span>
+                    </div>
+                    <p className="mt-1 text-sm font-semibold text-slate-600 dark:text-slate-300">
+                        Sesi asal {formatDate(impact.originalDate)} pukul {impact.originalStartTime} dengan {impact.therapistName}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                        Orang tua: {impact.parentName || '-'} {impact.parentPhone ? `(${impact.parentPhone})` : '- nomor belum tersedia'}
+                        {impact.periodEndDate ? ` · Akhir periode ${formatDate(impact.periodEndDate)}` : ''}
+                    </p>
+                    {impact.contactedAt && (
+                        <p className="mt-1 text-xs font-semibold text-blue-600">
+                            Kontak {impact.contactChannel || 'lainnya'} dicatat {new Date(impact.contactedAt).toLocaleString('id-ID')}{impact.contactNote ? `: ${impact.contactNote}` : ''}
+                        </p>
+                    )}
+                    {impact.replacementDate && (
+                        <p className="mt-1 text-xs font-black text-emerald-700">
+                            Pengganti: {formatDate(impact.replacementDate)} pukul {impact.replacementStartTime}
+                        </p>
+                    )}
+                    {impact.lastError && <p className="mt-1 text-xs font-semibold text-red-600">{impact.lastError}</p>}
+                </div>
+                {waUrl && !resolved && (
+                    <a
+                        href={waUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-emerald-50 px-3 text-xs font-black text-emerald-700 hover:bg-emerald-100"
+                    >
+                        <span className="material-symbols-outlined text-[17px]">chat</span>
+                        Buka WhatsApp
+                    </a>
+                )}
+            </div>
+
+            {!resolved && (
+                <div className="mt-4 grid grid-cols-1 gap-4 border-t border-slate-100 pt-4 dark:border-slate-800 xl:grid-cols-2">
+                    <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-950/50">
+                        <p className="text-xs font-black uppercase tracking-wider text-slate-500">1. Catat kontak orang tua</p>
+                        <div className="mt-3 grid gap-2">
+                            <select
+                                value={draft.channel}
+                                onChange={(event) => onDraftChange({ channel: event.target.value })}
+                                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                            >
+                                <option value="whatsapp">WhatsApp</option>
+                                <option value="phone">Telepon</option>
+                                <option value="in_person">Tatap muka</option>
+                                <option value="other">Media lainnya</option>
+                            </select>
+                            <input
+                                value={draft.contactNote}
+                                onChange={(event) => onDraftChange({ contactNote: event.target.value })}
+                                placeholder="Catatan hasil komunikasi"
+                                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                            />
+                            <button
+                                type="button"
+                                disabled={busy || processing}
+                                onClick={onRecordContact}
+                                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 text-xs font-black text-white disabled:opacity-50"
+                            >
+                                <span className="material-symbols-outlined text-[17px]">task_alt</span>
+                                Catat Sudah Dihubungi
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-950/50">
+                        <p className="text-xs font-black uppercase tracking-wider text-slate-500">2. Pindahkan setelah konfirmasi</p>
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                            <input
+                                type="date"
+                                min={todayIso()}
+                                value={draft.date}
+                                onChange={(event) => onDraftChange({ date: event.target.value })}
+                                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                            />
+                            <select
+                                value={draft.startTime}
+                                onChange={(event) => onDraftChange({ startTime: event.target.value })}
+                                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                            >
+                                {HALF_HOUR_OPTIONS.map((time) => <option key={time} value={time}>{time}</option>)}
+                            </select>
+                            <input
+                                value={draft.rescheduleNote}
+                                onChange={(event) => onDraftChange({ rescheduleNote: event.target.value })}
+                                placeholder="Catatan pemindahan"
+                                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-white sm:col-span-2"
+                            />
+                            <button
+                                type="button"
+                                disabled={busy || processing || !draft.date}
+                                onClick={onReschedule}
+                                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-3 text-xs font-black text-white disabled:opacity-50 sm:col-span-2"
+                            >
+                                <span className="material-symbols-outlined text-[17px]">event_repeat</span>
+                                Pindahkan Sesi
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
 function OperatingHoursFields({
     operatingHoursWeekday,
     operatingHoursWeekend,
@@ -167,6 +312,9 @@ function App() {
     const [toast, setToast] = useState(null);
     const [closures, setClosures] = useState([]);
     const [activeClosureToday, setActiveClosureToday] = useState(null);
+    const [expandedClosureIds, setExpandedClosureIds] = useState([]);
+    const [impactDrafts, setImpactDrafts] = useState({});
+    const [impactActionBusy, setImpactActionBusy] = useState('');
     const [closureLoading, setClosureLoading] = useState(false);
     const [holidayLoading, setHolidayLoading] = useState(false);
     const [holidayYear, setHolidayYear] = useState(currentYear);
@@ -540,6 +688,96 @@ function App() {
             showToast('Jadwal off center dihapus.');
         } catch (e) {
             showToast(e.message || 'Gagal menghapus jadwal off', 'error');
+        } finally {
+            setClosureLoading(false);
+        }
+    };
+
+    const impactKey = (closureId, sessionId) => `${closureId}:${sessionId}`;
+
+    const getImpactDraft = (closure, impact) => impactDrafts[impactKey(closure.id, impact.sessionId)] || {
+        channel: impact.contactChannel || 'whatsapp',
+        contactNote: impact.contactNote || '',
+        date: impact.replacementDate || '',
+        startTime: impact.originalStartTime || '08:00',
+        rescheduleNote: '',
+    };
+
+    const updateImpactDraft = (closure, impact, updates) => {
+        const key = impactKey(closure.id, impact.sessionId);
+        setImpactDrafts((prev) => ({
+            ...prev,
+            [key]: {
+                ...getImpactDraft(closure, impact),
+                ...(prev[key] || {}),
+                ...updates,
+            },
+        }));
+    };
+
+    const handleRecordImpactContact = async (closure, impact) => {
+        const key = impactKey(closure.id, impact.sessionId);
+        const draft = getImpactDraft(closure, impact);
+        try {
+            setImpactActionBusy(key);
+            const res = await adminApi.recordCenterClosureContact(closure.id, impact.sessionId, {
+                channel: draft.channel,
+                note: draft.contactNote,
+            });
+            if (!res.ok) throw new Error(res.data?.error || 'Gagal mencatat kontak orang tua');
+            await loadClosures({ silent: true });
+            showToast('Kontak orang tua berhasil dicatat. Jika belum dipindahkan sampai H-1, sistem akan memindahkan otomatis.');
+        } catch (e) {
+            showToast(e.message || 'Gagal mencatat kontak orang tua', 'error');
+        } finally {
+            setImpactActionBusy('');
+        }
+    };
+
+    const handleRescheduleImpact = async (closure, impact) => {
+        const key = impactKey(closure.id, impact.sessionId);
+        const draft = getImpactDraft(closure, impact);
+        if (!draft.date) {
+            showToast('Tanggal sesi pengganti wajib diisi.', 'error');
+            return;
+        }
+        const confirmed = await confirmAction({
+            tone: 'warning',
+            title: 'Pindahkan sesi terdampak?',
+            message: `Sesi ${impact.childName} akan dibatalkan dari ${formatDate(impact.originalDate)} ${impact.originalStartTime} dan dibuat ulang pada ${formatDate(draft.date)} ${draft.startTime}.`,
+            confirmText: 'Pindahkan sesi',
+            cancelText: 'Batal',
+        });
+        if (!confirmed) return;
+        try {
+            setImpactActionBusy(key);
+            const res = await adminApi.rescheduleCenterClosureImpact(closure.id, impact.sessionId, {
+                date: draft.date,
+                startTime: draft.startTime,
+                note: draft.rescheduleNote,
+            });
+            if (!res.ok) throw new Error(res.data?.error || 'Gagal memindahkan sesi terdampak');
+            await loadClosures({ silent: true });
+            window.dispatchEvent(new Event('notificationsUpdated'));
+            showToast('Sesi berhasil dipindahkan dan notifikasi jadwal pengganti dikirim.');
+        } catch (e) {
+            showToast(e.message || 'Gagal memindahkan sesi terdampak', 'error');
+        } finally {
+            setImpactActionBusy('');
+        }
+    };
+
+    const handleProcessDueImpacts = async () => {
+        try {
+            setClosureLoading(true);
+            const res = await adminApi.processDueCenterClosureImpacts({ limit: 20 });
+            if (!res.ok) throw new Error(res.data?.error || 'Gagal menjalankan pemindahan otomatis H-1');
+            const result = res.data?.data || {};
+            await loadClosures({ silent: true });
+            window.dispatchEvent(new Event('notificationsUpdated'));
+            showToast(`Pemeriksaan H-1 selesai: ${result.rescheduled || 0} dipindahkan, ${result.failed || 0} perlu ditangani.`, result.failed ? 'info' : 'success');
+        } catch (e) {
+            showToast(e.message || 'Gagal menjalankan pemindahan otomatis H-1', 'error');
         } finally {
             setClosureLoading(false);
         }
@@ -980,11 +1218,22 @@ function App() {
                                 <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                     <div>
                                         <h3 className="text-lg font-black text-slate-900 dark:text-white">Daftar Jadwal Off Center</h3>
-                                        <p className="text-sm text-slate-500">Nonaktifkan jika libur batal, atau hapus untuk membersihkan riwayat yang salah input.</p>
+                                        <p className="text-sm text-slate-500">Kelola komunikasi dan sesi pengganti. Sesi yang belum dipindahkan akan diproses otomatis mulai H-1.</p>
                                     </div>
-                                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                                        {closures.filter((item) => item.isActive).length} aktif
-                                    </span>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                                            {closures.filter((item) => item.isActive).length} aktif
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={handleProcessDueImpacts}
+                                            disabled={closureLoading}
+                                            className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 text-xs font-black text-white disabled:opacity-50 dark:bg-white dark:text-slate-900"
+                                        >
+                                            <span className="material-symbols-outlined text-[17px]">update</span>
+                                            Periksa H-1 Sekarang
+                                        </button>
+                                    </div>
                                 </div>
 
                                 {closures.length === 0 ? (
@@ -993,32 +1242,76 @@ function App() {
                                     </div>
                                 ) : (
                                     <div className="grid grid-cols-1 gap-3">
-                                        {closures.map((closure) => (
-                                            <div key={closure.id} className="flex flex-col gap-4 rounded-xl border border-slate-200 p-4 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
-                                                <div className="min-w-0">
-                                                    <div className="mb-2 flex flex-wrap items-center gap-2">
-                                                        <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${closure.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
-                                                            {closure.isActive ? 'Aktif' : 'Nonaktif'}
-                                                        </span>
-                                                        <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-black text-blue-700">{CLOSURE_TYPE_LABELS[closure.type] || closure.type}</span>
-                                                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-black uppercase text-slate-500">{closure.source}</span>
+                                        {closures.map((closure) => {
+                                            const impacts = closure.impacts || [];
+                                            const unresolvedCount = impacts.filter((impact) => !RESOLVED_IMPACT_STATUSES.has(impact.status)).length;
+                                            const isExpanded = expandedClosureIds.includes(closure.id);
+                                            return (
+                                                <div key={closure.id} className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
+                                                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                                                        <div className="min-w-0">
+                                                            <div className="mb-2 flex flex-wrap items-center gap-2">
+                                                                <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${closure.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                                                                    {closure.isActive ? 'Aktif' : 'Nonaktif'}
+                                                                </span>
+                                                                <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-black text-blue-700">{CLOSURE_TYPE_LABELS[closure.type] || closure.type}</span>
+                                                                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-black uppercase text-slate-500">{closure.source}</span>
+                                                                {impacts.length > 0 && (
+                                                                    <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${unresolvedCount ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                                                                        {unresolvedCount} dari {impacts.length} perlu ditangani
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <p className="text-base font-black text-slate-900 dark:text-white">{closure.title}</p>
+                                                            <p className="text-sm font-semibold text-slate-500">{formatRange(closure)} {closure.reopensAt ? `- Buka kembali ${formatDate(closure.reopensAt)}` : ''}</p>
+                                                            {closure.note && <p className="mt-1 text-sm text-slate-500">{closure.note}</p>}
+                                                        </div>
+                                                        <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                                                            {impacts.length > 0 && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setExpandedClosureIds((prev) => prev.includes(closure.id) ? prev.filter((id) => id !== closure.id) : [...prev, closure.id])}
+                                                                    className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg bg-amber-50 px-3 text-xs font-black text-amber-700 hover:bg-amber-100"
+                                                                >
+                                                                    <span className="material-symbols-outlined text-[17px]">{isExpanded ? 'expand_less' : 'groups'}</span>
+                                                                    {isExpanded ? 'Tutup Tindak Lanjut' : 'Tindak Lanjut Sesi'}
+                                                                </button>
+                                                            )}
+                                                            <button type="button" onClick={() => handleToggleClosure(closure)} disabled={closureLoading} className={`inline-flex h-10 items-center justify-center gap-1.5 rounded-lg px-3 text-xs font-black transition disabled:opacity-60 ${closure.isActive ? 'bg-slate-100 text-slate-700 hover:bg-slate-200' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}`}>
+                                                                <span className="material-symbols-outlined text-[17px]">{closure.isActive ? 'toggle_off' : 'toggle_on'}</span>
+                                                                {closure.isActive ? 'Nonaktifkan' : 'Aktifkan'}
+                                                            </button>
+                                                            <button type="button" onClick={() => handleDeleteClosure(closure)} disabled={closureLoading} className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg bg-red-50 px-3 text-xs font-black text-red-700 transition hover:bg-red-100 disabled:opacity-60">
+                                                                <span className="material-symbols-outlined text-[17px]">delete</span>
+                                                                Hapus
+                                                            </button>
+                                                        </div>
                                                     </div>
-                                                    <p className="text-base font-black text-slate-900 dark:text-white">{closure.title}</p>
-                                                    <p className="text-sm font-semibold text-slate-500">{formatRange(closure)} {closure.reopensAt ? `- Buka kembali ${formatDate(closure.reopensAt)}` : ''}</p>
-                                                    {closure.note && <p className="mt-1 text-sm text-slate-500">{closure.note}</p>}
+
+                                                    {isExpanded && (
+                                                        <div className="mt-4 rounded-xl border border-amber-100 bg-amber-50/40 p-4 dark:border-amber-900/50 dark:bg-amber-950/10">
+                                                            <p className="text-sm font-black text-amber-900 dark:text-amber-200">Tindak lanjut sesi terdampak</p>
+                                                            <p className="mt-1 text-xs font-semibold text-amber-800/80 dark:text-amber-300/80">
+                                                                Hubungi orang tua dan pindahkan sesi setelah ada konfirmasi. Jika belum dipindahkan sampai H-1, sistem mencari hari dan jam yang sama paling dekat setelah akhir periode, lalu mengirim notifikasi jadwal pengganti.
+                                                            </p>
+                                                            <div className="mt-4 grid grid-cols-1 gap-3">
+                                                                {impacts.map((impact) => (
+                                                                    <ClosureImpactCase
+                                                                        key={impact.sessionId}
+                                                                        impact={impact}
+                                                                        draft={getImpactDraft(closure, impact)}
+                                                                        busy={impactActionBusy === impactKey(closure.id, impact.sessionId)}
+                                                                        onDraftChange={(updates) => updateImpactDraft(closure, impact, updates)}
+                                                                        onRecordContact={() => handleRecordImpactContact(closure, impact)}
+                                                                        onReschedule={() => handleRescheduleImpact(closure, impact)}
+                                                                    />
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                 </div>
-                                                <div className="flex shrink-0 flex-wrap justify-end gap-2">
-                                                    <button type="button" onClick={() => handleToggleClosure(closure)} disabled={closureLoading} className={`inline-flex h-10 items-center justify-center gap-1.5 rounded-lg px-3 text-xs font-black transition disabled:opacity-60 ${closure.isActive ? 'bg-slate-100 text-slate-700 hover:bg-slate-200' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}`}>
-                                                        <span className="material-symbols-outlined text-[17px]">{closure.isActive ? 'toggle_off' : 'toggle_on'}</span>
-                                                        {closure.isActive ? 'Nonaktifkan' : 'Aktifkan'}
-                                                    </button>
-                                                    <button type="button" onClick={() => handleDeleteClosure(closure)} disabled={closureLoading} className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg bg-red-50 px-3 text-xs font-black text-red-700 transition hover:bg-red-100 disabled:opacity-60">
-                                                        <span className="material-symbols-outlined text-[17px]">delete</span>
-                                                        Hapus
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 )}
                             </section>

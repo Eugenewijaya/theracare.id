@@ -2,8 +2,26 @@ import { eq } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 import { db } from "../db/index.js";
 import { clinicSettings } from "../db/schema.js";
+import { centerClosureService } from "./center-closure.service.js";
 
 const SYNC_VERSION_KEY = "system_revision";
+const CLOSURE_MAINTENANCE_INTERVAL_MS = 60 * 1000;
+let lastClosureMaintenanceAt = 0;
+let closureMaintenancePromise: Promise<unknown> | null = null;
+
+async function runClosureMaintenanceIfDue() {
+  if (Date.now() - lastClosureMaintenanceAt < CLOSURE_MAINTENANCE_INTERVAL_MS) return;
+  if (closureMaintenancePromise) return closureMaintenancePromise;
+  lastClosureMaintenanceAt = Date.now();
+  closureMaintenancePromise = centerClosureService.processDueAutomaticReplacements(5)
+    .catch((error) => {
+      console.error("[center-closures] automatic H-1 replacement maintenance failed", error);
+    })
+    .finally(() => {
+      closureMaintenancePromise = null;
+    });
+  return closureMaintenancePromise;
+}
 
 function parseVersion(value: string | null | undefined, updatedAt?: Date | string | null) {
   if (value) {
@@ -34,6 +52,7 @@ function parseVersion(value: string | null | undefined, updatedAt?: Date | strin
 
 export const syncService = {
   async getVersion() {
+    await runClosureMaintenanceIfDue();
     const row = await db.query.clinicSettings.findFirst({
       where: eq(clinicSettings.key, SYNC_VERSION_KEY),
     });

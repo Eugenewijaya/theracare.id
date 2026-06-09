@@ -39,6 +39,13 @@ function normalizeTimeKey(value?: string | null) {
   return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
+function isHalfHourTime(value?: string | null) {
+  const normalized = normalizeTimeKey(value);
+  if (!normalized) return false;
+  const minute = Number(normalized.split(":")[1]);
+  return minute === 0 || minute === 30;
+}
+
 function normalizeProposedSlots(slots?: Array<{ date: string; time: string }> | null) {
   const seen = new Set<string>();
   return (Array.isArray(slots) ? slots : [])
@@ -50,6 +57,13 @@ function normalizeProposedSlots(slots?: Array<{ date: string; time: string }> | 
       seen.add(key);
       return true;
     });
+}
+
+function assertHalfHourSlots(slots: Array<{ date: string; time: string }>) {
+  const invalid = slots.find((slot) => !isHalfHourTime(slot.time));
+  if (invalid) {
+    throw httpError(400, `${invalid.date} ${invalid.time}: jam preferensi harus menggunakan interval 30 menit (:00 atau :30).`);
+  }
 }
 
 function isClosedSessionStatus(status?: string | null) {
@@ -95,6 +109,13 @@ function removeCurrentSessionSlot(
   const sessionDate = normalizeDateKey(session.date);
   const sessionTime = normalizeTimeKey(session.startTime || "");
   return slots.filter((slot) => !(slot.date === sessionDate && slot.time === sessionTime));
+}
+
+function isCurrentSessionSlot(
+  slot: { date: string; time: string },
+  session: { date?: string | Date | null; startTime?: string | null },
+) {
+  return slot.date === normalizeDateKey(session.date) && slot.time === normalizeTimeKey(session.startTime || "");
 }
 
 async function assertOperationalSlots(slots: Array<{ date: string; time: string }>) {
@@ -176,6 +197,7 @@ export const rescheduleService = {
     childId: string; sessionId: string; proposedSlots?: Array<{ date: string; time: string }>;
   }) {
     const proposedSlots = normalizeProposedSlots(data.proposedSlots);
+    assertHalfHourSlots(proposedSlots);
     const session = await db.query.therapySessions.findFirst({
       where: eq(therapySessions.id, data.sessionId),
     });
@@ -185,8 +207,12 @@ export const rescheduleService = {
     }
     assertFutureSession(session);
     const candidateSlots = removeCurrentSessionSlot(proposedSlots, session);
-    if (candidateSlots.length === 0) return [];
-    return annotateSlotsForSession(session, candidateSlots);
+    const annotatedSlots = await annotateSlotsForSession(session, candidateSlots);
+    return proposedSlots.map((slot) => (
+      isCurrentSessionSlot(slot, session)
+        ? { ...slot, status: "conflict" as const, reason: "Slot sama dengan jadwal sesi saat ini." }
+        : annotatedSlots.find((annotated) => annotated.date === slot.date && annotated.time === slot.time) || slot
+    ));
   },
 
   async create(data: {
@@ -194,6 +220,7 @@ export const rescheduleService = {
     reason?: string; details?: string; proposedSlots?: Array<{ date: string; time: string }>;
   }, actor?: AuditActor) {
     const proposedSlots = normalizeProposedSlots(data.proposedSlots);
+    assertHalfHourSlots(proposedSlots);
     if (proposedSlots.length === 0) {
       throw httpError(400, "Minimal satu preferensi jadwal wajib diisi");
     }

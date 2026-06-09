@@ -6,6 +6,12 @@
       "maxDuration": 300
     }
   },
+  "crons": [
+    {
+      "path": "/api/internal/center-closures/process-due",
+      "schedule": "15 0 * * *"
+    }
+  ],
   "routes": [
     {
       "src": "/api/(.*)",

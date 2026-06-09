@@ -465,6 +465,9 @@ export const adminApi = {
   createCenterClosure: (data) => api.post('/admin/center-closures', data),
   updateCenterClosure: (id, data) => api.patch(`/admin/center-closures/${id}`, data),
   deleteCenterClosure: (id) => api.delete(`/admin/center-closures/${id}`),
+  recordCenterClosureContact: (id, sessionId, data) => api.patch(`/admin/center-closures/${id}/impacts/${sessionId}/contact`, data),
+  rescheduleCenterClosureImpact: (id, sessionId, data) => api.post(`/admin/center-closures/${id}/impacts/${sessionId}/reschedule`, data),
+  processDueCenterClosureImpacts: (data = {}) => api.post('/admin/center-closures/process-due', data),
   // Rooms
   getRooms: () => api.get('/admin/rooms'),
   createRoom: (data) => api.post('/admin/rooms', data),

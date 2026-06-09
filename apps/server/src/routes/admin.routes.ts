@@ -322,6 +322,67 @@ router.post("/center-closures", requireAuth, requireRole("admin"), async (req, r
     badRequest(res, e instanceof Error ? e.message : "Gagal menyimpan jadwal off center");
   }
 });
+router.post("/center-closures/process-due", requireAuth, requireRole("admin"), async (req, res, next) => {
+  try {
+    const result = await centerClosureService.processDueAutomaticReplacements(Number(req.body?.limit || 10));
+    await auditLogService.create({
+      actor: req.user,
+      action: "center_closure.process_due",
+      entityType: "center_closure",
+      summary: "Pemindahan otomatis H-1 jadwal off dijalankan manual",
+      metadata: result,
+    });
+    ok(res, result);
+  } catch (e) {
+    badRequest(res, e instanceof Error ? e.message : "Gagal memproses pemindahan otomatis H-1");
+  }
+});
+router.patch("/center-closures/:id/impacts/:sessionId/contact", requireAuth, requireRole("admin"), async (req, res, next) => {
+  try {
+    const result = await centerClosureService.recordContact(
+      req.params.id as string,
+      req.params.sessionId as string,
+      req.body || {},
+      req.user!.id,
+    );
+    await auditLogService.create({
+      actor: req.user,
+      action: "center_closure.impact.contact",
+      entityType: "therapy_session",
+      entityId: req.params.sessionId as string,
+      summary: "Kontak orang tua untuk sesi terdampak jadwal off dicatat",
+      metadata: { closureId: req.params.id, channel: req.body?.channel, note: req.body?.note || "" },
+    });
+    ok(res, result);
+  } catch (e) {
+    badRequest(res, e instanceof Error ? e.message : "Gagal mencatat kontak orang tua");
+  }
+});
+router.post("/center-closures/:id/impacts/:sessionId/reschedule", requireAuth, requireRole("admin"), async (req, res, next) => {
+  try {
+    const result = await centerClosureService.rescheduleImpact(
+      req.params.id as string,
+      req.params.sessionId as string,
+      req.body || {},
+      req.user!.id,
+    );
+    await auditLogService.create({
+      actor: req.user,
+      action: "center_closure.impact.reschedule",
+      entityType: "therapy_session",
+      entityId: req.params.sessionId as string,
+      summary: "Sesi terdampak jadwal off dipindahkan admin",
+      metadata: {
+        closureId: req.params.id,
+        replacementDate: req.body?.date,
+        replacementStartTime: req.body?.startTime,
+      },
+    });
+    ok(res, result);
+  } catch (e) {
+    badRequest(res, e instanceof Error ? e.message : "Gagal memindahkan sesi terdampak");
+  }
+});
 router.patch("/center-closures/:id", requireAuth, requireRole("admin"), async (req, res, next) => {
   try {
     const result = await centerClosureService.update(req.params.id as string, req.body || {});

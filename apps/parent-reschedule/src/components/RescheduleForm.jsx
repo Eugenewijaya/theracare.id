@@ -18,6 +18,11 @@ const VIEW_TABS = [
 ];
 
 const OPEN_REQUEST_STATUSES = new Set(['pending', 'review', 'under_review']);
+const HALF_HOUR_TIME_OPTIONS = Array.from({ length: 48 }, (_, index) => {
+  const hour = Math.floor(index / 2);
+  const minute = index % 2 === 0 ? '00' : '30';
+  return `${String(hour).padStart(2, '0')}:${minute}`;
+});
 
 const STATUS_LABELS = {
   pending: {
@@ -196,6 +201,11 @@ const parseMinutes = (time) => {
   return hour * 60 + minute;
 };
 
+const isHalfHourTime = (time) => {
+  const minutes = parseMinutes(time);
+  return minutes !== null && minutes % 30 === 0;
+};
+
 const parseOperatingWindow = (value) => {
   const raw = (value || '').trim();
   if (!raw) return { start: 8 * 60, end: 17 * 60 };
@@ -212,6 +222,7 @@ const getProposedSlots = (request) => parseJsonArray(request?.proposedSlots);
 
 const getSlotOperationalIssue = (slot, settings = {}) => {
   if (!slot?.date || !slot?.time) return '';
+  if (!isHalfHourTime(slot.time)) return 'Pilih jam dengan interval 30 menit (:00 atau :30)';
   const closures = parseJsonArray(settings.centerClosures);
   const closure = closures.find(item => (
     item?.isActive !== false
@@ -792,6 +803,15 @@ const RescheduleForm = () => {
   const selectedSessionPendingRequest = useMemo(() => (
     openRequests.find(item => item.sessionId === selectedSessionId) || null
   ), [openRequests, selectedSessionId]);
+  const operationalSettings = useMemo(() => ({
+    centerClosures: clinicSettings.centerClosures,
+    operatingHoursWeekday: clinicSettings.operatingHoursWeekday,
+    operatingHoursWeekend: clinicSettings.operatingHoursWeekend,
+  }), [
+    clinicSettings.centerClosures,
+    clinicSettings.operatingHoursWeekday,
+    clinicSettings.operatingHoursWeekend,
+  ]);
   const filledSlots = useMemo(() => slots.filter(slot => slot.date && slot.time), [slots]);
   const slotPreviewByKey = useMemo(() => new Map(slotPreview.map(slot => [getSlotKey(slot), slot])), [slotPreview]);
   const availablePreviewCount = slotPreview.filter(slot => slot.status === 'available').length;
@@ -805,7 +825,7 @@ const RescheduleForm = () => {
       setPreviewingSlots(false);
       return undefined;
     }
-    if (proposedSlots.some(slot => getSlotOperationalIssue(slot, clinicSettings))) {
+    if (proposedSlots.some(slot => getSlotOperationalIssue(slot, operationalSettings))) {
       setPreviewingSlots(false);
       return undefined;
     }
@@ -829,7 +849,7 @@ const RescheduleForm = () => {
       active = false;
       window.clearTimeout(timeout);
     };
-  }, [selectedSessionId, slots, clinicSettings]);
+  }, [selectedSessionId, slots, operationalSettings]);
 
   const updateSlot = (index, field, value) => {
     setSlots(prev => prev.map((slot, i) => (
@@ -857,9 +877,9 @@ const RescheduleForm = () => {
     }
 
     const proposedSlots = slots.filter(slot => slot.date && slot.time);
-    const blockedSlot = proposedSlots.find(slot => getSlotOperationalIssue(slot, clinicSettings));
+    const blockedSlot = proposedSlots.find(slot => getSlotOperationalIssue(slot, operationalSettings));
     if (blockedSlot) {
-      setError(`${blockedSlot.date} ${blockedSlot.time}: ${getSlotOperationalIssue(blockedSlot, clinicSettings)}`);
+      setError(`${blockedSlot.date} ${blockedSlot.time}: ${getSlotOperationalIssue(blockedSlot, operationalSettings)}`);
       return;
     }
     if (previewingSlots) {
@@ -1181,7 +1201,7 @@ const RescheduleForm = () => {
                   <div key={slot.label} className="rounded-xl border border-border-light bg-surface-light p-4 dark:border-border-dark dark:bg-background-dark">
                     {(() => {
                       const currentSlot = slots[index];
-                      const operationalIssue = getSlotOperationalIssue(currentSlot, clinicSettings);
+                      const operationalIssue = getSlotOperationalIssue(currentSlot, operationalSettings);
                       const preview = slotPreviewByKey.get(getSlotKey(currentSlot));
                       const isAvailable = preview?.status === 'available';
                       const isConflict = preview?.status === 'conflict' || !!operationalIssue;
@@ -1215,8 +1235,7 @@ const RescheduleForm = () => {
                             : 'border-border-light focus:border-primary focus:ring-primary dark:border-border-dark'
                         }`}
                       />
-                      <input
-                        type="time"
+                      <select
                         value={currentSlot.time}
                         onChange={event => updateSlot(index, 'time', event.target.value)}
                         className={`min-w-0 rounded-lg border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-1 dark:bg-surface-dark dark:text-slate-100 dark:[color-scheme:dark] ${
@@ -1224,8 +1243,16 @@ const RescheduleForm = () => {
                             ? 'border-red-300 focus:border-red-500 focus:ring-red-500 dark:border-red-800'
                             : 'border-border-light focus:border-primary focus:ring-primary dark:border-border-dark'
                         }`}
-                      />
+                      >
+                        <option value="">Pilih jam</option>
+                        {HALF_HOUR_TIME_OPTIONS.map(time => (
+                          <option key={time} value={time}>{time}</option>
+                        ))}
+                      </select>
                     </div>
+                    <p className="mt-2 text-[11px] font-semibold text-text-muted-light dark:text-text-muted-dark">
+                      Pilihan jam menggunakan interval 30 menit (:00 atau :30).
+                    </p>
                     {(operationalIssue || preview?.reason) && (
                       <p className={`mt-2 flex items-center gap-1 text-xs font-semibold ${
                         isAvailable ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-600 dark:text-red-400'

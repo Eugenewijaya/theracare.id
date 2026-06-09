@@ -2,10 +2,14 @@ export const THERACARE_DATA_UPDATED_EVENT = 'theracareDataUpdated';
 export const THERACARE_UPDATE_STORAGE_KEY = 'theracare:data-refresh';
 
 const MUTATING_METHODS = new Set(['POST', 'PATCH', 'DELETE']);
+const READ_ONLY_POST_PATHS = new Set([
+  '/reschedule/preview-slots',
+]);
 
 export function shouldBroadcastApiMutation(method, path = '') {
   const normalizedMethod = String(method || '').toUpperCase();
   if (!MUTATING_METHODS.has(normalizedMethod)) return false;
+  if (normalizedMethod === 'POST' && READ_ONLY_POST_PATHS.has(path)) return false;
   if (path.startsWith('/sync')) return false;
   if (path.startsWith('/location/signal')) return false;
   if (path.startsWith('/auth/sign-in') || path.startsWith('/auth/sign-out') || path.startsWith('/auth/get-session')) {

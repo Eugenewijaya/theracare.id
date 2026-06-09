@@ -13,6 +13,7 @@ import { auditLogService } from "./services/audit-log.service.js";
 import { DeviceAccessError, deviceAccessService } from "./services/device-access.service.js";
 import { notificationService } from "./services/notification.service.js";
 import { syncService } from "./services/sync.service.js";
+import { centerClosureService } from "./services/center-closure.service.js";
 import { pool } from "./db/index.js";
 import { getDatabaseEnvKey, hasDatabaseUrl } from "./config/database.js";
 import { getConfiguredOrigins, isAllowedOrigin, normalizeOrigin } from "./config/origins.js";
@@ -204,6 +205,20 @@ app.get("/api/health/db", async (_req, res) => {
 });
 
 app.use(ensureReadyMiddleware);
+
+app.get("/api/internal/center-closures/process-due", async (req, res, next) => {
+  const cronSecret = process.env.CRON_SECRET?.trim();
+  const authorization = req.get("authorization")?.trim();
+  if (!cronSecret || authorization !== `Bearer ${cronSecret}`) {
+    return res.status(401).json({ success: false, error: "Unauthorized" });
+  }
+  try {
+    const result = await centerClosureService.processDueAutomaticReplacements(20);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+});
 
 app.post("/api/auth/sign-in/email", express.json({ limit: "1mb" }), async (req, res, next) => {
   try {
