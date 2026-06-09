@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAdmin } from '../context/AdminContext';
-import { meetingsApi, rescheduleApi, notificationsApi, leaveRequestsApi } from '../../../shared/api/client';
+import { meetingsApi, rescheduleApi, notificationsApi, leaveRequestsApi, childLeaveApi } from '../../../shared/api/client';
 import ClinicLogoMark from '../../../shared/ui/ClinicLogoMark';
 import { BADGE_POLL_INTERVAL_MS, shouldPollNow } from '../../../shared/polling';
 
@@ -15,6 +15,7 @@ const navGroups = [
       { path: '/requests', icon: 'assignment', label: 'Permintaan Masuk', badgeKey: 'requests' },
       { path: '/parent-meetings', icon: 'groups', label: 'Parent Meeting' },
       { path: '/therapist-leave-requests', icon: 'event_busy', label: 'Cuti Terapis', badgeKey: 'leaveRequests' },
+      { path: '/child-leave', icon: 'family_restroom', label: 'Cuti Anak', badgeKey: 'childLeaves' },
     ],
   },
   {
@@ -52,40 +53,45 @@ export default function Sidebar({ isOpen, onClose }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { clinicName, brandColor, logoUrl, adminProfile, sidebarCollapsed, setSidebarCollapsed } = useAdmin();
-  const [badgeCounts, setBadgeCounts] = useState({ requests: 0, notifications: 0, leaveRequests: 0 });
+  const [badgeCounts, setBadgeCounts] = useState({ requests: 0, notifications: 0, leaveRequests: 0, childLeaves: 0 });
 
   // Compute notification badges from API
   useEffect(() => {
     const computeBadges = async ({ force = false } = {}) => {
       if (!shouldPollNow({ force })) return;
       try {
-        const [reqResult, meetingResult, unreadResult, leaveResult] = await Promise.allSettled([
+        const [reqResult, meetingResult, unreadResult, leaveResult, childLeaveResult] = await Promise.allSettled([
           rescheduleApi.getAll({ status: 'pending' }),
           meetingsApi.getAll(),
           notificationsApi.getUnreadCount(),
           leaveRequestsApi.getAll(),
+          childLeaveApi.getAll(),
         ]);
         const reqRes = reqResult.status === 'fulfilled' ? reqResult.value : { data: { data: [] } };
         const meetingRes = meetingResult.status === 'fulfilled' ? meetingResult.value : { data: { data: [] } };
         const unreadRes = unreadResult.status === 'fulfilled' ? unreadResult.value : { data: { data: { count: 0 } } };
         const leaveRes = leaveResult.status === 'fulfilled' ? leaveResult.value : { data: { data: [] } };
+        const childLeaveRes = childLeaveResult.status === 'fulfilled' ? childLeaveResult.value : { data: { data: [] } };
         const pendingReschedules = (reqRes.data?.data || []).filter(r => r.status === 'pending').length;
         const pendingMeetings = (meetingRes.data?.data || []).filter(r => r.status === 'pending_admin_review').length;
         const pendingCount = pendingReschedules + pendingMeetings;
         const unreadNotifs = unreadRes.data?.data?.count || 0;
         const pendingLeave = (leaveRes.data?.data || []).filter(r => r.status === 'pending' && r.canChangeStatus !== false).length;
-        setBadgeCounts({ requests: pendingCount, notifications: unreadNotifs, leaveRequests: pendingLeave });
+        const pendingChildLeave = (childLeaveRes.data?.data || []).filter(r => r.status === 'draft' || r.impacts?.some?.(impact => ['move_failed', 'restore_failed'].includes(impact.status))).length;
+        setBadgeCounts({ requests: pendingCount, notifications: unreadNotifs, leaveRequests: pendingLeave, childLeaves: pendingChildLeave });
       } catch {}
     };
     computeBadges({ force: true });
     const handleBadgeUpdate = () => computeBadges({ force: true });
     window.addEventListener('notificationsUpdated', handleBadgeUpdate);
     window.addEventListener('leaveRequestsUpdated', handleBadgeUpdate);
+    window.addEventListener('childLeaveUpdated', handleBadgeUpdate);
     const interval = setInterval(() => computeBadges(), BADGE_POLL_INTERVAL_MS);
     return () => {
       clearInterval(interval);
       window.removeEventListener('notificationsUpdated', handleBadgeUpdate);
       window.removeEventListener('leaveRequestsUpdated', handleBadgeUpdate);
+      window.removeEventListener('childLeaveUpdated', handleBadgeUpdate);
     };
   }, []);
 

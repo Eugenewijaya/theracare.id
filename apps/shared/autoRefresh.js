@@ -45,6 +45,7 @@ export function getRefreshEventsForPath(path = '') {
     || source.includes('/therapy-periods')
     || source.includes('/substitute-requests')
     || source.includes('/center-closures')
+    || source.includes('/child-leaves')
   ) {
     events.add('sessionUpdated');
     events.add('scheduleUpdated');
@@ -57,6 +58,9 @@ export function getRefreshEventsForPath(path = '') {
   }
   if (source.includes('/leave-requests')) {
     events.add('leaveRequestsUpdated');
+  }
+  if (source.includes('/child-leaves')) {
+    events.add('childLeaveUpdated');
   }
   if (source.includes('/substitute-requests')) {
     events.add('substituteRequestsUpdated');

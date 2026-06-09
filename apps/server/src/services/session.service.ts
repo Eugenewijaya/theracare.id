@@ -43,6 +43,17 @@ type CancelSessionPolicyInput = {
   };
 };
 
+type RestoreReplacementInput = {
+  originalDate: string;
+  originalStartTime: string;
+  originalTherapistId?: string;
+  originalRoomId?: string | null;
+  originalDuration?: string;
+  originalTherapyPeriodId?: string;
+  originalFocus?: string;
+  note?: string;
+};
+
 function pickSessionValues(data: any): Partial<TherapySessionInsert> {
   return {
     ...(typeof data.therapyPeriodId === "string" && data.therapyPeriodId ? { therapyPeriodId: data.therapyPeriodId } : {}),
@@ -995,6 +1006,69 @@ export const sessionService = {
     if (!result) return null;
     await notifySessionCancellationPolicy(id, "replacement", result.replacement);
     await notifySessionScheduled(result.replacement.id);
+    return result;
+  },
+
+  async restoreReplacement(replacementId: string, data: RestoreReplacementInput) {
+    const originalDate = normalizeDateKey(data.originalDate);
+    const originalStartTime = normalizeClock(data.originalStartTime);
+    if (!originalDate || !originalStartTime) {
+      throw httpError(400, "Tanggal dan jam sesi asal wajib diisi.");
+    }
+    if (originalDate < todayDateKey()) {
+      throw httpError(409, "Sesi asal sudah lewat dan tidak dapat dipulihkan. Sesi pengganti tetap dipertahankan.");
+    }
+
+    const result = await db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`session:${replacementId}:restore-replacement`}))`);
+      const replacement = await tx.query.therapySessions.findFirst({
+        where: eq(therapySessions.id, replacementId),
+      });
+      if (!replacement) throw httpError(404, "Sesi pengganti tidak ditemukan.");
+
+      const replacementStatus = String(replacement.status || "").toLowerCase();
+      if (["active", "done", "completed"].includes(replacementStatus)) {
+        throw httpError(409, "Sesi pengganti sudah berjalan atau selesai dan tidak dapat dibatalkan.");
+      }
+      if (replacementStatus === "cancelled" || replacementStatus === "canceled") {
+        throw httpError(409, "Sesi pengganti sudah dibatalkan.");
+      }
+
+      const restored: TherapySessionInsert = {
+        id: generateId("S"),
+        therapyPeriodId: data.originalTherapyPeriodId || replacement.therapyPeriodId,
+        therapistId: data.originalTherapistId || replacement.therapistId,
+        childId: replacement.childId,
+        roomId: data.originalRoomId || replacement.roomId,
+        date: originalDate,
+        startTime: originalStartTime,
+        duration: data.originalDuration || replacement.duration || "60 mins",
+        focus: data.originalFocus || replacement.focus,
+        status: "upcoming",
+        notes: [
+          `Sesi dipulihkan dari sesi pengganti ${replacementId}.`,
+          data.note || "",
+        ].filter(Boolean).join(" "),
+      };
+
+      await lockSchedulingSlots(tx, [replacement, restored]);
+      await assertSessionAvailable(restored, replacement.id);
+
+      const [cancelledReplacement] = await tx.update(therapySessions)
+        .set({
+          status: "cancelled",
+          cancelReason: `Sesi pengganti dibatalkan karena jadwal asal dipulihkan ke ${originalDate} ${originalStartTime}. ${data.note || ""}`.trim(),
+          startedAt: null,
+          endedAt: null,
+        })
+        .where(eq(therapySessions.id, replacementId))
+        .returning();
+      const [restoredSession] = await tx.insert(therapySessions).values(restored).returning();
+      await refreshPeriodCompletedCount(tx, replacement.therapyPeriodId);
+      return { cancelledReplacement, restored: restoredSession };
+    });
+
+    await notifySessionScheduled(result.restored.id);
     return result;
   },
 

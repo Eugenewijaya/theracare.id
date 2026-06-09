@@ -76,6 +76,14 @@ type TherapistLeaveRequest = {
   status?: string;
 };
 
+type ChildLeaveRequest = {
+  childId?: string;
+  childName?: string;
+  startDate?: string;
+  endDate?: string;
+  status?: string;
+};
+
 const DAY_SCHEDULE_KEYS: Record<number, string[]> = {
   0: ["Minggu", "Min", "Sunday", "Sun"],
   1: ["Senin", "Sen", "Monday", "Mon"],
@@ -204,6 +212,19 @@ function therapistLeaveConflict(settings: Record<string, string | null>, therapi
   ));
   if (!activeLeave) return "";
   return `Terapis sedang ${getLeaveTypeLabel(activeLeave.type)} pada tanggal tersebut.`;
+}
+
+function childLeaveConflict(settings: Record<string, string | null>, childId: string, date: string) {
+  const requests = parseJsonArray(settings.childLeaveRequests) as ChildLeaveRequest[];
+  const activeLeave = requests.find((request) => (
+    ["confirmed", "revised"].includes(String(request?.status || "").toLowerCase())
+    && request?.childId === childId
+    && typeof request.startDate === "string"
+    && date >= request.startDate
+    && date <= (request.endDate || request.startDate)
+  ));
+  if (!activeLeave) return "";
+  return `${activeLeave.childName || "Anak"} sedang cuti pada tanggal tersebut.`;
 }
 
 function normalizeScheduleKey(value: string) {
@@ -380,6 +401,12 @@ export async function evaluateChildSlot(
 ): Promise<SlotAvailability> {
   const operational = await evaluateOperationalSlot(slot);
   if (operational.status === "conflict") return operational;
+
+  const settings = await getSettingsMap();
+  const leaveReason = childLeaveConflict(settings, childId, slot.date);
+  if (leaveReason) {
+    return { ...slot, status: "conflict", reason: leaveReason, kind: "child" };
+  }
 
   const conflict = await findSessionOverlap("childId", childId, slot, excludeSessionId);
   if (conflict) {

@@ -394,6 +394,15 @@ export const leaveRequestsApi = {
   updateStatus: (id, status, reviewNote) => api.patch(`/leave-requests/${id}`, { status, reviewNote }),
 };
 
+export const childLeaveApi = {
+  getAll: () => api.get('/child-leaves'),
+  create: (data) => api.post('/child-leaves', data),
+  confirm: (id, data) => api.post(`/child-leaves/${id}/confirm`, data),
+  revise: (id, data) => api.patch(`/child-leaves/${id}/revise`, data),
+  cancel: (id, data) => api.post(`/child-leaves/${id}/cancel`, data),
+  retry: (id) => api.post(`/child-leaves/${id}/retry`, {}),
+};
+
 export const substituteRequestsApi = {
   getAll: () => api.get('/substitute-requests'),
   getMine: () => api.get('/substitute-requests/therapist/me'),

@@ -68,6 +68,12 @@ export function getNotificationDestination(notification, role = 'user') {
     return userRole === 'parent' ? '/reports' : '/reports';
   }
 
+  if (type.includes('child_leave')) {
+    if (userRole === 'admin') return '/child-leave';
+    if (userRole === 'therapist') return '/schedule-updates';
+    return '/';
+  }
+
   if (type.includes('leave') || type.includes('cuti')) {
     return userRole === 'admin' ? '/therapist-leave-requests' : '/leave-requests';
   }

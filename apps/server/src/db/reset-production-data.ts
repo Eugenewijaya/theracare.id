@@ -35,6 +35,7 @@ const DATA_TABLES = [
 
 const OPERATIONAL_SETTING_KEYS = [
   "therapistLeaveRequests",
+  "childLeaveRequests",
   "parentMeetings",
   "substituteTherapistRequests",
   "centerClosures",
