@@ -15,7 +15,8 @@
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx src/db/seed.ts",
-    "db:reset-production": "tsx src/db/reset-production-data.ts"
+    "db:reset-production": "tsx src/db/reset-production-data.ts",
+    "test:black-box": "tsx src/db/black-box-test.ts"
   },
   "dependencies": {
     "@vercel/blob": "^2.3.3",

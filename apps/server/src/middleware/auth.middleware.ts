@@ -28,34 +28,41 @@ export const requireAuth = async (
   next: NextFunction
 ) => {
   try {
-    let session = await auth.api.getSession({
-      headers: fromNodeHeaders(req.headers),
-    });
+    const token = req.get("x-theracare-session-token")?.trim();
+    let session: any = null;
 
-    if (!session?.user) {
-      const token = req.get("x-theracare-session-token")?.trim();
-      if (token) {
-        const [fallbackUser] = await db
-          .select({
-            sessionId: authSession.id,
-            sessionToken: authSession.token,
-            id: userTable.id,
-            name: userTable.name,
-            email: userTable.email,
-            role: userTable.role,
-            status: userTable.status,
-            phone: userTable.phone,
-            banned: userTable.banned,
-          })
-          .from(authSession)
-          .innerJoin(userTable, eq(authSession.userId, userTable.id))
-          .where(and(eq(authSession.token, token), gt(authSession.expiresAt, new Date())))
-          .limit(1);
+    if (token) {
+      const [tokenUser] = await db
+        .select({
+          sessionId: authSession.id,
+          sessionToken: authSession.token,
+          id: userTable.id,
+          name: userTable.name,
+          email: userTable.email,
+          role: userTable.role,
+          status: userTable.status,
+          phone: userTable.phone,
+          banned: userTable.banned,
+        })
+        .from(authSession)
+        .innerJoin(userTable, eq(authSession.userId, userTable.id))
+        .where(and(eq(authSession.token, token), gt(authSession.expiresAt, new Date())))
+        .limit(1);
 
-        if (fallbackUser) {
-          session = { user: fallbackUser, session: { id: fallbackUser.sessionId, token: fallbackUser.sessionToken } } as any;
-        }
+      if (tokenUser) {
+        session = {
+          user: tokenUser,
+          session: {
+            id: tokenUser.sessionId,
+            token: tokenUser.sessionToken,
+            userId: tokenUser.id,
+          },
+        };
       }
+    } else {
+      session = await auth.api.getSession({
+        headers: fromNodeHeaders(req.headers),
+      });
     }
 
     if (!session?.user) {

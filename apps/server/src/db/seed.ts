@@ -3,6 +3,7 @@ import { db, pool } from "./index.js";
 import { auth } from "../auth.js";
 import * as schema from "./schema.js";
 import { eq } from "drizzle-orm";
+import { setCredentialPassword } from "../services/auth-password.service.js";
 
 async function seed() {
   console.log("🌱 Seeding TheraCare database...\n");
@@ -13,18 +14,39 @@ async function seed() {
   const adminPassword = process.env.ADMIN_PASSWORD || "TheraCare@Admin2026";
   const adminName = process.env.ADMIN_NAME || "Admin TheraCare";
 
-  try {
-    await auth.api.signUpEmail({
-      body: { email: adminEmail, password: adminPassword, name: adminName },
-    });
-    // Update role to admin
+  const existingAdmin = await db.query.user.findFirst({
+    where: eq(schema.user.email, adminEmail),
+  });
+  if (existingAdmin) {
+    await setCredentialPassword(existingAdmin.id, adminPassword);
     await db
       .update(schema.user)
-      .set({ role: "admin", phone: "6281234567890" })
-      .where(eq(schema.user.email, adminEmail));
+      .set({
+        name: adminName,
+        role: "admin",
+        status: "active",
+        phone: "6281234567890",
+        banned: false,
+        banReason: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.user.id, existingAdmin.id));
+    console.log(`   ✅ Admin refreshed: ${adminEmail}`);
+  } else {
+    const created = await auth.api.createUser({
+      body: {
+        email: adminEmail,
+        password: adminPassword,
+        name: adminName,
+        role: "admin",
+        phone: "6281234567890",
+      } as any,
+    });
+    await db
+      .update(schema.user)
+      .set({ role: "admin", status: "active", phone: "6281234567890", updatedAt: new Date() })
+      .where(eq(schema.user.id, created.user.id));
     console.log(`   ✅ Admin created: ${adminEmail}`);
-  } catch (e: any) {
-    console.log(`   ⚠️  Admin may already exist: ${e.message || "skipped"}`);
   }
 
   // ── 2. Seed Programs ──
@@ -85,7 +107,7 @@ async function seed() {
 
   console.log("\n🎉 Seed completed!\n");
   console.log(`   Admin Email:    ${adminEmail}`);
-  console.log(`   Admin Password: ${adminPassword}\n`);
+  console.log("   Admin Password: configured from environment/default\n");
 
   await pool.end();
   process.exit(0);

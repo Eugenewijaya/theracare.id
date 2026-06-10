@@ -455,7 +455,7 @@ async function findExistingChild(parentId: string, data: any) {
   return rows.find((child) => normalizeKey(child.name || `${child.firstName || ""} ${child.lastName || ""}`) === wantedName) || null;
 }
 
-async function findOrCreateChild(parentId: string, data: any) {
+async function findOrCreateChild(parentId: string, data: any, programData: any, periodData: any) {
   const existing = await findExistingChild(parentId, data);
   if (existing) return { child: existing, created: false };
   const child = await childService.create(parentId, {
@@ -465,6 +465,13 @@ async function findOrCreateChild(parentId: string, data: any) {
     gender: data.gender || undefined,
     school: data.school || undefined,
     diagnosis: data.diagnosis || undefined,
+    therapyProgramsList: [{
+      programId: programData?.programId || undefined,
+      type: programData?.type || "Program Terapi",
+      totalSessions: Number(periodData?.totalSessions || 1),
+      goal: Array.isArray(programData?.goals) ? programData.goals[0] || "" : "",
+      createInitialPeriod: false,
+    }],
   });
   return { child, created: true };
 }
@@ -472,10 +479,10 @@ async function findOrCreateChild(parentId: string, data: any) {
 async function applyRecord(record: typeof migrationRecords.$inferSelect, batchId: string, actor: Actor) {
   const data: any = record.normalizedData || {};
   const parentResult = await findOrCreateParent(data.parent || {});
-  const childResult = await findOrCreateChild(parentResult.parent.id, data.child || {});
   const periodInput = data.period || {};
   const programInput = data.program || {};
   const summaryInput = data.historicalSummary || {};
+  const childResult = await findOrCreateChild(parentResult.parent.id, data.child || {}, programInput, periodInput);
   const period = await therapyPeriodService.create({
     childId: childResult.child.id,
     programId: programInput.programId || undefined,

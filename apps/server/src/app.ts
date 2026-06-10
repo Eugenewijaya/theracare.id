@@ -119,15 +119,12 @@ async function sendAuthResponse(res: express.Response, response: Response) {
 }
 
 async function getSessionWithTokenFallback(req: express.Request) {
-  const session = await auth.api.getSession({
+  const token = req.get("x-theracare-session-token")?.trim();
+  if (token) return getSessionByToken(token);
+
+  return auth.api.getSession({
     headers: fromNodeHeaders(req.headers),
   });
-  if (session?.user) return session;
-
-  const token = req.get("x-theracare-session-token")?.trim();
-  if (!token) return null;
-
-  return getSessionByToken(token);
 }
 
 async function getSessionByToken(token: string) {
@@ -135,6 +132,8 @@ async function getSessionByToken(token: string) {
     .select({
       sessionId: authSession.id,
       sessionToken: authSession.token,
+      sessionUserId: authSession.userId,
+      sessionExpiresAt: authSession.expiresAt,
       id: userTable.id,
       name: userTable.name,
       email: userTable.email,
@@ -153,8 +152,16 @@ async function getSessionByToken(token: string) {
     .limit(1);
 
   if (!fallbackUser) return null;
-  const { sessionId, sessionToken, ...safeUser } = fallbackUser;
-  return { user: safeUser, session: { id: sessionId, token: sessionToken } };
+  const { sessionId, sessionToken, sessionUserId, sessionExpiresAt, ...safeUser } = fallbackUser;
+  return {
+    user: safeUser,
+    session: {
+      id: sessionId,
+      token: sessionToken,
+      userId: sessionUserId,
+      expiresAt: sessionExpiresAt,
+    },
+  };
 }
 
 function extractSessionToken(payload: any) {

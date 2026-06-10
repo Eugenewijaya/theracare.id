@@ -40,6 +40,12 @@ const OPERATIONAL_SETTING_KEYS = [
   "substituteTherapistRequests",
   "centerClosures",
   "childPhotoUrls",
+  "periodDeletionRequests",
+  "oneTimeVisitLog",
+  "notificationPreferences",
+  "locationSignals",
+  "deviceAccessPolicies",
+  "deviceSessionMetadata",
   "system_revision",
 ] as const;
 
@@ -103,14 +109,20 @@ async function createAdminIfConfigured() {
     return;
   }
 
-  await auth.api.signUpEmail({
-    body: { email, password, name },
+  const created = await auth.api.createUser({
+    body: {
+      email,
+      password,
+      name,
+      role: "admin",
+      phone,
+    } as any,
   });
 
   await db
     .update(user)
     .set({ role: "admin", status: "active", phone })
-    .where(eq(user.email, email));
+    .where(eq(user.id, created.user.id));
 
   console.log(`Admin awal dibuat: ${email}`);
 }

@@ -7,6 +7,7 @@ import { notificationService } from "./notification.service.js";
 import { notifyCenterClosureSessionConflict } from "./schedule-conflict-notification.service.js";
 import { evaluateSessionSlot } from "./scheduling-availability.service.js";
 import { sessionService } from "./session.service.js";
+import { httpError } from "../utils/http-error.js";
 
 const CENTER_CLOSURES_KEY = "centerClosures";
 const CLOSURE_WRITE_LOCK_KEY = "center-closures:write";
@@ -631,7 +632,7 @@ export const centerClosureService = {
       const target = closures.find((closure) => closure.id === id);
       if (!target) return null;
       if (target.impacts.some((impact) => impact.status === "rescheduled_manual" || impact.status === "rescheduled_auto")) {
-        throw new Error("Jadwal off yang sudah menghasilkan sesi pengganti tidak dapat dihapus. Nonaktifkan agar riwayat tetap tersimpan.");
+        throw httpError(409, "Jadwal off yang sudah menghasilkan sesi pengganti tidak dapat dihapus. Nonaktifkan agar riwayat tetap tersimpan.");
       }
       await writeClosures(closures.filter((closure) => closure.id !== id), tx);
       return { deleted: true, id };

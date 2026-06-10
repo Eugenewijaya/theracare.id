@@ -525,18 +525,57 @@ export const therapyPeriodService = {
   },
 
   async complete(id: string, data: { finalReportId?: string; notes?: string } = {}) {
-    const [countRow] = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(therapySessions)
-      .where(and(eq(therapySessions.therapyPeriodId, id), eq(therapySessions.status, "done")));
-    const [historicalRow] = await db
-      .select({ count: sql<number>`coalesce(sum(${historicalSessionSummaries.completedCount}), 0)` })
-      .from(historicalSessionSummaries)
-      .where(eq(historicalSessionSummaries.therapyPeriodId, id));
+    const period = await db.query.therapyPeriods.findFirst({
+      where: eq(therapyPeriods.id, id),
+      with: {
+        sessions: true,
+        historicalSummaries: true,
+      },
+    });
+    if (!period) return null;
+    if (String(period.status || "").toLowerCase() === "completed") {
+      return this.getById(id);
+    }
+    if (!["active", "planned"].includes(String(period.status || "").toLowerCase())) {
+      throw httpError(409, "Hanya periode aktif atau terencana yang dapat diselesaikan.");
+    }
+
+    const historicalCompleted = (period.historicalSummaries || [])
+      .reduce((sum, summary) => sum + Number(summary.completedCount || 0), 0);
+    const completedSessions = (period.sessions || [])
+      .filter((session) => ["done", "completed"].includes(String(session.status || "").toLowerCase()))
+      .length;
+    const forfeitedSessions = (period.sessions || []).filter(isForfeitedCancellation).length;
+    const fulfilledSessions = historicalCompleted + completedSessions + forfeitedSessions;
+    const targetSessions = Number(period.totalSessions || 0);
+    const openSessions = (period.sessions || []).filter((session) => (
+      !["done", "completed"].includes(String(session.status || "").toLowerCase())
+      && !isForfeitedCancellation(session)
+    ));
+
+    if (targetSessions > 0 && fulfilledSessions < targetSessions) {
+      throw httpError(
+        409,
+        `Periode belum dapat diselesaikan. Baru ${fulfilledSessions}/${targetSessions} sesi yang selesai atau dihitung hangus.`,
+        {
+          completedSessions: historicalCompleted + completedSessions,
+          forfeitedSessions,
+          fulfilledSessions,
+          targetSessions,
+          openSessionIds: openSessions.map((session) => session.id),
+        },
+      );
+    }
+    if (openSessions.length > 0) {
+      throw httpError(409, "Periode masih memiliki sesi terbuka yang harus diselesaikan, dipindahkan, atau dibatalkan sesuai kebijakan.", {
+        openSessionIds: openSessions.map((session) => session.id),
+      });
+    }
+
     const [updated] = await db.update(therapyPeriods)
       .set({
         status: "completed",
-        completedSessions: Number(countRow?.count || 0) + Number(historicalRow?.count || 0),
+        completedSessions: historicalCompleted + completedSessions,
         ...(data.finalReportId ? { finalReportId: data.finalReportId } : {}),
         ...(data.notes ? { notes: data.notes } : {}),
         updatedAt: new Date(),
