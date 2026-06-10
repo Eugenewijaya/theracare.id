@@ -8,7 +8,8 @@ Tanggal: 10 Juni 2026
 - UI smoke: **41 route utama** pada portal Admin, Terapis, dan Orang Tua berhasil dimuat sesuai hak akses.
 - Build produksi: server dan tiga portal berhasil dibangun.
 - Responsive smoke: tiga portal lulus pada viewport `390x844` tanpa overflow horizontal.
-- Database pengujian: database PostgreSQL terpisah `bbt_20260610_0da56d`, bukan database produksi.
+- Database pengujian: seluruh API diuji ulang pada database PostgreSQL terpisah setelah patch dependensi, bukan database produksi; database uji kemudian dihapus.
+- Audit dependensi runtime: **0 critical, 0 high**. Empat advisory moderate tersisa hanya pada rantai tooling pengembangan `drizzle-kit`/`esbuild`.
 
 ## Cakupan Alur
 
