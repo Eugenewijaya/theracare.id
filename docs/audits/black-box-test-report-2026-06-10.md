@@ -9,7 +9,7 @@ Tanggal: 10 Juni 2026
 - Build produksi: server dan tiga portal berhasil dibangun.
 - Responsive smoke: tiga portal lulus pada viewport `390x844` tanpa overflow horizontal.
 - Database pengujian: seluruh API diuji ulang pada database PostgreSQL terpisah setelah patch dependensi, bukan database produksi; database uji kemudian dihapus.
-- Audit dependensi runtime: **0 critical, 0 high**. Empat advisory moderate tersisa hanya pada rantai tooling pengembangan `drizzle-kit`/`esbuild`.
+- Audit dependensi runtime dan penuh: **0 critical, 0 high**. Lima advisory moderate tersisa hanya pada rantai tooling pengembangan `Vite`/`drizzle-kit`/`esbuild` dan memerlukan upgrade mayor terpisah.
 
 ## Cakupan Alur
 
